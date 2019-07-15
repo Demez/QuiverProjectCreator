@@ -11,6 +11,10 @@ Recreation of Valve's VPC (Valve Project Creator) in Python 3.7
 
 `/verbose` Enable verbose console output
 
+`/hidewarnings` Hide any warnings found in the project scripts
+
+`/showlegacyoptions` Show any Configuration options using the legacy key
+
 `/name` Enable a conditional to use in projects, which are defined in the $CommandLineConditionals Block
 
 `/mksln "solution name"` Create a solution file to build all projects with
