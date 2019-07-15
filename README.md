@@ -11,7 +11,7 @@ Recreation of Valve's VPC (Valve Project Creator) in Python 3.7
 
 `/verbose` Enable verbose console output
 
-`/hidewarnings` Hide any warnings found in the project scripts
+`/hidewarnings` Hide console output of any mistakes found in the project scripts
 
 `/showlegacyoptions` Show any Configuration options using the legacy key
 
