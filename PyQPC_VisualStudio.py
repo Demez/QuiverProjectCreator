@@ -416,6 +416,7 @@ def SetupItemDefinitionGroups( vcxproj, project ):
                     "OptimizeReferences",
                     "EnableCOMDATFolding",
                     "BaseAddress",
+                    "ImportLibrary",
                     "TargetMachine",
                     "LinkErrorReporting",
                     "RandomizedBaseAddress",
