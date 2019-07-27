@@ -554,9 +554,15 @@ def ParseBaseFile(base_file, macros, conditionals, unknown_conditionals, project
         elif key == "$Group".casefold():
             # TODO: fix this for multiple groups
             for group in project_block.values:
-                project_group = ProjectGroup( group )
+
+                # do we have a group with this name already?
+                if group in group_dict:
+                    project_group = group_dict[ group ]
+                else:
+                    project_group = ProjectGroup( group )
+
                 ParseProjectGroupItems(project_group, project_list, project_block, conditionals)
-                group_dict[ project_group.name ] = project_group.projects
+                group_dict[ project_group.name ] = project_group
 
         elif key == "$Definitions".casefold():
             definitions_file_path = ReplaceMacros( project_block.values[0], macros )

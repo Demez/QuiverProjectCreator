@@ -214,22 +214,42 @@ if __name__ == "__main__":
     # Now go through everything and add all the project scripts we want to this list
     # why did i make it so damn condensed
     # actually should i make this contain the project name and the project script as a dictionary? like in VPC?
+
+    # --------------------------------------------------------------------------------------
+    # get all the projects the user wants (this is probably the worst part in this whole project)
+
     project_def_list = []
+
+    # this way i don't have to go through each group every single damn time
+    unwanted_projects_in_groups = {}
+    for removed_item in rm_proj_and_grps:
+        if removed_item in all_groups:
+            for project in all_groups[removed_item].projects:
+                if project.name not in unwanted_projects_in_groups:
+                    unwanted_projects_in_groups[project.name] = project
+        '''
+        else:
+            for project in all_projects:
+                if project.name == removed_item:
+                    unwanted_projects[project.name] = project
+                    break
+        '''
 
     # TODO: clean up this mess
     if add_proj_and_grps:
         for added_item in add_proj_and_grps:
             if added_item in all_groups:
+                if added_item not in rm_proj_and_grps:
 
-                # TODO: move to a function
-                for project in all_groups[ added_item ]:
-                    if ( project.name.lower() ) not in rm_proj_and_grps:
-                        for added_project in project_def_list:
-                            if added_project.name == project.name:
-                                break
-                        else:
-                            project_def_list.append( project )
-                            continue
+                    # TODO: move to a function
+                    for project in all_groups[ added_item ].projects:
+                        if project.name not in unwanted_projects_in_groups:
+                            for added_project in project_def_list:
+                                if added_project.name == project.name:
+                                    break
+                            else:
+                                project_def_list.append( project )
+                                continue
 
             else:
                 if added_item not in rm_proj_and_grps:
@@ -241,17 +261,15 @@ if __name__ == "__main__":
                             else:
                                 project_def_list.append(project)
                                 continue
-
-                else:
-                    print("hey this item doesn't exist: " + added_item)
-
+                # else:
+                    # print("hey this item doesn't exist: " + added_item)
     else:
         print( "add some projects or groups ffs" )
 
     # --------------------------------------------------------------------------------------
 
     print( "" )
-    definitions_file_hash =  parser.MakeHash( definitions_file_path )
+    definitions_file_hash = parser.MakeHash( definitions_file_path )
     for project_def in project_def_list:
         for project_path in project_def.script_list:
 
@@ -290,7 +308,9 @@ if __name__ == "__main__":
 
     # maybe change to /masterfile or something?
     if base.FindCommand( "/mksln" ):
-        writer.MakeSolutionFile( project_types, project_def_list, base_macros["$ROOTDIR"], base.FindCommand("/mksln", True) )
+        # maybe use a hash check here?
+        writer.MakeSolutionFile(project_types, project_def_list,
+                                base_macros["$ROOTDIR"], base.FindCommand("/mksln", True))
 
     # would be cool to add a timer here that would be running on another thread
     # if the cmd option "/benchmark" was specified, though that might be used as a conditional
