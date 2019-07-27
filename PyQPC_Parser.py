@@ -587,7 +587,7 @@ def ParseBaseFile(base_file, macros, conditionals, unknown_conditionals, project
                 print( "Reading: " + path )
 
             if not os.path.isabs(path):
-                path = macros["$ROOTDIR"] + path
+                path = os.path.normpath(macros["$ROOTDIR"] + os.sep + path)
 
             include_file = ReadFile( path )
             ParseBaseFile(include_file, macros, conditionals, unknown_conditionals, project_list, group_dict)

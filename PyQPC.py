@@ -29,7 +29,7 @@ import PyQPC_Writer as writer
 
 
 def SetupBaseDefines():
-
+    base_macros[ "$ROOTDIR" ] = os.path.dirname(os.path.realpath(__file__))
     base_macros[ "$QUOTE" ] = '"'
 
     # idk what this does, though in vpc it apparently forces all projects to regenerate if you change it
@@ -154,7 +154,6 @@ if __name__ == "__main__":
 
     # now start the recursion with default.vgc, which i just set to be in the same folder as this
     # does not set to the python script path though, idk if should change that or not
-    base_macros[ "$ROOTDIR" ] = os.getcwd() + os.sep
 
     base_file_path = base.FindCommand("/basefile", True)
 
@@ -164,7 +163,9 @@ if __name__ == "__main__":
         else:
             abs_base_file_path = os.path.normpath(base_macros[ "$ROOTDIR" ] + os.sep + base_file_path)
     else:
-        abs_base_file_path = os.path.normpath(base_macros[ "$ROOTDIR" ] + "/vpc_scripts/default.vgc")
+        # abs_base_file_path = os.path.normpath(base_macros[ "$ROOTDIR" ] + "/../../vpc_scripts/default.vgc")
+        raise Exception( "Base File path not defined.\n" +
+                         "\tUse /basefile \"Path\" on the command line, relative to the script location." )
 
     if cmd_options[ "verbose" ]:
         print( "Reading: " + abs_base_file_path )
