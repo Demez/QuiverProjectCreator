@@ -818,8 +818,8 @@ def ParseConfigBlock(project_block, project, definitions, conditionals, macros, 
                             for option_definition in definitions.groups[ group_block.key ]:
                                 # PAIN
                                 if compare_name == option_definition.key.casefold() or \
-                                    ( option_definition.alias and compare_name == option_definition.alias.casefold() ) or \
-                                        ( option_definition.legacy and compare_name == option_definition.legacy.casefold() ):
+                                    (option_definition.alias and compare_name == option_definition.alias.casefold()) or \
+                                        (option_definition.legacy and compare_name == option_definition.legacy.casefold()):
 
                                     # floods the console with $PrecompiledHeaderFile
                                     if base.FindCommand( "/showlegacyoptions" ):
@@ -848,14 +848,16 @@ def ParseConfigBlock(project_block, project, definitions, conditionals, macros, 
 
                                     elif option_definition.type == "bool":
                                         if value[0].lower().startswith("no") or value[0].lower().startswith("false"):
-                                            value = "False"
+                                            value = False
                                         elif value[0].lower().startswith("yes") or value[0].lower().startswith("true"):
-                                            value = "True"
+                                            value = True
                                         else:
                                             print( "unknown bool option: " + value )
 
                                         if option_definition.invert_output:
                                             value = not value
+
+                                        value = str(value)
                                     
                                     elif option_definition.type == "integer":
                                         print( "integer is not setup yet as it is never used" )
@@ -879,7 +881,8 @@ def ParseConfigBlock(project_block, project, definitions, conditionals, macros, 
                                             value = os.path.normpath( value )
 
                                     if value:
-                                        AddConfigOption( project, config_name, group_block.key, name, value, option_definition, file_obj )
+                                        AddConfigOption(project, config_name, group_block.key, name,
+                                                        value, option_definition, file_obj)
                                     break
 
                             else:

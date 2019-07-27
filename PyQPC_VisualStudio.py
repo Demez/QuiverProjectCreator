@@ -312,7 +312,7 @@ def SetupItemDefinitionGroups( vcxproj, project ):
         pre_build_event = et.SubElement( item_def_group, "PreBuildEvent" )
 
         pre_build_options = {
-            "$PostBuildEvent": [
+            "$PreBuildEvent": [
                 "Command",
                 "Message",
                 "PreBuildEventUseInBuild",
@@ -486,7 +486,7 @@ def SetupItemDefinitionGroups( vcxproj, project ):
         post_build_event = et.SubElement( item_def_group, "PostBuildEvent" )
 
         post_build_options = {
-            "$PostBuildEvent" : [
+            "$PostBuildEvent": [
                 "Command",
                 "Message",
                 "PostBuildEventUseInBuild",
