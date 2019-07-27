@@ -173,6 +173,7 @@ class Project:
         else:
             lib_ext = self.macros["$_STATICLIB_EXT"]
 
+        # what if it already has an extension, but it's the wrong one?
         if not lib_path.endswith( lib_ext ):
             lib_path += lib_ext
 

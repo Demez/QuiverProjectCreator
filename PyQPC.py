@@ -28,8 +28,20 @@ import PyQPC_Parser as parser
 import PyQPC_Writer as writer
 
 
-def SetupOSDefines():
+def SetupBaseDefines():
 
+    base_macros[ "$QUOTE" ] = '"'
+
+    # idk what this does, though in vpc it apparently forces all projects to regenerate if you change it
+    # i've never changed it before
+    # base_macros[ "$InternalVersion" ] = "104"
+    # base_conditionals[ "$InternalVersion" ] = 104
+
+    # also apparently a macro doesn't need to be in caps? ffs
+    base_macros[ "$INTERNALVERSION" ] = "104"
+    base_conditionals[ "$INTERNALVERSION" ] = 104
+
+    # OS Specific Defines
     if sys.platform == "win32":
         base_conditionals[ "$WINDOWS" ] = 1
 
@@ -80,19 +92,6 @@ def SetupOSDefines():
             base_conditionals[ "$POSIX32" ] = 1
             base_macros[ "$PLATFORM" ] = "linux32"
 
-def SetupBaseDefines():
-    base_macros[ "$QUOTE" ] = '"' 
-    # base_macros[ "$BASE" ] = ''
-
-    # idk what this does, though in vpc it apparently forces all projects to regenerate if you change it
-    # i've never changed it before
-    # base_macros[ "$InternalVersion" ] = "104"
-    # base_conditionals[ "$InternalVersion" ] = 104
-
-    # also apparently a macro doesn't need to be in caps? ffs
-    base_macros[ "$INTERNALVERSION" ] = "104"
-    base_conditionals[ "$INTERNALVERSION" ] = 104
-
 
 if __name__ == "__main__":
     
@@ -122,21 +121,19 @@ if __name__ == "__main__":
         "?",
     ]
 
-    cmd_project_types = [
-        "vstudio",
-        # "vscode",
-        # "make",
-    ]
+    project_types = {
+        "vstudio": False,
+        "vs2019": False,
+        # "vscode": False,
+        # "make": False,
+    }
 
     unknown_conditionals = []
 
     all_groups = {}
     all_projects = []
 
-    project_type = None
-
-    SetupOSDefines()
-    SetupBaseDefines()  # remove this later
+    SetupBaseDefines()
 
     # maybe move handling command line parameters to different functions?
 
@@ -146,21 +143,32 @@ if __name__ == "__main__":
         for conditional in cmdline_conditionals:
 
             if conditional in cmd_options:
-                cmd_options[ conditional ] = True
+                cmd_options[conditional] = True
                         
-            elif conditional in cmd_project_types:
-                project_type = conditional
+            elif conditional in project_types:
+                project_types[conditional] = True
 
             else:
                 unknown_conditionals.append( conditional.upper() )
 
     # now start the recursion with default.vgc, which i just set to be in the same folder as this
+    # does not set to the python script path though, idk if should change that or not
     base_macros[ "$ROOTDIR" ] = os.getcwd() + os.sep
 
-    if cmd_options[ "verbose" ]:
-        print( "Reading: " + base_macros[ "$ROOTDIR" ] + "default.vgc" )
+    base_file_path = base.FindCommand("/basefile", True)
 
-    base_file = parser.ReadFile( base_macros[ "$ROOTDIR" ] + "default.vgc" )
+    if base_file_path:
+        if os.path.isabs(base_file_path):
+            abs_base_file_path = base_file_path
+        else:
+            abs_base_file_path = os.path.normpath(base_macros[ "$ROOTDIR" ] + os.sep + base_file_path)
+    else:
+        abs_base_file_path = os.path.normpath(base_macros[ "$ROOTDIR" ] + "/vpc_scripts/default.vgc")
+
+    if cmd_options[ "verbose" ]:
+        print( "Reading: " + abs_base_file_path )
+
+    base_file = parser.ReadFile( abs_base_file_path )
     definitions_file_path = parser.ParseBaseFile(base_file, base_macros, base_conditionals,
                                                  unknown_conditionals, all_projects, all_groups)
 
@@ -264,7 +272,7 @@ if __name__ == "__main__":
 
                 # i might need to get a project uuid from this, oof
                 # except i can't actually do that, because of crc checks
-                writer.CreateProject( project, project_type )
+                writer.CreateProject( project, project_types )
 
                 del project
                 print( "" )
@@ -275,7 +283,7 @@ if __name__ == "__main__":
                 print( "Valid: " + project_filename + "_hash\n" )
 
     if base.FindCommand( "/mksln" ):
-        writer.MakeSolutionFile( project_type, project_def_list, base_macros["$ROOTDIR"], base.FindCommand("/mksln", True) )
+        writer.MakeSolutionFile( project_types, project_def_list, base_macros["$ROOTDIR"], base.FindCommand("/mksln", True) )
 
     # would be cool to add a timer here that would be running on another thread
     # if the cmd option "/benchmark" was specified, though that might be used as a conditional
