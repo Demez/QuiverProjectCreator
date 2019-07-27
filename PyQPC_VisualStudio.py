@@ -845,6 +845,7 @@ def GetNeededItemsFromProject(vcxproj):
     xmlns = "{http://schemas.microsoft.com/developer/msbuild/2003}"
 
     configurations = []
+    platforms_elems = []
     platforms = []
     item_groups = vcxproj.findall( xmlns + "ItemGroup" )
 
@@ -855,17 +856,15 @@ def GetNeededItemsFromProject(vcxproj):
 
     for project_configuration_elem in project_configurations:
         configurations.extend(project_configuration_elem.findall( xmlns + "Configuration" ))
-        platforms.extend(project_configuration_elem.findall( xmlns + "Platform" ))
+        platforms_elems.extend(project_configuration_elem.findall( xmlns + "Platform" ))
 
     for index, configuration_elem in enumerate(configurations):
         if configuration_elem.text not in configurations:
             configurations[index] = configuration_elem.text
 
-    for index, platform_elem in enumerate(platforms):
+    for index, platform_elem in enumerate(platforms_elems):
         if platform_elem.text not in platforms:
-            platforms[index] = platform_elem.text
-        else:
-            del platforms[index]
+            platforms.append(platform_elem.text)
 
     property_groups = vcxproj.findall( xmlns + "PropertyGroup" )
 

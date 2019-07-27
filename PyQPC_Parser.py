@@ -185,7 +185,7 @@ class Project:
 
     def RemoveLib( self, file, implib = False ):
         # TODO: fix this for if you have multiple libs in the value
-        file = file[0]
+        file = os.path.normpath(file[0])
 
         # remove this ugly ass hack valve did later
         if not os.sep in file:
