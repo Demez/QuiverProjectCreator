@@ -10,7 +10,7 @@ import PyQPC_Base as base
 
 
 class ProjectDefinition:
-    def __init__( self, project_name, folder_list = [] ):
+    def __init__( self, project_name, folder_list=[] ):
         self.name = project_name
         self.script_list = []
 
@@ -37,7 +37,7 @@ class ProjectGroup:
 
 
 class ProjectBlock:
-    def __init__( self, key, values = [], conditional = None ):
+    def __init__( self, key, values=[], conditional=None ):
         self.key = key
         self.values = []
         self.values.extend( values )
@@ -79,7 +79,7 @@ class Project:
 
         try:
             value = values[1]
-        except:
+        except IndexError:
             value = ''
 
         if required and value == '':
@@ -162,20 +162,7 @@ class Project:
     # maybe make a DynamicLib option? idk
     def AddLib(self, lib_path, implib = False):
         # TODO: fix this for if you have multiple libs in the value
-        lib_path = lib_path[0]
-
-        # remove this ugly ass hack valve did later
-        if not os.sep in lib_path:
-            lib_path = self.macros["$LIBPUBLIC"] + os.sep + lib_path
-
-        if implib:
-            lib_ext = self.macros["$_IMPLIB_EXT"]
-        else:
-            lib_ext = self.macros["$_STATICLIB_EXT"]
-
-        # what if it already has an extension, but it's the wrong one?
-        if not lib_path.endswith( lib_ext ):
-            lib_path += lib_ext
+        lib_path = self.GetLibPath(lib_path[0], implib)
 
         if lib_path not in self.libraries:
             self.libraries.append( lib_path )
@@ -183,21 +170,30 @@ class Project:
             if not base.FindCommand("/hidewarnings"):
                 print( "WARNING: Library already added: \"" + lib_path + "\"" )
 
-    def RemoveLib( self, file, implib = False ):
+    def RemoveLib( self, lib_path, implib = False ):
         # TODO: fix this for if you have multiple libs in the value
-        file = os.path.normpath(file[0])
+        lib_path = self.GetLibPath(lib_path[0], implib)
+        self.libraries.remove(lib_path)
 
-        # remove this ugly ass hack valve did later
-        if not os.sep in file:
-            file = self.macros[ "$LIBPUBLIC" ] + os.sep + file
+    def GetLibPath(self, lib_path, implib = False ):
+        lib_path = os.path.normpath(lib_path)
 
         if implib:
-            file += self.macros["$_IMPLIB_EXT"] 
+            lib_ext = self.macros["$_IMPLIB_EXT"]
         else:
-            file += self.macros["$_STATICLIB_EXT"]
+            lib_ext = self.macros["$_STATICLIB_EXT"]
 
-        del self.libraries[ self.libraries.index( file ) ] 
-        
+        # remove this ugly ass hack valve did later
+        # may have to check if the file exists in this folder before adding it (vmpi)
+        if os.sep not in lib_path and lib_ext not in lib_path:
+            lib_path = self.macros["$LIBPUBLIC"] + os.sep + lib_path
+
+        # might break if for whatever reason we have a different extension
+        if not lib_path.endswith( lib_ext ):
+            lib_path += lib_ext
+
+        return lib_path
+
     def RemoveFile( self, file_list ):
 
         for file_obj in self.files:
