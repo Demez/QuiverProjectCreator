@@ -308,11 +308,18 @@ def SetupItemDefinitionGroups( vcxproj, project ):
 
         # ------------------------------------------------------------------
         # PreBuildEvent
-        # Disabled for now, need to do a replace of single quotes with double quotes in the parser
-        # same thing with the other build events
-        # pre_build_event = et.SubElement( item_def_group, "PreBuildEvent" )
-        # command = et.SubElement( pre_build_event, "Command" )
-        # command.text = GetConfigOptionValue( config, "Command", "$PreBuildEvent" )
+
+        pre_build_event = et.SubElement( item_def_group, "PreBuildEvent" )
+
+        pre_build_options = {
+            "$PostBuildEvent": [
+                "Command",
+                "Message",
+                "PreBuildEventUseInBuild",
+            ],
+        }
+
+        AddOptionListToElement(pre_build_options, pre_build_event, config)
     
         # ------------------------------------------------------------------
         # Compiler - ClCompile
@@ -320,7 +327,6 @@ def SetupItemDefinitionGroups( vcxproj, project ):
         compiler = et.SubElement( item_def_group, "ClCompile" )
 
         compiler_options = {
-
             "$Compiler": [
                 "AdditionalOptions",
                 "Optimization",
@@ -481,8 +487,9 @@ def SetupItemDefinitionGroups( vcxproj, project ):
 
         post_build_options = {
             "$PostBuildEvent" : [
-                # "Message",
-                # "Command",
+                "Command",
+                "Message",
+                "PostBuildEventUseInBuild",
             ],
         }        
 
