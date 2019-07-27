@@ -14,10 +14,10 @@ def CreateProject( project, project_type ):
         print( "Unknown Project Type" )
 
 
-def MakeSolutionFile( project_type, project_path_list, root_folder, solution_name ):
+def MakeSolutionFile( project_type, project_def_list, root_folder, solution_name ):
 
     if project_type == "vstudio":
-        vstudio.MakeSolutionFile( project_path_list, root_folder, solution_name )
+        vstudio.MakeSolutionFile( project_def_list, root_folder, solution_name )
 
     elif not project_type:
         pass

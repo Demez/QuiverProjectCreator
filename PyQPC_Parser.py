@@ -7,6 +7,34 @@ import os
 import hashlib
 import PyQPC_Base as base
 
+
+class ProjectDefinition:
+    def __init__( self, project_name, folder_list = [] ):
+        self.name = project_name
+        self.script_list = []
+
+        # this is just so it stops changing this outside of the function
+        self.group_folder_list = []
+        self.group_folder_list.extend( folder_list )
+
+    def AddScript(self, script_path):
+        self.script_list.append(script_path)
+
+    def AddScriptList(self, script_list):
+        self.script_list.extend(script_list)
+
+
+class ProjectGroup:
+    def __init__( self, group_name ):
+        self.name = group_name
+        self.projects = []
+
+    def AddProject(self, project_name, project_scripts, folder_list):
+        project_def = ProjectDefinition( project_name, folder_list)
+        project_def.AddScriptList(project_scripts)
+        self.projects.append( project_def )
+
+
 class ProjectBlock:
     def __init__( self, key, values = [], conditional = None ):
         self.key = key
@@ -25,9 +53,7 @@ class Project:
         self.name = name  # the project name
         # self.path = path # folder the project script is in (using $PROJECTDIR instead, maybe use this instead?)
         
-        # i might change this to just be a huge list, and have the folder it goes in in the file object
-        self.files = []  # dictionary because folders
-
+        self.files = []
         self.libraries = []  # maybe change to dependencies?
 
         # maybe add an "self.other_files" dictionary where the files aren't objects and just the paths?
@@ -94,13 +120,10 @@ class Project:
     def AddFile( self, folder_list, file_list ):
 
         for file_path in file_list:
-
-            # TODO: add a cmd option check for /hidewarnings here
             if self.GetFileObject( file_path ):
                 if not base.FindCommand( "/hidewarnings" ):
                     print( "WARNING: File already added: \"" + file_path + "\"" )
                 return
-
             self.files.append( ProjectFile( file_path, folder_list, self.config ) )
 
     def GetAllFileFolderDepthLists( self ):
@@ -519,8 +542,7 @@ def GetFileBlockSplit( file, line_number, has_split_lines = True ):
     return [ line_number, block ]
 
 
-def ParseBaseFile(base_file, macros, conditionals, unknown_conditionals, project_list, group_list):
-    # print( "Parsing Base File: " + "name" )
+def ParseBaseFile(base_file, macros, conditionals, unknown_conditionals, project_list, group_dict):
 
     definitions_file_path = None
 
@@ -537,21 +559,21 @@ def ParseBaseFile(base_file, macros, conditionals, unknown_conditionals, project
                         del unknown_conditionals[ unknown_conditionals.index( sub_project_block.key.upper() ) ]
 
         elif key == "$Project".casefold():
-            base.CreateNewDictValue( project_list, project_block.values[0].casefold(), "list" )
+            project_def = ProjectDefinition(project_block.values[0])
 
             for item in project_block.items:
                 if base.SolveConditional( item.conditional, conditionals ):
                     item.key = ReplaceMacros( item.key, macros )
-                    project_list[ project_block.values[0].casefold() ].append( item.key )
-                    
+                    project_def.AddScript( item.key )
+                    # project_dict[ project_block.values[0].casefold() ].append( item.key )
+            project_list.append(project_def)
+
         elif key == "$Group".casefold():
             # TODO: fix this for multiple groups
-            base.CreateNewDictValue( group_list, project_block.values[0], "list" )
-
-            for item in project_block.items:
-                if base.SolveConditional( item.conditional, conditionals ):
-                    item.key = ReplaceMacros( item.key, macros )
-                    group_list[ project_block.values[0].casefold() ].append( item.key )
+            for group in project_block.values:
+                project_group = ProjectGroup( group )
+                ParseProjectGroupItems(project_group, project_list, project_block, conditionals)
+                group_dict[ project_group.name ] = project_group.projects
 
         elif key == "$Definitions".casefold():
             definitions_file_path = ReplaceMacros( project_block.values[0], macros )
@@ -576,12 +598,28 @@ def ParseBaseFile(base_file, macros, conditionals, unknown_conditionals, project
                 print( "Reading: " + path )
 
             include_file = ReadFile( path )
-            ParseBaseFile( include_file, macros, conditionals, unknown_conditionals, project_list, group_list )
+            ParseBaseFile(include_file, macros, conditionals, unknown_conditionals, project_list, group_dict)
 
         else:
             print( "Unknown Key: " + project_block.key )
 
     return definitions_file_path
+
+
+def ParseProjectGroupItems(project_group, project_list, project_block, conditionals, folder_list = []):
+    for item in project_block.items:
+        if base.SolveConditional(item.conditional, conditionals):
+
+            if item.key.casefold() == "$folder":
+                folder_list.append( item.values[0] )
+                ParseProjectGroupItems(project_group, project_list, item, conditionals, folder_list)
+                folder_list.remove( item.values[0] )
+            else:
+                for project in project_list:
+                    if project.name == item.key:
+                        project_group.AddProject(project.name, project.script_list, folder_list)
+
+    return
 
 
 def ParseProjectFile(project_file, project, definitions, depth = 0):

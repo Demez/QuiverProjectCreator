@@ -682,9 +682,10 @@ def AddFormattingToXML( elem ):
 
 # this will need a ton of uuid's,
 # the Project Name, and the vcxproj path
-def MakeSolutionFile( project_path_list, root_folder, solution_name ):
+def MakeSolutionFile( project_def_list, root_folder, solution_name ):
 
     cpp_uuid = "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}"
+    filter_uuid = "{2150E333-8FDC-42A3-9474-1A3956D46DE8}"
 
     solution_name += ".sln"
 
@@ -696,37 +697,102 @@ def MakeSolutionFile( project_path_list, root_folder, solution_name ):
 
         WriteTopOfSolution( solution_file )
 
-        for vcxproj_path in project_path_list:
+        project_uuid_dict = {}
+        project_folder_uuid = {}
 
-            tree = et.parse( os.path.join( root_folder, vcxproj_path + ".vcxproj" ) )
-            vcxproj = tree.getroot()
+        for project_def in project_def_list:
 
-            project_uuid_and_name = GetProjectUUIDAndName( vcxproj )
-            
-            project_name = project_uuid_and_name[0]
-            project_uuid = project_uuid_and_name[1]
-            del project_uuid_and_name
+            for folder in project_def.group_folder_list:
+                if folder not in project_folder_uuid:
+                    project_folder_uuid[folder] = MakeUUID()
 
-            SLN_WriteProjectLine( solution_file, project_name, vcxproj_path + ".vcxproj", cpp_uuid, project_uuid )
-            
-            # Get all the libraries in the vcxproj file
-            # open EVERY ITEM IN THE PATH LIST and check if there is the output path is the in the libs list?
-            # then check for the same file (no ext) in the project_path_list?
+            for script_path in project_def.script_list:
 
-            # or you could just have this output another file, like .pyqpc_deps (dependencies)
-            # and then just read that and input it here
-            # except, how are you going to know the project path of the files?
+                vcxproj_path = script_path.rsplit( ".", 1 )[0] + ".vcxproj"
 
-            # you might just have to check the projects you are currently using i guess
+                tree = et.parse( os.path.join( root_folder, vcxproj_path ) )
+                vcxproj = tree.getroot()
 
-            # tree = et.parse( os.path.join( root_folder, vcxproj_path + ".vcxproj.filters" ) )
-            # vcxproj_filters = tree.getroot()
+                project_name, project_uuid = GetProjectUUIDAndName( vcxproj )
 
-            # vcxproj_uuid = GetDependencyUUID( vcxproj_filters )
+                # project_uuid_dict[project_name] = project_uuid
+                # project_uuid_dict[project_def.name] = project_uuid
+                # shut
+                base.CreateNewDictValue(project_uuid_dict, project_def.name, "list" )
+                project_uuid_dict[project_def.name].append( project_uuid )
 
-            solution_file.write( "EndProject\n" )
+                SLN_WriteProjectLine( solution_file, project_name, vcxproj_path, cpp_uuid, project_uuid )
+
+                # Get all the libraries in the vcxproj file
+                # open EVERY ITEM IN THE PATH LIST and check if there is the output path is the in the libs list?
+                # then check for the same file (no ext) in the project_path_list?
+
+                # or you could just have this output another file, like .pyqpc_deps (dependencies)
+                # and then just read that and input it here
+                # except, how are you going to know the project path of the files?
+
+                # you might just have to check the projects you are currently using i guess
+
+                # tree = et.parse( os.path.join( root_folder, vcxproj_path + ".vcxproj.filters" ) )
+                # vcxproj_filters = tree.getroot()
+
+                # vcxproj_uuid = GetDependencyUUID( vcxproj_filters )
+
+                solution_file.write( "EndProject\n" )
+
+        # Write the folders as projects because vstudio dumb
+        # might have to make this a project def, idk
+        for folder_name, folder_uuid in project_folder_uuid.items():
+            SLN_WriteProjectLine(solution_file, folder_name, folder_name, filter_uuid, folder_uuid)
+            solution_file.write("EndProject\n")
 
         # you do need to make some GlobalSection thing after all the projects, but meh
+
+        # um
+        # SLN_WriteGlobalSection(solution_file, section_name, key_value_dict, is_post_solution=False)
+
+        # Write the global stuff
+        solution_file.write("Global\n")
+
+        # write the project folders
+        # TODO: setup sub folders
+        global_folder_uuid_dict = {}
+        for project_def in project_def_list:
+
+            # if project_def.group_folder_list:
+            for folder_index, project_folder in enumerate(project_def.group_folder_list):
+                # TODO: need to use project names instead, since they can have multiple scripts
+                test = project_def.group_folder_list[-(folder_index+1)]
+                # if project_def.group_folder_list[-(folder_index+1)] in project_folder_uuid:
+                if test in project_folder_uuid:
+                    folder_uuid = project_folder_uuid[project_folder]
+                    for project_uuid in project_uuid_dict[project_def.name]:
+                        global_folder_uuid_dict[project_uuid] = folder_uuid
+                else:
+                    print( "what?" )
+
+            # sub folders
+            if len(project_def.group_folder_list) > 1:
+                folder_index = -1
+                while folder_index < len(project_def.group_folder_list):
+                    project_sub_folder = project_def.group_folder_list[folder_index]
+                    try:
+                        project_folder = project_def.group_folder_list[folder_index-1]
+                    except IndexError:
+                        break
+                    # if project_def.group_folder_list[-(folder_index+1)] in project_folder_uuid:
+                    if project_sub_folder in project_folder_uuid:
+                        sub_folder_uuid = project_folder_uuid[project_sub_folder]
+                        folder_uuid = project_folder_uuid[project_folder]
+                        if sub_folder_uuid not in global_folder_uuid_dict:
+                            global_folder_uuid_dict[sub_folder_uuid] = folder_uuid
+                        folder_index -= 1
+
+        # TODO: what about folders in folders?
+
+        SLN_WriteGlobalSection(solution_file, "NestedProjects", global_folder_uuid_dict, False)
+
+        solution_file.write("EndGlobal\n")
 
     return
 
@@ -768,13 +834,27 @@ def GetProjectUUIDAndName( vcxproj ):
             project_guid = property_group.findall( xmlns + "ProjectGuid" )[0]
 
         if project_guid != None and project_name != None:
-            return [ project_name.text, project_guid.text ]
+            return project_name.text, project_guid.text
 
     return None
 
 
 def SLN_WriteProjectLine( solution_file, project_name, vcxproj_path, cpp_uuid, vcxproj_uuid ):
-
     solution_file.write( "Project(\"" + cpp_uuid + "\") = \"" + project_name + \
                          "\", \"" + vcxproj_path + "\", \"" + vcxproj_uuid + "\"\n" )
     return
+
+
+def SLN_WriteGlobalSection( solution_file, section_name, key_value_dict, is_post_solution = False):
+
+    if is_post_solution:
+        solution_file.write( "\tGlobalSection(" + section_name + ") = postSolution\n" )
+    else:
+        solution_file.write( "\tGlobalSection(" + section_name + ") = preSolution\n" )
+
+    for key, value in key_value_dict.items():
+        solution_file.write("\t\t" + key + " = " + value + "\n")
+
+    solution_file.write( "\tEndGlobalSection\n" )
+
+

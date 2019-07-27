@@ -131,7 +131,7 @@ if __name__ == "__main__":
     unknown_conditionals = []
 
     all_groups = {}
-    all_projects = {}
+    all_projects = []
 
     project_type = None
 
@@ -161,7 +161,8 @@ if __name__ == "__main__":
         print( "Reading: " + base_macros[ "$ROOTDIR" ] + "default.vgc" )
 
     base_file = parser.ReadFile( base_macros[ "$ROOTDIR" ] + "default.vgc" )
-    definitions_file_path = parser.ParseBaseFile( base_file, base_macros, base_conditionals, unknown_conditionals, all_projects, all_groups )
+    definitions_file_path = parser.ParseBaseFile(base_file, base_macros, base_conditionals,
+                                                 unknown_conditionals, all_projects, all_groups)
 
     base_macros[ "$ROOTDIR" ] = os.path.normpath( base_macros[ "$ROOTDIR" ] )
     definitions_file_path = os.path.normpath( definitions_file_path )
@@ -201,29 +202,37 @@ if __name__ == "__main__":
     # why did i make it so damn condensed
     # actually should i make this contain the project name and the project script as a dictionary? like in VPC?
     project_script_list = []
+    project_def_list = []
 
-    if add_proj_and_grps != None:
+    # TODO: clean up this mess
+    if add_proj_and_grps:
         for added_item in add_proj_and_grps:
             if added_item in all_groups:
 
+                # TODO: move to a function
                 for project in all_groups[ added_item ]:
-                    # if project isn't being removed
-                    if ( project.lower() ) not in rm_proj_and_grps:
-                        for script in all_projects[ project.casefold()]:
-                            # only add if this project isn't empty AND it isn't in the project list already 
-                            if (script != '') and ( not script in project_script_list):
-                                project_script_list.append(script)
+                    if ( project.name.lower() ) not in rm_proj_and_grps:
+                        for added_project in project_def_list:
+                            if added_project.name == project.name:
+                                break
+                        else:
+                            project_def_list.append( project )
+                            continue
 
-            elif ( added_item in all_projects ) and (added_item not in rm_proj_and_grps):
-
-                # if project isn't being removed
-                if ( added_item.lower() ) not in rm_proj_and_grps:
-                    for script in all_projects[ added_item.casefold()]:
-                        # only add if this project isn't empty AND it isn't in the project list already
-                        if (script != '') and ( not script in project_script_list) :
-                            project_script_list.append(script)
             else:
-                print( "hey this item doesn't exist: " + added_item )
+                if added_item not in rm_proj_and_grps:
+                    for project in all_projects:
+                        if added_item == project.name:
+                            for added_project in project_def_list:
+                                if added_project.name == project.name:
+                                    break
+                            else:
+                                project_def_list.append(project)
+                                continue
+
+                else:
+                    print("hey this item doesn't exist: " + added_item)
+
     else:
         print( "add some projects or groups ffs" )
 
@@ -231,45 +240,47 @@ if __name__ == "__main__":
 
     print( "" )
     project_path_list = []
-    for project_path in project_script_list:
+    for project_def in project_def_list:
+        for project_path in project_def.script_list:
 
-        # only run if the crc check fails or if the user force creates the projects
-        if parser.CRCCheck( base_macros["$ROOTDIR"], project_path ) or base.FindCommand( "/f" ):
+            # only run if the crc check fails or if the user force creates the projects
+            if parser.CRCCheck( base_macros["$ROOTDIR"], project_path ) or base.FindCommand( "/f" ):
 
-            # OPTIMIZATION IDEA:
-            # every time you call ReadFile(), add the return onto some dictionary, keys are the absolute path, values are the returns
-            # and then scan that dictionary whenever you reach an include, and then just grab it from the last to parse again
-            # so you don't slow it down with re-reading it for no damn reason
+                # OPTIMIZATION IDEA:
+                # every time you call ReadFile(), add the return onto some dictionary, keys are the absolute path, values are the returns
+                # and then scan that dictionary whenever you reach an include, and then just grab it from the last to parse again
+                # so you don't slow it down with re-reading it for no damn reason
 
-            # another idea:
-            # make a ParseConfigGroup() function, so you can parse config groups recursively
-            # would also nead to tweak ParseDefFile() to use ParseDefOption() and ParseDefGroup() as well
+                # another idea:
+                # make a ParseConfigGroup() function, so you can parse config groups recursively
+                # would also nead to tweak ParseDefFile() to use ParseDefOption() and ParseDefGroup() as well
 
-            project = parser.ParseProject(project_path, base_macros, base_conditionals, definitions)
+                project = parser.ParseProject(project_path, base_macros, base_conditionals, definitions)
 
-            project.crc_list[ definitions_file_path ] = parser.MakeCRC( definitions_file_path )
+                project.crc_list[ definitions_file_path ] = parser.MakeCRC( definitions_file_path )
 
-            parser.MakeCRCFile( os.path.join(base_macros["$ROOTDIR"], project_path), project.crc_list )
+                parser.MakeCRCFile( os.path.join(base_macros["$ROOTDIR"], project_path), project.crc_list )
 
-            if base.FindCommand( "/verbose" ):
-                print( "Parsed: " + project.name )
+                if base.FindCommand( "/verbose" ):
+                    print( "Parsed: " + project.name )
 
-            # i might need to get a project uuid from this, oof
-            # except i can't actually do that, because of crc checks
-            writer.CreateProject( project, project_type )
+                # i might need to get a project uuid from this, oof
+                # except i can't actually do that, because of crc checks
+                writer.CreateProject( project, project_type )
 
-            del project
-            print( "" )
+                del project
+                print( "" )
 
-        else:
-            # TODO: fix this for if the project script is in the root dir
-            project_filename = project_path.rsplit( os.sep, 1 )[1]
-            print( "Valid: " + project_filename + "_crc\n" )
+            else:
+                # TODO: fix this for if the project script is in the root dir
+                project_filename = project_path.rsplit( os.sep, 1 )[1]
+                print( "Valid: " + project_filename + "_crc\n" )
 
-        project_path_list.append(project_path.rsplit(".", 1)[0])
+            # wtf is this for
+            # project_path_list.append(project_path.rsplit(".", 1)[0])
 
     if base.FindCommand( "/mksln" ):
-        writer.MakeSolutionFile( project_type, project_path_list, base_macros["$ROOTDIR"], base.FindCommand("/mksln", True) )
+        writer.MakeSolutionFile( project_type, project_def_list, base_macros["$ROOTDIR"], base.FindCommand("/mksln", True) )
 
     # would be cool to add a timer here that would be running on another thread
     # if the cmd option "/benchmark" was specified, though that might be used as a conditional
