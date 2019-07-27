@@ -755,6 +755,8 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name ):
         # write the project folders
         global_folder_uuid_dict = {}
         for project_def in project_def_list:
+            if project_def.name not in project_uuid_dict:
+                continue
 
             # projects
             for folder_index, project_folder in enumerate(project_def.group_folder_list):

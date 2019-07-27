@@ -147,6 +147,7 @@ if __name__ == "__main__":
                         
             elif conditional in project_types:
                 project_types[conditional] = True
+                base_conditionals["$" + conditional.upper()] = 1
 
             else:
                 unknown_conditionals.append( conditional.upper() )
@@ -173,7 +174,11 @@ if __name__ == "__main__":
                                                  unknown_conditionals, all_projects, all_groups)
 
     base_macros[ "$ROOTDIR" ] = os.path.normpath( base_macros[ "$ROOTDIR" ] )
-    definitions_file_path = os.path.normpath( definitions_file_path )
+
+    if os.path.isabs(definitions_file_path):
+        definitions_file_path = os.path.normpath( definitions_file_path )
+    else:
+        definitions_file_path = os.path.normpath( base_macros["$ROOTDIR"] + os.sep + definitions_file_path )
     
     # TODO: check the cmd options if help was set 
 
@@ -246,6 +251,7 @@ if __name__ == "__main__":
     # --------------------------------------------------------------------------------------
 
     print( "" )
+    definitions_file_hash =  parser.MakeHash( definitions_file_path )
     for project_def in project_def_list:
         for project_path in project_def.script_list:
 
@@ -263,7 +269,7 @@ if __name__ == "__main__":
 
                 project = parser.ParseProject(project_path, base_macros, base_conditionals, definitions)
 
-                project.hash_list[ definitions_file_path ] = parser.MakeHash( definitions_file_path )
+                project.hash_list[ definitions_file_path ] = definitions_file_hash
 
                 parser.MakeHashFile( os.path.join(base_macros["$ROOTDIR"], project_path), project.hash_list )
 
@@ -282,6 +288,7 @@ if __name__ == "__main__":
                 project_filename = project_path.rsplit( os.sep, 1 )[1]
                 print( "Valid: " + project_filename + "_hash\n" )
 
+    # maybe change to /masterfile or something?
     if base.FindCommand( "/mksln" ):
         writer.MakeSolutionFile( project_types, project_def_list, base_macros["$ROOTDIR"], base.FindCommand("/mksln", True) )
 

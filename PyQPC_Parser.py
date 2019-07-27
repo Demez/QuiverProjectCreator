@@ -574,11 +574,14 @@ def ParseBaseFile(base_file, macros, conditionals, unknown_conditionals, project
 
         elif project_block.key.casefold() == "$Include".casefold():
             # "Ah shit, here we go again."
-            path = os.path.normpath( ReplaceMacros( project_block.values[0], macros ) )
+            path = os.path.normpath(ReplaceMacros( project_block.values[0], macros ))
 
             # maybe add a depth counter like in parsing projects?
             if base.FindCommand( "/verbose" ):
                 print( "Reading: " + path )
+
+            if not os.path.isabs(path):
+                path = macros["$ROOTDIR"] + path
 
             include_file = ReadFile( path )
             ParseBaseFile(include_file, macros, conditionals, unknown_conditionals, project_list, group_dict)
@@ -1026,7 +1029,10 @@ def HashCheck( root_dir, project_path ):
 
         for hash_line in hash_file:
             project_hash = hash_line.key
-            project_file_path = os.path.join( project_dir, hash_line.values[0] )
+            if os.path.isabs(hash_line.values[0]):
+                project_file_path = os.path.normpath( hash_line.values[0] )
+            else:
+                project_file_path = os.path.normpath( project_dir + os.sep + hash_line.values[0] )
 
             if project_hash != MakeHash( project_file_path ):
                 print( "Invalid: " + hash_line.values[0] + "_hash" )
