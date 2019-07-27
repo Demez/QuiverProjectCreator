@@ -715,8 +715,6 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name ):
 
                 project_name, project_uuid = GetProjectUUIDAndName( vcxproj )
 
-                # project_uuid_dict[project_name] = project_uuid
-                # project_uuid_dict[project_def.name] = project_uuid
                 # shut
                 base.CreateNewDictValue(project_uuid_dict, project_def.name, "list" )
                 project_uuid_dict[project_def.name].append( project_uuid )
@@ -755,21 +753,15 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name ):
         solution_file.write("Global\n")
 
         # write the project folders
-        # TODO: setup sub folders
         global_folder_uuid_dict = {}
         for project_def in project_def_list:
 
-            # if project_def.group_folder_list:
+            # projects
             for folder_index, project_folder in enumerate(project_def.group_folder_list):
-                # TODO: need to use project names instead, since they can have multiple scripts
-                test = project_def.group_folder_list[-(folder_index+1)]
-                # if project_def.group_folder_list[-(folder_index+1)] in project_folder_uuid:
-                if test in project_folder_uuid:
+                if project_def.group_folder_list[-(folder_index+1)] in project_folder_uuid:
                     folder_uuid = project_folder_uuid[project_folder]
                     for project_uuid in project_uuid_dict[project_def.name]:
                         global_folder_uuid_dict[project_uuid] = folder_uuid
-                else:
-                    print( "what?" )
 
             # sub folders
             if len(project_def.group_folder_list) > 1:
@@ -780,15 +772,13 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name ):
                         project_folder = project_def.group_folder_list[folder_index-1]
                     except IndexError:
                         break
-                    # if project_def.group_folder_list[-(folder_index+1)] in project_folder_uuid:
+
                     if project_sub_folder in project_folder_uuid:
                         sub_folder_uuid = project_folder_uuid[project_sub_folder]
                         folder_uuid = project_folder_uuid[project_folder]
                         if sub_folder_uuid not in global_folder_uuid_dict:
                             global_folder_uuid_dict[sub_folder_uuid] = folder_uuid
                         folder_index -= 1
-
-        # TODO: what about folders in folders?
 
         SLN_WriteGlobalSection(solution_file, "NestedProjects", global_folder_uuid_dict, False)
 

@@ -201,7 +201,6 @@ if __name__ == "__main__":
     # Now go through everything and add all the project scripts we want to this list
     # why did i make it so damn condensed
     # actually should i make this contain the project name and the project script as a dictionary? like in VPC?
-    project_script_list = []
     project_def_list = []
 
     # TODO: clean up this mess
@@ -239,12 +238,11 @@ if __name__ == "__main__":
     # --------------------------------------------------------------------------------------
 
     print( "" )
-    project_path_list = []
     for project_def in project_def_list:
         for project_path in project_def.script_list:
 
             # only run if the crc check fails or if the user force creates the projects
-            if parser.CRCCheck( base_macros["$ROOTDIR"], project_path ) or base.FindCommand( "/f" ):
+            if base.FindCommand( "/f" ) or parser.HashCheck( base_macros["$ROOTDIR"], project_path ):
 
                 # OPTIMIZATION IDEA:
                 # every time you call ReadFile(), add the return onto some dictionary, keys are the absolute path, values are the returns
@@ -257,9 +255,9 @@ if __name__ == "__main__":
 
                 project = parser.ParseProject(project_path, base_macros, base_conditionals, definitions)
 
-                project.crc_list[ definitions_file_path ] = parser.MakeCRC( definitions_file_path )
+                project.hash_list[ definitions_file_path ] = parser.MakeHash( definitions_file_path )
 
-                parser.MakeCRCFile( os.path.join(base_macros["$ROOTDIR"], project_path), project.crc_list )
+                parser.MakeHashFile( os.path.join(base_macros["$ROOTDIR"], project_path), project.hash_list )
 
                 if base.FindCommand( "/verbose" ):
                     print( "Parsed: " + project.name )
@@ -274,10 +272,7 @@ if __name__ == "__main__":
             else:
                 # TODO: fix this for if the project script is in the root dir
                 project_filename = project_path.rsplit( os.sep, 1 )[1]
-                print( "Valid: " + project_filename + "_crc\n" )
-
-            # wtf is this for
-            # project_path_list.append(project_path.rsplit(".", 1)[0])
+                print( "Valid: " + project_filename + "_hash\n" )
 
     if base.FindCommand( "/mksln" ):
         writer.MakeSolutionFile( project_type, project_def_list, base_macros["$ROOTDIR"], base.FindCommand("/mksln", True) )

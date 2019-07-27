@@ -1,7 +1,8 @@
-# Parses Project Scripts, Base Scripts, Definition Files, and CRC Files
+# Parses Project Scripts, Base Scripts, Definition Files, and Hash Files
 
 # TODO: figure out what is $CRCCHECK is
-# may need to add a /crccheck launch option to have this thing only check the crc of a file
+# may need to add a /checkfiles launch option to have this check if a file exists or not
+# it would probably slow it down as well
 
 import os
 import hashlib
@@ -59,14 +60,9 @@ class Project:
         # maybe add an "self.other_files" dictionary where the files aren't objects and just the paths?
         # and only use self.files for h and cpp files?
 
-        # if the key is an integer, it's a file
-        # if the key is a string, it's a folder
-
         self.config = {}
 
-        # self.project_scripts = []
-
-        self.crc_list = {}
+        self.hash_list = {}
 
         self.macros = { "$PROJECTDIR" : path, "$PROJECTNAME" : name }
         for key, value in macros.items():
@@ -171,20 +167,6 @@ class Project:
         # remove this ugly ass hack valve did later
         if not os.sep in lib_path:
             lib_path = self.macros["$LIBPUBLIC"] + os.sep + lib_path
-
-        # wow u dumb
-        '''
-        try:
-            # get rid of the path separators if there are any
-            file_name = file
-            if os.sep in file_name:
-                file_name = file.rsplit( os.sep, 1 )[1]
-
-            # try splitting it to get the file extension, it will throw an exception if doesn't have one
-            file_ext_test = file_name.rsplit( ".", 1 )[1]
-
-        except:
-        '''
 
         if implib:
             lib_ext = self.macros["$_STATICLIB_EXT"]
@@ -671,7 +653,7 @@ def ParseProjectFile(project_file, project, definitions, depth = 0):
                 # full_path = os.path.join( project.macros[ "$PROJECTDIR" ], path )
                 full_path = os.path.normpath( project.macros[ "$PROJECTDIR" ] + os.sep + path )
 
-                project.crc_list[ path ] = MakeCRC( full_path )
+                project.hash_list[ path ] = MakeHash( full_path )
 
                 include_file = ReadFile( full_path )
 
@@ -694,17 +676,9 @@ def ParseProjectFile(project_file, project, definitions, depth = 0):
 
 
 def ParseProjectBlock( project_block, project, definitions ):
-
-    # project.AddFileFolder( folder_list )
-    # project.AddFile( folder_list, file )
-    # project.GetFileObject( file )
-    # project.AddLib( file, implib = False )
-    # project.RemoveLib( file, implib = False )
-    # project.RemoveFile( file )
     
     if base.SolveConditional( project_block.conditional, project.conditionals ):
 
-        # if project_block.values != []:
         if project_block.values:
             project.name = project_block.values[0]
 
@@ -728,16 +702,7 @@ def ParseProjectBlock( project_block, project, definitions ):
 
 
 def ParseFolder( folder_block, project, definitions, folder_list = [] ):
-
-    # project.AddFileFolder( folder_list )
-    # project.AddFile( folder_list, file )
-    # project.GetFileObject( file )
-    # project.AddLib( file, implib = False )
-    # project.RemoveLib( file, implib = False )
-    # project.RemoveFile( file )
-
     folder_list.append( folder_block.values[0] )
-    # project.AddFileFolder( folder_list )
 
     for block in folder_block.items:
         if base.SolveConditional( block.conditional, project.conditionals ):
@@ -764,16 +729,6 @@ def ParseFolder( folder_block, project, definitions, folder_list = [] ):
 
 
 def ParseFile( file_block, project, definitions, folder_list = [] ):
-    
-    # project.AddFile( folder_list, file )
-    # project.GetFileObject( file )
-    # project.AddLib( file, implib = False )
-    # project.RemoveLib( file, implib = False )
-    # project.RemoveFile( file )
-    
-    # for value in file_block.values:
-        # index = file_block.values.index( value )
-        # file_block.values[ index ] = ReplaceMacros( value, project.macros, project.macros_required )
 
     # ew
     if folder_list != [] and folder_list[-1] == "Link Libraries":
@@ -791,7 +746,7 @@ def ParseFile( file_block, project, definitions, folder_list = [] ):
     elif file_block.key.casefold() == "$dynamicfile":
         project.AddFile( folder_list, file_block.values )
         # these don't have config blocks, right? idk
-        # not hard to add though, just copy the 3 lines above
+        # not hard to add though, just copy the 4 lines above
 
     elif file_block.key.casefold() == "$lib":
         project.AddLib( file_block.values )
@@ -1004,13 +959,11 @@ def ReplaceMacros( string, macros, macros_required = {} ):
         for macro, macro_value in macros.items():
             if macro in string:
                 string_split = string.split( macro )
-                # should use os path join or something if it has os.sep in the macro and/or string
                 string = macro_value.join( string_split )
 
         for macro, macro_value in macros_required.items():
             if macro in string:
                 string_split = string.split( macro )
-                # should use os path join or something if it has os.sep in the macro and/or string
                 string = macro_value.join( string_split )
 
     return string
@@ -1031,7 +984,7 @@ def ParseProject( project_script_path, base_macros, base_conds, definitions ):
 
     project = Project( project_name, project_dir, base_macros, base_conds )
 
-    project.crc_list[ project_filename ] = MakeCRC( project_path )
+    project.hash_list[ project_filename ] = MakeHash( project_path )
 
     if base.FindCommand( "/verbose" ):
         print( "Reading: " + project_filename)
@@ -1045,45 +998,47 @@ def ParseProject( project_script_path, base_macros, base_conds, definitions ):
 
     ParseProjectFile( project_file, project, definitions, 0 )
 
+    # this would set vpc paths for the project dependencies
     # dependency_list = []
     # dependency_list.extend( project.libraries )
-    # will add more later
 
-    # WriteDependencyList( dependency_list ) # change this to dependencies
+    # TODO: actually set this up
+    # WriteDependencyList( dependency_list )
 
     return project
 
 
-def CRCCheck( root_dir, project_path ):
-    project_crc_path = os.path.join( root_dir, project_path + "_crc" )
+def HashCheck( root_dir, project_path ):
+    project_hash_file_path = os.path.join( root_dir, project_path + "_hash" )
 
     if os.sep in project_path:
         project_path = project_path.rsplit( os.sep, 1 )[0]
 
     project_dir = os.path.join( root_dir, project_path ) + os.sep
 
-    # open the crc file if it exists,
-    # run MakeCRC on every file there
-    # and check if it matches what MakeCRC returned
-    if os.path.isfile( project_crc_path ):
-        crc_file = ReadFile( project_crc_path )  # i could use this for it as well lmao
+    # open the hash file if it exists,
+    # run MakeHash on every file there
+    # and check if it matches what MakeHash returned
+    if os.path.isfile( project_hash_file_path ):
+        # might be a little slow, but im too lazy to set it up to be slightly faster
+        hash_file = ReadFile( project_hash_file_path )
 
-        for crc_line in crc_file:
-            project_crc = crc_line.key
-            project_file_path = os.path.join( project_dir, crc_line.values[0] )
+        for hash_line in hash_file:
+            project_hash = hash_line.key
+            project_file_path = os.path.join( project_dir, hash_line.values[0] )
 
-            if project_crc != MakeCRC( project_file_path ):
-                print( "Invalid: " + crc_line.values[0] + "_crc" )
+            if project_hash != MakeHash( project_file_path ):
+                print( "Invalid: " + hash_line.values[0] + "_hash" )
                 return True
 
         return False
     else:
-        print( "CRC File does not exist" )
+        print( "Hash File does not exist" )
         return True
 
 
 # Source: https://bitbucket.org/prologic/tools/src/tip/md5sum
-def MakeCRC(filename):
+def MakeHash(filename):
     hash = hashlib.md5()
     with open(filename, "rb") as f:
         for chunk in iter(lambda: f.read(128 * hash.block_size), b""):
@@ -1091,12 +1046,11 @@ def MakeCRC(filename):
     return hash.hexdigest()
 
 
-def MakeCRCFile( project_path, crc_list ):
+def MakeHashFile(project_path, hash_list):
+    project_path += "_hash"
+    with open( project_path, mode="w", encoding="utf-8" ) as hash_file:
 
-    project_path += "_crc"
-    with open( project_path, mode="w", encoding="utf-8" ) as crc_file:
-
-        for project_script_path, crc in crc_list.items():
-            crc_file.write( crc + " " + project_script_path + "\n" )
+        for project_script_path, hash in hash_list.items():
+            hash_file.write( hash + " " + project_script_path + "\n" )
 
     return
