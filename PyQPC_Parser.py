@@ -169,7 +169,7 @@ class Project:
             lib_path = self.macros["$LIBPUBLIC"] + os.sep + lib_path
 
         if implib:
-            lib_ext = self.macros["$_STATICLIB_EXT"]
+            lib_ext = self.macros["$_IMPLIB_EXT"]
         else:
             lib_ext = self.macros["$_STATICLIB_EXT"]
 
