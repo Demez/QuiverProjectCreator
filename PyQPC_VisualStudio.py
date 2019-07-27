@@ -700,6 +700,9 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name ):
         project_uuid_dict = {}
         project_folder_uuid = {}
 
+        configurations = []
+        platforms = []
+
         for project_def in project_def_list:
 
             for folder in project_def.group_folder_list:
@@ -713,7 +716,15 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name ):
                 tree = et.parse( os.path.join( root_folder, vcxproj_path ) )
                 vcxproj = tree.getroot()
 
-                project_name, project_uuid = GetProjectUUIDAndName( vcxproj )
+                project_name, project_uuid, project_configurations, project_platforms = GetNeededItemsFromProject(vcxproj)
+
+                for project_configuration in project_configurations:
+                    if project_configuration not in configurations:
+                        configurations.append(project_configuration)
+
+                for project_platform in project_platforms:
+                    if project_platform not in platforms:
+                        platforms.append(project_platform)
 
                 # shut
                 base.CreateNewDictValue(project_uuid_dict, project_def.name, "list" )
@@ -751,6 +762,29 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name ):
 
         # Write the global stuff
         solution_file.write("Global\n")
+
+        config_plat_list = []
+        for config in configurations:
+            for plat in platforms:
+                config_plat_list.append(config + "|" + plat)
+
+        # SolutionConfigurationPlatforms
+        sln_config_plat = {}
+        for config_plat in config_plat_list:
+            sln_config_plat[config_plat] = config_plat
+
+        SLN_WriteGlobalSection(solution_file, "SolutionConfigurationPlatforms", sln_config_plat, False)
+
+        # ProjectConfigurationPlatforms
+        proj_config_plat = {}
+        for project_uuid_list in project_uuid_dict.values():
+            for project_uuid in project_uuid_list:
+                for config_plat in config_plat_list:
+                    proj_config_plat[project_uuid + "." + config_plat + ".ActiveCfg"] = config_plat
+                    # TODO: maybe get some setting for a default project somehow, i think the default is set here
+                    proj_config_plat[project_uuid + "." + config_plat + ".Build.0"] = config_plat
+
+        SLN_WriteGlobalSection(solution_file, "ProjectConfigurationPlatforms", proj_config_plat, True)
 
         # write the project folders
         global_folder_uuid_dict = {}
@@ -804,12 +838,33 @@ def WriteTopOfSolution( solution_file ):
     return
 
 
-# im actually going to have to open this and get the uuid from it, ugh
-# you can do it the "hacky" way at least, like in that old html file archi ver script
-# though you do need to somehow get the project dependencies, oof
-def GetProjectUUIDAndName( vcxproj ):
+# get stuff we need from the vcxproj file, might even need more later for dependencies, oof
+def GetNeededItemsFromProject(vcxproj):
 
     xmlns = "{http://schemas.microsoft.com/developer/msbuild/2003}"
+
+    configurations = []
+    platforms = []
+    item_groups = vcxproj.findall( xmlns + "ItemGroup" )
+
+    for property_group in item_groups:
+        project_configurations = property_group.findall( xmlns + "ProjectConfiguration" )
+        if project_configurations:
+            break
+
+    for project_configuration_elem in project_configurations:
+        configurations.extend(project_configuration_elem.findall( xmlns + "Configuration" ))
+        platforms.extend(project_configuration_elem.findall( xmlns + "Platform" ))
+
+    for index, configuration_elem in enumerate(configurations):
+        if configuration_elem.text not in configurations:
+            configurations[index] = configuration_elem.text
+
+    for index, platform_elem in enumerate(platforms):
+        if platform_elem.text not in platforms:
+            platforms[index] = platform_elem.text
+        else:
+            del platforms[index]
 
     property_groups = vcxproj.findall( xmlns + "PropertyGroup" )
 
@@ -826,9 +881,12 @@ def GetProjectUUIDAndName( vcxproj ):
             project_guid = property_group.findall( xmlns + "ProjectGuid" )[0]
 
         if project_guid != None and project_name != None:
-            return project_name.text, project_guid.text
+            # return project_name.text, project_guid.text
+            project_name = project_name.text
+            project_guid = project_guid.text
+            break
 
-    return None
+    return project_name, project_guid, configurations, platforms
 
 
 def SLN_WriteProjectLine( solution_file, project_name, vcxproj_path, cpp_uuid, vcxproj_uuid ):
