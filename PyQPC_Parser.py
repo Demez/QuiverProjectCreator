@@ -55,7 +55,8 @@ class Project:
         # self.path = path # folder the project script is in (using $PROJECTDIR instead, maybe use this instead?)
         
         self.files = []
-        self.libraries = []  # maybe change to dependencies?
+        self.libraries = []
+        self.dependencies = []  # maybe store project script paths here?
 
         # maybe add an "self.other_files" dictionary where the files aren't objects and just the paths?
         # and only use self.files for h and cpp files?
@@ -170,10 +171,17 @@ class Project:
             if not base.FindCommand("/hidewarnings"):
                 print( "WARNING: Library already added: \"" + lib_path + "\"" )
 
+        if lib_path not in self.dependencies:
+            self.dependencies.append( lib_path )
+        # else:
+            # if not base.FindCommand("/hidewarnings"):
+                # print( "WARNING: Dependency already added: \"" + lib_path + "\"" )
+
     def RemoveLib( self, lib_path, implib = False ):
         # TODO: fix this for if you have multiple libs in the value
         lib_path = self.GetLibPath(lib_path[0], implib)
         self.libraries.remove(lib_path)
+        self.dependencies.remove(lib_path)
 
     def GetLibPath(self, lib_path, implib = False ):
         lib_path = os.path.normpath(lib_path)
@@ -978,8 +986,13 @@ def ReplaceMacros( string, macros, macros_required = {} ):
     return string
 
 
-def WriteDependencyList():
-    pass
+def WriteDependencies(hash_dep_file, dependencies, project_def_list):
+    for item in dependencies:
+        for project_def in project_def_list:
+            if project_def.name in item:
+                # TODO: fix this for multiple scripts in a project def (im going to get rid of that probably)
+                # this is also very bad because the output name might be different than the project name
+                hash_dep_file.write(item + "=" + project_def.script_list[0] + "\n")
 
 
 def ParseProject( project_script_path, base_macros, base_conds, definitions ):
@@ -1007,18 +1020,11 @@ def ParseProject( project_script_path, base_macros, base_conds, definitions ):
 
     ParseProjectFile( project_file, project, definitions, 0 )
 
-    # this would set vpc paths for the project dependencies
-    # dependency_list = []
-    # dependency_list.extend( project.libraries )
-
-    # TODO: actually set this up
-    # WriteDependencyList( dependency_list )
-
     return project
 
 
 def HashCheck( root_dir, project_path ):
-    project_hash_file_path = os.path.join( root_dir, project_path + "_hash" )
+    project_hash_file_path = os.path.join( root_dir, project_path + "_hash_dep" )
 
     if os.sep in project_path:
         project_path = project_path.rsplit( os.sep, 1 )[0]
@@ -1029,18 +1035,21 @@ def HashCheck( root_dir, project_path ):
     # run MakeHash on every file there
     # and check if it matches what MakeHash returned
     if os.path.isfile( project_hash_file_path ):
-        # might be a little slow, but im too lazy to set it up to be slightly faster
-        hash_file = ReadFile( project_hash_file_path )
+        with open(project_hash_file_path, mode="r", encoding="utf-8") as hash_file:
+            hash_file = hash_file.read().splitlines()
 
         for hash_line in hash_file:
-            project_hash = hash_line.key
-            if os.path.isabs(hash_line.values[0]):
-                project_file_path = os.path.normpath( hash_line.values[0] )
-            else:
-                project_file_path = os.path.normpath( project_dir + os.sep + hash_line.values[0] )
+            hash_line = hash_line.split("=")
 
-            if project_hash != MakeHash( project_file_path ):
-                print( "Invalid: " + hash_line.values[0] + "_hash" )
+            if hash_line[0] == '--------------------------------------------------':
+                break
+            if os.path.isabs(hash_line[1]):
+                project_file_path = os.path.normpath( hash_line[1] )
+            else:
+                project_file_path = os.path.normpath( project_dir + os.sep + hash_line[1] )
+
+            if hash_line[0] != MakeHash( project_file_path ):
+                print( "Invalid: " + hash_line[1] + "_hash_dep" )
                 return True
 
         return False
@@ -1058,11 +1067,7 @@ def MakeHash(filename):
     return hash.hexdigest()
 
 
-def MakeHashFile(project_path, hash_list):
-    project_path += "_hash"
-    with open( project_path, mode="w", encoding="utf-8" ) as hash_file:
-
-        for project_script_path, hash in hash_list.items():
-            hash_file.write( hash + " " + project_script_path + "\n" )
-
+def WriteHashList(tmp_file, hash_list):
+    for project_script_path, hash_value in hash_list.items():
+        tmp_file.write( hash_value + "=" + project_script_path + "\n" )
     return

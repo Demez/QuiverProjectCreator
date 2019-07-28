@@ -743,6 +743,12 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name ):
 
                 SLN_WriteProjectLine( solution_file, project_name, vcxproj_path, cpp_uuid, project_uuid )
 
+                # write any project dependencies
+
+                project_uuid_deps = GetProjectDependencies( root_folder, script_path )
+
+                SLN_WriteSection(solution_file, "ProjectDependencies", project_uuid_deps, True, True)
+
                 # Get all the libraries in the vcxproj file
                 # open EVERY ITEM IN THE PATH LIST and check if there is the output path is the in the libs list?
                 # then check for the same file (no ext) in the project_path_list?
@@ -784,7 +790,7 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name ):
         for config_plat in config_plat_list:
             sln_config_plat[config_plat] = config_plat
 
-        SLN_WriteGlobalSection(solution_file, "SolutionConfigurationPlatforms", sln_config_plat, False)
+        SLN_WriteSection(solution_file, "SolutionConfigurationPlatforms", sln_config_plat, False)
 
         # ProjectConfigurationPlatforms
         proj_config_plat = {}
@@ -795,7 +801,7 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name ):
                     # TODO: maybe get some setting for a default project somehow, i think the default is set here
                     proj_config_plat[project_uuid + "." + config_plat + ".Build.0"] = config_plat
 
-        SLN_WriteGlobalSection(solution_file, "ProjectConfigurationPlatforms", proj_config_plat, True)
+        SLN_WriteSection(solution_file, "ProjectConfigurationPlatforms", proj_config_plat, True)
 
         # write the project folders
         global_folder_uuid_dict = {}
@@ -827,7 +833,7 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name ):
                             global_folder_uuid_dict[sub_folder_uuid] = folder_uuid
                         folder_index -= 1
 
-        SLN_WriteGlobalSection(solution_file, "NestedProjects", global_folder_uuid_dict, False)
+        SLN_WriteSection(solution_file, "NestedProjects", global_folder_uuid_dict, False)
 
         solution_file.write("EndGlobal\n")
 
@@ -905,16 +911,69 @@ def SLN_WriteProjectLine( solution_file, project_name, vcxproj_path, cpp_uuid, v
     return
 
 
-def SLN_WriteGlobalSection( solution_file, section_name, key_value_dict, is_post_solution = False):
+def SLN_WriteSection(solution_file, section_name, key_value_dict,
+                       is_post=False, is_project_section=False):
 
-    if is_post_solution:
-        solution_file.write( "\tGlobalSection(" + section_name + ") = postSolution\n" )
+    if key_value_dict:
+
+        if is_project_section:
+            section_type = "Project"
+            section_type_prepost = "Project\n"
+        else:
+            section_type = "Global"
+            section_type_prepost = "Solution\n"
+
+        if is_post:
+            solution_type = "post" + section_type_prepost
+        else:
+            solution_type = "pre" + section_type_prepost
+
+        solution_file.write( "\t" + section_type + "Section(" + section_name + ") = " + solution_type )
+
+        for key, value in key_value_dict.items():
+            solution_file.write("\t\t" + key + " = " + value + "\n")
+
+        solution_file.write( "\tEnd" + section_type + "Section\n" )
+
+
+def GetProjectDependencies(root_dir, project_path):
+    project_dep_file_path = os.path.normpath(root_dir + os.sep + project_path + "_hash_dep" )
+
+    if os.sep in project_path:
+        project_path = project_path.rsplit(os.sep, 1)[0]
+
+    if os.path.isabs(project_path):
+        project_dir = os.path.normpath(project_path + os.sep)
     else:
-        solution_file.write( "\tGlobalSection(" + section_name + ") = preSolution\n" )
+        project_dir = os.path.normpath(root_dir + os.sep + project_path + os.sep)
 
-    for key, value in key_value_dict.items():
-        solution_file.write("\t\t" + key + " = " + value + "\n")
+    project_dependencies = {}
+    if os.path.isfile(project_dep_file_path):
+        with open(project_dep_file_path, mode="r", encoding="utf-8") as dep_file:
+            dep_file = dep_file.read().splitlines()
 
-    solution_file.write( "\tEndGlobalSection\n" )
+        check = False
+        for line in dep_file:
+            line = line.split("=")
 
+            if line[0] == '--------------------------------------------------':
+                check = True
+                continue
 
+            if check:
+                vcxproj_path = line[1].rsplit( ".", 1 )[0] + ".vcxproj"
+                if os.path.isabs(vcxproj_path):
+                    vcxproj_abspath = os.path.normpath(vcxproj_path)
+                else:
+                    vcxproj_abspath = os.path.normpath(root_dir + os.sep + vcxproj_path)
+
+                tree = et.parse(vcxproj_abspath)
+                vcxproj = tree.getroot()
+
+                project_name, project_uuid, project_configurations, project_platforms = GetNeededItemsFromProject(
+                    vcxproj)
+
+                # very cool vstudio
+                project_dependencies[project_uuid] = project_uuid
+
+    return project_dependencies

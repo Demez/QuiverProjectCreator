@@ -235,7 +235,6 @@ if __name__ == "__main__":
                     unwanted_projects[project.name] = project
                     break
 
-
     # TODO: clean up this mess
     if add_proj_and_grps:
         for added_item in add_proj_and_grps:
@@ -274,8 +273,8 @@ if __name__ == "__main__":
     for project_def in project_def_list:
         for project_path in project_def.script_list:
 
-            # only run if the crc check fails or if the user force creates the projects
-            if base.FindCommand( "/f" ) or parser.HashCheck( base_macros["$ROOTDIR"], project_path ):
+            # only run if the hash check fails or if the user force creates the projects
+            if base.FindCommand( "/f" ) or parser.HashCheck(base_macros["$ROOTDIR"], project_path):
 
                 # OPTIMIZATION IDEA:
                 # every time you call ReadFile(), add the return onto some dictionary, keys are the absolute path, values are the returns
@@ -290,13 +289,17 @@ if __name__ == "__main__":
 
                 project.hash_list[ definitions_file_path ] = definitions_file_hash
 
-                parser.MakeHashFile( os.path.join(base_macros["$ROOTDIR"], project_path), project.hash_list )
+                hash_dep_file_path = os.path.join(base_macros["$ROOTDIR"], project_path) + "_hash_dep"
+                with open(hash_dep_file_path, mode="w", encoding="utf-8") as hash_dep_file:
+                    parser.WriteHashList(hash_dep_file, project.hash_list)
+                    hash_dep_file.write("--------------------------------------------------\n")
+                    parser.WriteDependencies(hash_dep_file, project.dependencies, project_def_list)
 
                 if base.FindCommand( "/verbose" ):
                     print( "Parsed: " + project.name )
 
                 # i might need to get a project uuid from this, oof
-                # except i can't actually do that, because of crc checks
+                # except i can't actually do that, because of hash checks
                 writer.CreateProject( project, project_types )
 
                 del project
@@ -305,7 +308,7 @@ if __name__ == "__main__":
             else:
                 # TODO: fix this for if the project script is in the root dir
                 project_filename = project_path.rsplit( os.sep, 1 )[1]
-                print( "Valid: " + project_filename + "_hash\n" )
+                print( "Valid: " + project_filename + "_hash_dep\n" )
 
     # maybe change to /masterfile or something?
     if base.FindCommand( "/mksln" ):
