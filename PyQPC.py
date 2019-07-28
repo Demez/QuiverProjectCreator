@@ -222,19 +222,19 @@ if __name__ == "__main__":
     project_def_list = []
 
     # this way i don't have to go through each group every single damn time
-    unwanted_projects_in_groups = {}
+    unwanted_projects = {}
     for removed_item in rm_proj_and_grps:
         if removed_item in all_groups:
             for project in all_groups[removed_item].projects:
-                if project.name not in unwanted_projects_in_groups:
-                    unwanted_projects_in_groups[project.name] = project
-        '''
+                if project.name not in unwanted_projects:
+                    unwanted_projects[project.name] = project
+
         else:
             for project in all_projects:
                 if project.name == removed_item:
                     unwanted_projects[project.name] = project
                     break
-        '''
+
 
     # TODO: clean up this mess
     if add_proj_and_grps:
@@ -244,7 +244,7 @@ if __name__ == "__main__":
 
                     # TODO: move to a function
                     for project in all_groups[ added_item ].projects:
-                        if project.name not in unwanted_projects_in_groups:
+                        if project.name not in unwanted_projects:
                             for added_project in project_def_list:
                                 if added_project.name == project.name:
                                     break
