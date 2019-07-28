@@ -319,7 +319,7 @@ def SetupItemDefinitionGroups( vcxproj, project ):
             ],
         }
 
-        AddOptionListToElement(pre_build_options, pre_build_event, config)
+        AddOptionListToElement(pre_build_options, pre_build_event, config, True)
     
         # ------------------------------------------------------------------
         # Compiler - ClCompile
@@ -395,7 +395,7 @@ def SetupItemDefinitionGroups( vcxproj, project ):
             "$PreLinkEvent": [
             ],
         }        
-        # AddOptionListToElement( pre_link_options, pre_link_event, config )
+        # AddOptionListToElement( pre_link_options, pre_link_event, config, True )
     
         # ------------------------------------------------------------------
         # Linker - Link
@@ -493,7 +493,7 @@ def SetupItemDefinitionGroups( vcxproj, project ):
             ],
         }        
 
-        AddOptionListToElement( post_build_options, post_build_event, config )
+        AddOptionListToElement( post_build_options, post_build_event, config, True )
             
         # ------------------------------------------------------------------
         # CustomBuildStep
@@ -502,7 +502,7 @@ def SetupItemDefinitionGroups( vcxproj, project ):
     return
 
 
-def AddOptionListToElement( option_dict, element, config ):
+def AddOptionListToElement( option_dict, element, config, replace_new_lines=False ):
     for option_group, option_list in option_dict.items():
         for option_name in option_list:
             option_value = GetConfigOptionValue( config, option_name, option_group )
@@ -511,6 +511,9 @@ def AddOptionListToElement( option_dict, element, config ):
 
                 if option_value == "True" or option_value == "False":
                     option_value = str(option_value).lower()
+
+                if replace_new_lines:
+                    option_value = option_value.replace( "\\n", "\n" )
 
                 option.text = option_value
     return
