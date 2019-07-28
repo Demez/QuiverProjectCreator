@@ -842,6 +842,7 @@ def ParseConfigBlock(project_block, project, definitions, conditionals, macros, 
                                         break
                                     elif option_definition.type == "string":
                                         value = ReplaceMacros( ''.join( option_block.values ), macros, macros_required )
+                                        value = value.replace( "\\n", "\n" )
 
                                     elif option_definition.type == "ordinals":
                                         value = option_definition.ConvertOrdinal( value )
