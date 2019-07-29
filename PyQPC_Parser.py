@@ -986,10 +986,11 @@ def ReplaceMacros( string, macros, macros_required = {} ):
     return string
 
 
+# this is awful
 def WriteDependencies(hash_dep_file, dependencies, project_def_list):
     for item in dependencies:
         for project_def in project_def_list:
-            if project_def.name in item:
+            if project_def.name.lower() in item.lower():
                 # TODO: fix this for multiple scripts in a project def (im going to get rid of that probably)
                 # this is also very bad because the output name might be different than the project name
                 hash_dep_file.write(item + "=" + project_def.script_list[0] + "\n")

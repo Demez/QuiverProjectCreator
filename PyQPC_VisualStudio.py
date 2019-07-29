@@ -115,8 +115,7 @@ def CreateVCXProj( project ):
 
     user_macros = et.SubElement( vcxproj, "PropertyGroup" )
     user_macros.set( "Label", "UserMacros" )
-    
-    # left off here
+
     SetupGeneralProperties( vcxproj, project )
     SetupItemDefinitionGroups( vcxproj, project )
 
@@ -160,9 +159,13 @@ def SetupProjectConfigurations( vcxproj, project ):
     item_group = et.SubElement( vcxproj, "ItemGroup" )
     item_group.set( "Label", "ProjectConfigurations" )
 
-    platform = project.macros[ "$PLATFORM" ]
+    if project.macros[ "$PLATFORM" ] == "win64":
+        platform = "x64"
+    else:
+        platform = project.macros[ "$PLATFORM" ]
 
     for config_name in project.config:
+        # for platform in project.config:
         project_configuration = et.SubElement( item_group, "ProjectConfiguration" )
         project_configuration.set( "Include", config_name + "|" + platform )
 
@@ -190,8 +193,11 @@ def SetupGlobals( vcxproj, project ):
 
 
 def SetupPropertyGroupConfigurations( vcxproj, project ):
-    
-    platform = project.macros[ "$PLATFORM" ]
+
+    if project.macros[ "$PLATFORM" ] == "win64":
+        platform = "x64"
+    else:
+        platform = project.macros[ "$PLATFORM" ]
     
     for config_name in project.config:
 
@@ -225,8 +231,10 @@ def SetupPropertyGroupConfigurations( vcxproj, project ):
 
 
 def SetupPropertySheets( vcxProj, project ):
-    
-    platform = project.macros[ "$PLATFORM" ]
+    if project.macros["$PLATFORM"] == "win64":
+        platform = "x64"
+    else:
+        platform = project.macros["$PLATFORM"]
     
     for config_name in project.config:
 
@@ -248,8 +256,11 @@ def SetupGeneralProperties( vcxproj, project ):
 
     version = et.SubElement( property_group, "_ProjectFileVersion" )
     version.text = "10.0.30319.1"
-    
-    platform = project.macros[ "$PLATFORM" ]
+
+    if project.macros["$PLATFORM"] == "win64":
+        platform = "x64"
+    else:
+        platform = project.macros["$PLATFORM"]
     
     for config_name in project.config:
         config = project.config[ config_name ]
@@ -300,7 +311,10 @@ def SetupItemDefinitionGroups( vcxproj, project ):
 
     for config_name in project.config:
         config = project.config[ config_name ]
-        platform = project.macros[ "$PLATFORM" ]
+        if project.macros["$PLATFORM"] == "win64":
+            platform = "x64"
+        else:
+            platform = project.macros["$PLATFORM"]
         condition = "'$(Configuration)|$(Platform)'=='" + config_name + "|" + platform + "'"
 
         item_def_group = et.SubElement( vcxproj, "ItemDefinitionGroup" )
@@ -531,7 +545,12 @@ def CreateFileItemGroups( file_type, file_list, item_group, get_values=False, pr
                 # file specific settings, idk if we can have more here
                 for config_name in file.config:
                     config = file.config[ config_name ]
-                    condition = "'$(Configuration)|$(Platform)'=='" + config_name + "|" + project.macros[ "$PLATFORM" ] + "'"
+                    if project.macros[ "$PLATFORM" ] == "win64":
+                        platform = "x64"
+                    else:
+                        platform = project.macros[ "$PLATFORM" ]
+
+                    condition = "'$(Configuration)|$(Platform)'=='" + config_name + "|" + platform + "'"
 
                     file_config = {
                         "$Compiler" : [
@@ -722,9 +741,10 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name ):
 
             for script_path in project_def.script_list:
 
-                vcxproj_path = script_path.rsplit( ".", 1 )[0] + ".vcxproj"
+                vcxproj_path = script_path.rsplit(".", 1)[0] + ".vcxproj"
+                abs_vcxproj_path = os.path.normpath( root_folder + "/" + vcxproj_path )
 
-                tree = et.parse( os.path.join( root_folder, vcxproj_path ) )
+                tree = et.parse( abs_vcxproj_path )
                 vcxproj = tree.getroot()
 
                 project_name, project_uuid, project_configurations, project_platforms = GetNeededItemsFromProject(vcxproj)
@@ -936,6 +956,9 @@ def SLN_WriteSection(solution_file, section_name, key_value_dict,
         solution_file.write( "\tEnd" + section_type + "Section\n" )
 
 
+# should change this to look every vcxproj file and
+# check if the output file in Lib fits what the project needs
+# first check if the config type is a StaticLibrary, then check OutputFile in Lib
 def GetProjectDependencies(root_dir, project_path):
     project_dep_file_path = os.path.normpath(root_dir + os.sep + project_path + "_hash_dep" )
 
@@ -972,6 +995,10 @@ def GetProjectDependencies(root_dir, project_path):
 
                 project_name, project_uuid, project_configurations, project_platforms = GetNeededItemsFromProject(
                     vcxproj)
+
+                # TODO: i should probably check if it's actually the correct project dependency,
+                # match the output file with the one the project needs
+                # if it doesn't match though, i have no clue what to do
 
                 # very cool vstudio
                 project_dependencies[project_uuid] = project_uuid
