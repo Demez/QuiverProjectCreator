@@ -29,68 +29,38 @@ import PyQPC_Writer as writer
 
 
 def SetupBaseDefines():
-    base_macros[ "$ROOTDIR" ] = os.path.dirname(os.path.realpath(__file__))
-    base_macros[ "$QUOTE" ] = '"'
-
-    # idk what this does, though in vpc it apparently forces all projects to regenerate if you change it
-    # i've never changed it before
-    # base_macros[ "$InternalVersion" ] = "104"
-    # base_conditionals[ "$InternalVersion" ] = 104
-
-    # also apparently a macro doesn't need to be in caps? ffs
-    base_macros[ "$INTERNALVERSION" ] = "104"
-    base_conditionals[ "$INTERNALVERSION" ] = 104
+    macros = {
+        "$ROOTDIR": os.path.dirname(os.path.realpath(__file__)),
+        "$_CONFIG": "0",
+        "$_PLATFORM": "0",
+    }
 
     # OS Specific Defines
     if sys.platform == "win32":
-        base_conditionals[ "$WINDOWS" ] = 1
-
-        base_macros[ "$_DLL_EXT" ] = ".dll"
-        base_macros[ "$_STATICLIB_EXT" ] = ".lib"
-        base_macros[ "$_IMPLIB_EXT" ] = ".lib"
-        base_macros[ "$_EXE_EXT" ] = ".exe"
-
-        # for win64 just use /win64 from the commmand line for now
-        # if you ever finish this pile of shit
-        # change it so you can have x86 and x64 in the same project
-        if base.FindCommand( "/win64" ):
-            base_conditionals[ "$WIN64" ] = 1
-            base_macros[ "$PLATFORM" ] = "win64"
-        else:
-            base_conditionals[ "$WIN32" ] = 1
-            base_macros[ "$PLATFORM" ] = "win32"
+        macros.update( {
+            "$WINDOWS": "1",
+            "$_BIN_EXT": ".dll",
+            "$_STATICLIB_EXT": ".lib",
+            "$_IMPLIB_EXT": ".lib",
+            "$_APP_EXT": ".exe",
+            # what does sym mean?
+            # "$_SYM_EXT": ".pdb",
+        } )
 
     # fix this, these are pretty much for linux only
     elif sys.platform.startswith('linux'):
-        base_conditionals[ "$POSIX" ] = 1
-        base_conditionals[ "$LINUXALL" ] = 1
+        macros.update( {
+            "$POSIX": "1",
+            "$LINUX": "1",
+            "$_BIN_EXT": ".so",
+            "$_STATICLIB_EXT": ".a",
+            "$_IMPLIB_EXT": ".so",
+            "$_APP_EXT": "",
+            # what does sym mean?
+            # "$_SYM_EXT": ".dbg",
+        } )
 
-        base_conditionals[ "$GL" ] = 1
-
-        base_macros[ "$POSIX" ] = "1"
-        base_macros[ "$_POSIX" ] = "1"
-
-        base_macros[ "$_DLL_EXT" ] = ".so"
-        base_macros[ "$_EXTERNAL_DLL_EXT" ] = ".so"
-        
-        base_macros[ "$_STATICLIB_EXT" ] = ".a"
-        base_macros[ "$_EXTERNAL_STATICLIB_EXT" ] = ".a"
-
-        base_macros[ "$_IMPLIB_EXT" ] = ".so"
-        base_macros[ "$_EXTERNAL_IMPLIB_EXT" ] = ".so"
-
-        base_macros[ "$_IMPLIB_PREFIX" ] = "lib"
-        base_macros[ "$_IMPLIB_DLL_PREFIX" ] = "lib"
-
-        base_macros[ "$_EXE_EXT" ] = ""
-        base_macros[ "$_SYM_EXT" ] = ".dbg"
-
-        if base.FindCommand( "/linux64" ):
-            base_conditionals[ "$POSIX64" ] = 1
-            base_macros[ "$PLATFORM" ] = "linux64"
-        else:
-            base_conditionals[ "$POSIX32" ] = 1
-            base_macros[ "$PLATFORM" ] = "linux32"
+    return macros
 
 
 if __name__ == "__main__":
@@ -98,14 +68,8 @@ if __name__ == "__main__":
     print( "----------------------------------------------------------------------------------" )
     print( " PyQPC " + ' '.join(sys.argv[1:]) )
     print( "----------------------------------------------------------------------------------" )
-    
-    base_macros = {}
-    base_macrosRequired = {}
-    base_conditionals = {}
 
-    # is this useless now that im just using base.FindCommand()?
-    # it might lead to some obscure command buried somewhere
-    # while this keeps it all here, but then you need to include it in a ton of functions
+    # TODO: setup argparse and ditch base.FindCommand()
     cmd_options = {
         "verbose": False,
         "showlegacyoptions": False,
@@ -128,29 +92,14 @@ if __name__ == "__main__":
         # "make": False,
     }
 
-    unknown_conditionals = []
+    unknown_macros = []
 
     all_groups = {}
     all_projects = []
 
-    SetupBaseDefines()
+    base_macros = SetupBaseDefines()
 
     # maybe move handling command line parameters to different functions?
-
-    cmdline_conditionals = base.FindCommandValues( "/" )
-
-    if cmdline_conditionals:
-        for conditional in cmdline_conditionals:
-
-            if conditional in cmd_options:
-                cmd_options[conditional] = True
-                        
-            elif conditional in project_types:
-                project_types[conditional] = True
-                base_conditionals["$" + conditional.upper()] = 1
-
-            else:
-                unknown_conditionals.append( conditional.upper() )
 
     # now start the recursion with default.vgc, which i just set to be in the same folder as this
     # does not set to the python script path though, idk if should change that or not
@@ -163,38 +112,39 @@ if __name__ == "__main__":
         else:
             abs_base_file_path = os.path.normpath(base_macros[ "$ROOTDIR" ] + os.sep + base_file_path)
     else:
-        # abs_base_file_path = os.path.normpath(base_macros[ "$ROOTDIR" ] + "/../../vpc_scripts/default.vgc")
         raise Exception( "Base File path not defined.\n" +
                          "\tUse /basefile \"Path\" on the command line, relative to the script location." )
+
+    cmdline_conditionals = base.FindCommandValues("/")
+
+    if cmdline_conditionals:
+        if "basefile" in cmdline_conditionals:
+            cmdline_conditionals.remove( "basefile" )
+
+        for conditional in cmdline_conditionals:
+
+            if conditional in cmd_options:
+                cmd_options[conditional] = True
+
+            elif conditional in project_types:
+                project_types[conditional] = True
+                # should i even bother forcing it to be uppercase?
+                base_macros["$" + conditional.upper()] = "1"
+
+            else:
+                unknown_macros.append(conditional.upper())
 
     if cmd_options[ "verbose" ]:
         print( "Reading: " + abs_base_file_path )
 
     base_file = parser.ReadFile( abs_base_file_path )
-    definitions_file_path = parser.ParseBaseFile(base_file, base_macros, base_conditionals,
-                                                 unknown_conditionals, all_projects, all_groups)
+    configurations, platforms = parser.ParseBaseFile(base_file, base_macros, unknown_macros, all_projects, all_groups)
 
     base_macros[ "$ROOTDIR" ] = os.path.normpath( base_macros[ "$ROOTDIR" ] )
-
-    if os.path.isabs(definitions_file_path):
-        definitions_file_path = os.path.normpath( definitions_file_path )
-    else:
-        definitions_file_path = os.path.normpath( base_macros["$ROOTDIR"] + os.sep + definitions_file_path )
     
     # TODO: check the cmd options if help was set 
 
-    # maybe report any unknown conditionals remaining? 
-
-    if definitions_file_path:
-        definitions_file = parser.ReadFile( definitions_file_path )
-    else: 
-        print( "---------------------------------------------------------------------------------" )
-        print( "ERROR:  Definitions file needed for configuration options is undefined" )
-        print( "        Set this with $Definitions \"Path\" in default.vgc" )
-        print( "---------------------------------------------------------------------------------" )
-        quit()
-
-    definitions = parser.ParseDefFile( definitions_file[0] )
+    # maybe report any unknown conditionals remaining?
 
     # setup any defines from the command line for what projects and/or groups we want
     
@@ -203,7 +153,7 @@ if __name__ == "__main__":
     # RemovedProjectsOrGroups
     rm_proj_and_grps = base.FindCommandValues("-")
 
-    if rm_proj_and_grps == None:
+    if not rm_proj_and_grps:
         rm_proj_and_grps = []
 
     # TODO: figure out how vpc handles these and recreate it here
@@ -269,7 +219,6 @@ if __name__ == "__main__":
     # --------------------------------------------------------------------------------------
 
     print( "" )
-    definitions_file_hash = parser.MakeHash( definitions_file_path )
     for project_def in project_def_list:
         for project_path in project_def.script_list:
 
@@ -285,15 +234,13 @@ if __name__ == "__main__":
                 # make a ParseConfigGroup() function, so you can parse config groups recursively
                 # would also nead to tweak ParseDefFile() to use ParseDefOption() and ParseDefGroup() as well
 
-                project = parser.ParseProject(project_path, base_macros, base_conditionals, definitions)
+                project = parser.ParseProject(project_path, base_macros, configurations, platforms)
 
-                project.hash_list[ definitions_file_path ] = definitions_file_hash
-
-                hash_dep_file_path = os.path.join(base_macros["$ROOTDIR"], project_path) + "_hash_dep"
+                hash_dep_file_path = os.path.join(base_macros["$ROOTDIR"], project_path) + "_hash"
                 with open(hash_dep_file_path, mode="w", encoding="utf-8") as hash_dep_file:
                     parser.WriteHashList(hash_dep_file, project.hash_list)
-                    hash_dep_file.write("--------------------------------------------------\n")
-                    parser.WriteDependencies(hash_dep_file, project.dependencies, project_def_list)
+                    # hash_dep_file.write("--------------------------------------------------\n")
+                    # parser.WriteDependencies(hash_dep_file, project.dependencies, project_def_list)
 
                 if base.FindCommand( "/verbose" ):
                     print( "Parsed: " + project.name )
@@ -307,14 +254,16 @@ if __name__ == "__main__":
 
             else:
                 # TODO: fix this for if the project script is in the root dir
-                project_filename = project_path.rsplit( os.sep, 1 )[1]
-                print( "Valid: " + project_filename + "_hash_dep\n" )
+                if os.sep in project_path:
+                    print( "Valid: " + project_path.rsplit(os.sep, 1)[1] + "_hash_dep\n" )
+                else:
+                    print( "Valid: " + project_path + "_hash_dep\n" )
 
     # maybe change to /masterfile or something?
     if base.FindCommand( "/mksln" ):
         # maybe use a hash check here?
         writer.MakeSolutionFile(project_types, project_def_list,
-                                base_macros["$ROOTDIR"], base.FindCommand("/mksln", True))
+                                base_macros["$ROOTDIR"], base.FindCommand("/mksln", True), configurations, platforms)
 
     # would be cool to add a timer here that would be running on another thread
     # if the cmd option "/benchmark" was specified, though that might be used as a conditional
