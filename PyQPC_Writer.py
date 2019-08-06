@@ -1,5 +1,6 @@
 
 import PyQPC_VisualStudio as vstudio
+import PyQPC_qpc_writer as qpc_writer
 
 
 def CreateProject( project, project_types ):

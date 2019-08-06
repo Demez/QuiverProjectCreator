@@ -24,6 +24,7 @@ import os
 import sys
 
 import PyQPC_Base as base
+import PyQPC_Reader as reader
 import PyQPC_Parser as parser
 import PyQPC_Writer as writer
 
@@ -88,6 +89,9 @@ if __name__ == "__main__":
     project_types = {
         "vstudio": False,
         "vs2019": False,
+
+        "vpc_convert": False,
+
         # "vscode": False,
         # "make": False,
     }
@@ -137,8 +141,15 @@ if __name__ == "__main__":
     if cmd_options[ "verbose" ]:
         print( "Reading: " + abs_base_file_path )
 
-    base_file = parser.ReadFile( abs_base_file_path )
-    configurations, platforms = parser.ParseBaseFile(base_file, base_macros, unknown_macros, all_projects, all_groups)
+    base_file = reader.ReadFile( abs_base_file_path )
+
+    if project_types[ "vpc_convert" ]:
+        import PyQPC_VPCParser as vpc_parser
+        import PyQPC_qpc_writer as qpc_writer
+        # base_conditionals = {}
+        vpc_parser.ParseBaseFile(base_file, base_macros, unknown_macros, all_projects, all_groups)
+    else:
+        configurations, platforms = parser.ParseBaseFile(base_file, base_macros, unknown_macros, all_projects, all_groups)
 
     base_macros[ "$ROOTDIR" ] = os.path.normpath( base_macros[ "$ROOTDIR" ] )
     
@@ -219,20 +230,50 @@ if __name__ == "__main__":
     # --------------------------------------------------------------------------------------
 
     print( "" )
+
+    # TODO: move all this vpc convert stuff into it's own function
+    # and have this run before everything above
+    if project_types["vpc_convert"]:
+        print( "Converting VPC Scripts to QPC Scripts" )
+
+        # get definitions file
+        definitions = ''
+
+        print( "Finding All VPC and VGC Scripts" )
+        vgc_path_list, vpc_path_list = qpc_writer.GetAllVPCScripts( base_macros["$ROOTDIR"] )
+
+        if vgc_path_list:
+            print( "Converting VGC Scripts" )
+
+            for vgc_path in vgc_path_list:
+                print( vgc_path )
+
+        if vpc_path_list:
+            print( "Converting VPC Scripts" )
+
+            for vpc_path in vpc_path_list:
+                read_vpc, vpc_dir, vpc_name = qpc_writer.GetVPCFileDirName(vpc_path, base_macros, definitions)
+                qpc_writer.ConvertVPC( vpc_dir, vpc_name, read_vpc, base_macros )
+                print( vpc_path )
+
+        print("----------------------------------")
+        print(" Finished")
+        print("----------------------------------\n")
+
+        quit()
+
     for project_def in project_def_list:
         for project_path in project_def.script_list:
 
             # only run if the hash check fails or if the user force creates the projects
             if base.FindCommand( "/f" ) or parser.HashCheck(base_macros["$ROOTDIR"], project_path):
 
-                # OPTIMIZATION IDEA:
-                # every time you call ReadFile(), add the return onto some dictionary, keys are the absolute path, values are the returns
-                # and then scan that dictionary whenever you reach an include, and then just grab it from the last to parse again
+                # OPTIMIZATION IDEA that i don't feel like setting up:
+                # every time you call ReadFile(), add the return onto some dictionary,
+                # keys are the absolute path, values are the returns
+                # and then scan that dictionary whenever you reach an include,
+                # and then just grab it from the last to parse again
                 # so you don't slow it down with re-reading it for no damn reason
-
-                # another idea:
-                # make a ParseConfigGroup() function, so you can parse config groups recursively
-                # would also nead to tweak ParseDefFile() to use ParseDefOption() and ParseDefGroup() as well
 
                 project = parser.ParseProject(project_path, base_macros, configurations, platforms)
 
