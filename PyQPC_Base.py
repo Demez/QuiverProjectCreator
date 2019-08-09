@@ -1,6 +1,7 @@
 
 import sys
-import re
+import os
+
 
 def FindItemsWithStartingChar( search_list, item ):
     found_args = []
@@ -18,27 +19,27 @@ def FindItemsWithStartingChar( search_list, item ):
         return None
 
 
-def FindItem( list, item, return_value = False ):
-    if item in list:
+def FindItem( value_list, item, return_value=False ):
+    if item in value_list:
         if return_value:
-            return list[ list.index( item ) ]
+            return value_list[ value_list.index( item ) ]
         else:
             return True
     else:
         return False
 
 
-def FindItemValue( list, item, return_value = False ):
-    if item in list:
+def FindItemValue( value_list, item, return_value=False ):
+    if item in value_list:
         if return_value:
-            return list[ list.index( item ) + 1 ]
+            return value_list[ value_list.index( item ) + 1 ]
         else:
             return True
     else:
         return False
 
 
-def FindCommand( arg, return_value = False ):
+def FindCommand( arg, return_value=False ):
     return FindItemValue( sys.argv, arg, return_value )
 
 
@@ -67,4 +68,9 @@ def GetAllDictValues( d ):
             # return found_values
             found_values.append( v )
     return found_values
+
+
+def CreateDirectory(directory):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
 
