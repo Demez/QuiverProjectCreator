@@ -23,10 +23,10 @@
 import os
 import sys
 
-import PyQPC_Base as base
-import PyQPC_Reader as reader
-import PyQPC_Parser as parser
-import PyQPC_Writer as writer
+import qpc_base as base
+import qpc_reader as reader
+import qpc_parser as parser
+import qpc_writer as writer
 
 
 def SetupBaseDefines():
@@ -153,7 +153,7 @@ if __name__ == "__main__":
                 unknown_macros.append(conditional.upper())
 
     if project_types[ "vpc_convert" ]:
-        import PyQPC_qpc_writer as vpc_converter
+        import qpc_vpc_converter as vpc_converter
         print("\nConverting VPC Scripts to QPC Scripts")
 
         print("Finding All VPC and VGC Scripts")

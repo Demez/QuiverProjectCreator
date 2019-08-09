@@ -6,7 +6,7 @@
 
 import os
 import hashlib
-import PyQPC_Base as base
+import qpc_base as base
 
 
 # TODO: add file path for error reporting

@@ -1,7 +1,7 @@
 
 import os
-import PyQPC_Base as base
-import PyQPC_Reader as reader
+import qpc_base as base
+import qpc_reader as reader
 
 
 # this file is awful, good luck adding to it

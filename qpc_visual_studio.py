@@ -1,6 +1,6 @@
 
 import uuid, os, sys
-import PyQPC_Base as base
+import qpc_base as base
 
 import xml.etree.ElementTree as et
 from xml.dom import minidom
