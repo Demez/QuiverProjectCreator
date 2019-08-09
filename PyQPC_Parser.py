@@ -452,7 +452,7 @@ def ParseBaseFile(base_file, macros, unknown_macros, project_list, group_dict):
             ParseBaseFile(include_file, macros, unknown_macros, project_list, group_dict)
 
         else:
-            print( "Unknown Key: " + project_block.key )
+            print("Unknown Key:\n\tLine  " + project_block.line_num + "\n\tKey: " + project_block.key)
 
     return configurations, platforms
 
@@ -517,6 +517,8 @@ def ParseProjectFile(project_file, project, depth=0):
     return
 
 
+# TODO: add the files block here
+# make it a dictionary, like libs, so "Files" = { "Debug": { "win32": [] } }
 # this is run multiple times depending on how many configurations and platforms being used
 def ParseProjectFileMulti(project_file, project, depth=0):
     for project_block in project_file:

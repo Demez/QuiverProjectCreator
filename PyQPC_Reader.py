@@ -28,29 +28,34 @@ class ProjectBlock:
         self.items.append( item )
 
     # maybe change to PrintInfo()?
-    def ReportError( self ):
-        print("\tLine: " + self.line_num +
-              "\n\tKey: " + self.key )
+    def ReportError( self, error_message ):
+        print(  error_message +
+                "\n\tLine: " + self.line_num +
+                "\n\tKey: " + self.key )
+
+        # quick temp thing for the converter
+        # print("\tCasefold Key: " + self.key.casefold())
 
         if self.values:
             print("\tValues:\n\t\t" + '\n\t\t'.join(self.values) )
 
-        if self.condition:
-            print("\tCondition: " + self.condition)
+        # not really useful
+        # if self.condition:
+        #     print("\tCondition: " + self.condition)
 
 
 # maybe add a depth variable here as well? idk
 def ReadFile( path ):
     with open( path, mode="r", encoding="utf-8" ) as file:
         file = file.read().splitlines()
-    file = RemoveCommentsAndFixLines( file )
+    file = RemoveCommentsAndFixLines( file, path )
     file = _FormatConfigBlocks( file )
     file = CreateFileBlockObjects( file )
 
     return file
 
 
-def RemoveCommentsAndFixLines( config ):
+def RemoveCommentsAndFixLines( config, file_path ):
     in_comment = False
     in_quote = False
     new_config = {}
@@ -84,14 +89,44 @@ def RemoveCommentsAndFixLines( config ):
             elif line[char_num-1] == "*" and char == "/":
                 in_comment = False
 
+        # make sure we don't stay "in a quote" on the next line
+        if in_quote:
+            in_quote = False
+
+            # TODO: might be able to move this into a function in base, idk
+
+            # remove the last quote
+            new_line_quote_split = new_line.rsplit( '"', 1 )
+            quote_position_line = "{0}{1}".format(" " * len(new_line_quote_split[0]), "^")
+
+            # TODO: use argparse
+            if not base.FindCommand( "/hidewarnings" ):
+                # might be an escape quote
+                if new_line_quote_split[0][-1] == "\\":
+                    print( "WARNING: tried to close quote with an escape character:" )
+                else:
+                    print( "WARNING: quote does not close, removing last quote:" )
+
+                # report warning
+                print(  "\tFile Path: " + file_path +
+                        "\n\tLine: " + new_line +
+                        "\n\t      " + quote_position_line +
+                        "\n\tLine Number: " + str(line_num+1) )
+
+            # might be an escape quote
+            if new_line_quote_split[0][-1] == "\\":
+                print("WARNING: tried to close quote with an escape character:")
+                # just add another quote onto it to close it
+                new_line = '""'.join(new_line_quote_split)
+            else:
+                print("WARNING: quote does not close, removing last quote:")
+                new_line = ''.join(new_line_quote_split)
+
         new_line = _RemoveQuotesAndSplitLine(new_line)
 
         if new_line:
             new_line = JoinConditionLine(new_line)
             new_config[line_num+1] = new_line
-
-        # make sure we don't stay "in a quote" on the next line
-        in_quote = False
 
     return new_config
 

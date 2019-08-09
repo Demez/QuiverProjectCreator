@@ -108,13 +108,25 @@ if __name__ == "__main__":
     # now start the recursion with default.vgc, which i just set to be in the same folder as this
     # does not set to the python script path though, idk if should change that or not
 
+    # TODO: replace all this FindCommand() stuff with argparse, this here is really bad
+
     base_file_path = base.FindCommand("/basefile", True)
+    root_dir = base.FindCommand("/rootdir", True)
+
+    if root_dir:
+        if os.path.isabs(root_dir):
+            base_macros["$ROOTDIR"] = os.path.normpath( root_dir )
+        else:
+            base_macros["$ROOTDIR"] = os.path.normpath( base_macros["$ROOTDIR"] + os.sep + root_dir )
 
     if base_file_path:
         if os.path.isabs(base_file_path):
             abs_base_file_path = base_file_path
         else:
             abs_base_file_path = os.path.normpath(base_macros[ "$ROOTDIR" ] + os.sep + base_file_path)
+    elif base.FindCommand( "/rootdir" ):
+        print( "Setting Base File to default: /qpc_scripts/_default.qpc_base" )
+        abs_base_file_path = os.path.normpath(base_macros[ "$ROOTDIR" ] + "/qpc_scripts/_default.qpc_base")
     else:
         raise Exception( "Base File path not defined.\n" +
                          "\tUse /basefile \"Path\" on the command line, relative to the script location." )
@@ -124,6 +136,8 @@ if __name__ == "__main__":
     if cmdline_conditionals:
         if "basefile" in cmdline_conditionals:
             cmdline_conditionals.remove( "basefile" )
+        if "rootdir" in cmdline_conditionals:
+            cmdline_conditionals.remove( "rootdir" )
 
         for conditional in cmdline_conditionals:
 
@@ -138,18 +152,43 @@ if __name__ == "__main__":
             else:
                 unknown_macros.append(conditional.upper())
 
-    if cmd_options[ "verbose" ]:
-        print( "Reading: " + abs_base_file_path )
-
-    base_file = reader.ReadFile( abs_base_file_path )
-
     if project_types[ "vpc_convert" ]:
-        import PyQPC_VPCParser as vpc_parser
-        import PyQPC_qpc_writer as qpc_writer
-        # base_conditionals = {}
-        vpc_parser.ParseBaseFile(base_file, base_macros, unknown_macros, all_projects, all_groups)
+        import PyQPC_qpc_writer as vpc_converter
+        print("\nConverting VPC Scripts to QPC Scripts")
+
+        print("Finding All VPC and VGC Scripts")
+        vgc_path_list, vpc_path_list = vpc_converter.GetAllVPCScripts(base_macros["$ROOTDIR"])
+
+        if vgc_path_list:
+            print("\nConverting VGC Scripts")
+            for vgc_path in vgc_path_list:
+                print( "Converting: " + vgc_path )
+                read_vgc, vgc_dir, vgc_name = vpc_converter.GetVPCFileDirName(vgc_path)
+                vpc_converter.ConvertVGC(vgc_dir, vgc_name, read_vgc)
+
+        if vpc_path_list:
+            print("\nConverting VPC Scripts")
+
+            for vpc_path in vpc_path_list:
+                # TODO: maybe make a keep comments option in ReadFile()? otherwise, commented out files won't be kept
+                print( "Converting: " + vpc_path )
+                read_vpc, vpc_dir, vpc_name = vpc_converter.GetVPCFileDirName(vpc_path)
+                vpc_converter.ConvertVPC(vpc_dir, vpc_name, read_vpc)
+
+        print("----------------------------------")
+        print(" Finished")
+        print("----------------------------------\n")
+
+        quit()
+
     else:
-        configurations, platforms = parser.ParseBaseFile(base_file, base_macros, unknown_macros, all_projects, all_groups)
+        if cmd_options[ "verbose" ]:
+            print( "Reading: " + abs_base_file_path )
+
+        base_file = reader.ReadFile( abs_base_file_path )
+
+        configurations, platforms = parser.ParseBaseFile(
+            base_file, base_macros, unknown_macros, all_projects, all_groups)
 
     base_macros[ "$ROOTDIR" ] = os.path.normpath( base_macros[ "$ROOTDIR" ] )
     
@@ -233,34 +272,6 @@ if __name__ == "__main__":
 
     # TODO: move all this vpc convert stuff into it's own function
     # and have this run before everything above
-    if project_types["vpc_convert"]:
-        print( "Converting VPC Scripts to QPC Scripts" )
-
-        # get definitions file
-        definitions = ''
-
-        print( "Finding All VPC and VGC Scripts" )
-        vgc_path_list, vpc_path_list = qpc_writer.GetAllVPCScripts( base_macros["$ROOTDIR"] )
-
-        if vgc_path_list:
-            print( "Converting VGC Scripts" )
-
-            for vgc_path in vgc_path_list:
-                print( vgc_path )
-
-        if vpc_path_list:
-            print( "Converting VPC Scripts" )
-
-            for vpc_path in vpc_path_list:
-                read_vpc, vpc_dir, vpc_name = qpc_writer.GetVPCFileDirName(vpc_path, base_macros, definitions)
-                qpc_writer.ConvertVPC( vpc_dir, vpc_name, read_vpc, base_macros )
-                print( vpc_path )
-
-        print("----------------------------------")
-        print(" Finished")
-        print("----------------------------------\n")
-
-        quit()
 
     for project_def in project_def_list:
         for project_path in project_def.script_list:
