@@ -69,7 +69,7 @@ def ConvertVGC( vgc_dir, vgc_filename, vgc_project ):
                     project_block.key = "macro"
 
                 if project_block.values:
-                    qpc_project_path.replace("vpc_scripts", "qpc_scripts")
+                    qpc_project_path.replace("vpc_scripts", "_qpc_scripts")
                 project_block.condition = NormalizePlatformConditions(project_block.condition)
 
         else:
@@ -84,7 +84,7 @@ def ConvertVGC( vgc_dir, vgc_filename, vgc_project ):
 
 # def WriteProjectBlocks( directory, filename, project_blocks, base_file=False ):
 def WriteProject( directory, filename, project_lines, base_file=False ):
-    directory = directory.replace("vpc_scripts", "qpc_scripts")
+    directory = directory.replace("vpc_scripts", "_qpc_scripts")
     base.CreateDirectory(directory)
 
     abs_path = os.path.normpath(directory + os.sep + filename + ".qpc")
@@ -227,7 +227,7 @@ class ConfigOption:
 
             if self.name not in ("preprocessor_definitions", "options"):
                 for index, value in enumerate(values):
-                    values[index] = value.replace("\\", "/").replace( "$BASE ", "" ).replace( "$BASE", "" )
+                    values[index] = value.replace("\\", "/")
                     if values[index] != '""' and values[index].endswith( '""' ):
                         values[index] = values[index][:-1]
 
@@ -240,6 +240,7 @@ class ConfigOption:
 
             if split_values:
                 for value in values:
+                    value = value.replace( "$BASE ", "" ).replace( "$BASE", "" )
                     if value != '""':
                         condition = NormalizePlatformConditions(condition)
                         self.value.append( ConfigOptionValue( value, condition ) )
@@ -379,12 +380,6 @@ def ConvertVPC( vpc_dir, vpc_filename, vpc_project ):
     qpc_project_list = WriteConfiguration(config, config_insert_index, "", qpc_project_list)
 
     WriteProject( vpc_dir, vpc_filename, qpc_project_list )
-
-    # qpc_project_path = qpc_project_path.replace("vpc_scripts", "qpc_scripts")
-    # with open( qpc_project_path, mode="w", encoding="utf-8" ) as qpc_project:
-    #     WriteTopComment( qpc_project )
-    #     qpc_project.write( '\n'.join(qpc_project_list) + "\n" )
-
     return
 
 
@@ -547,7 +542,7 @@ def WriteMacro( vpc_macro, qpc_project ):
 
 def WriteInclude( vpc_include, qpc_project ):
     qpc_include_path = vpc_include.values[0].replace( ".vpc", ".qpc" )
-    qpc_include_path = qpc_include_path.replace( "vpc_scripts", "qpc_scripts" )
+    qpc_include_path = qpc_include_path.replace( "vpc_scripts", "_qpc_scripts" )
     qpc_include_path = os.path.normpath( qpc_include_path )
 
     # leave a gap in-between
@@ -573,15 +568,6 @@ def WriteFilesBlock( vpc_files, qpc_project, indent ):
             qpc_project.append( indent + "{" )
             nothing, qpc_project = WriteFilesBlock( file_block, qpc_project, indent+"\t" )
             qpc_project.append( indent + "}" )
-
-            '''
-            next_block_index = vpc_files.items.index( file_block )+1
-            if next_block_index < len(vpc_files.items):
-                next_block = vpc_files.items[ next_block_index ]
-                if next_block.key.casefold() == "$folder" and next_block.values[0] != "Link Libraries":
-                    # and not folder link libraries
-                    qpc_project.append( "" )
-            '''
 
         elif file_block.key.casefold() in ("$file", "$dynamicfile", "-$file"):
             qpc_project = WriteFile( file_block, qpc_project, indent )
@@ -1189,8 +1175,6 @@ def WriteConfiguration(config, insert_index, indent, qpc_project_list):
                     # write any value with the same condition on the same line
                     for condition, value_list in cond_values.items():
                         if condition:
-                            # WriteCondition(condition, current_option)
-
                             # TODO: what if the line gets too long?
                             #  need to add a check for that and break if needed
                             option_lines.append(indent + "\t\t\t")
