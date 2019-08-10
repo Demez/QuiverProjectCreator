@@ -32,8 +32,6 @@ import qpc_writer as writer
 def SetupBaseDefines():
     macros = {
         "$ROOTDIR": os.path.dirname(os.path.realpath(__file__)),
-        "$_CONFIG": "0",
-        "$_PLATFORM": "0",
     }
 
     # OS Specific Defines
@@ -64,10 +62,21 @@ def SetupBaseDefines():
     return macros
 
 
+def GetPlatforms():
+    if sys.platform == "win32":
+        return [ "win32", "win64" ]
+
+    elif sys.platform.startswith("linux"):
+        return [ "linux32", "linux64" ]
+
+    elif sys.platform == "darwin":
+        return [ "macos" ]
+
+
 if __name__ == "__main__":
     
     print( "----------------------------------------------------------------------------------" )
-    print( " PyQPC " + ' '.join(sys.argv[1:]) )
+    print( " Quiver Project Creator\n " + ' '.join(sys.argv[1:]) )
     print( "----------------------------------------------------------------------------------" )
 
     # TODO: setup argparse and ditch base.FindCommand()
@@ -187,7 +196,7 @@ if __name__ == "__main__":
 
         base_file = reader.ReadFile( abs_base_file_path )
 
-        configurations, platforms = parser.ParseBaseFile(
+        configurations = parser.ParseBaseFile(
             base_file, base_macros, unknown_macros, all_projects, all_groups)
 
     base_macros[ "$ROOTDIR" ] = os.path.normpath( base_macros[ "$ROOTDIR" ] )
@@ -273,6 +282,8 @@ if __name__ == "__main__":
     # TODO: move all this vpc convert stuff into it's own function
     # and have this run before everything above
 
+    platforms = GetPlatforms()
+
     for project_def in project_def_list:
         for project_path in project_def.script_list:
 
@@ -286,36 +297,37 @@ if __name__ == "__main__":
                 # and then just grab it from the last to parse again
                 # so you don't slow it down with re-reading it for no damn reason
 
-                project = parser.ParseProject(project_path, base_macros, configurations, platforms)
+                project_list = parser.ParseProject(project_path, base_macros, configurations, platforms)
 
-                hash_dep_file_path = os.path.join(base_macros["$ROOTDIR"], project_path) + "_hash"
-                with open(hash_dep_file_path, mode="w", encoding="utf-8") as hash_dep_file:
-                    parser.WriteHashList(hash_dep_file, project.hash_list)
-                    # hash_dep_file.write("--------------------------------------------------\n")
-                    # parser.WriteDependencies(hash_dep_file, project.dependencies, project_def_list)
+                hash_file_path = os.path.join(base_macros["$ROOTDIR"], project_path) + "_hash"
+                with open(hash_file_path, mode="w", encoding="utf-8") as hash_file:
+                    parser.WriteHashList(hash_file, project_list.hash_dict)
 
                 if base.FindCommand( "/verbose" ):
-                    print( "Parsed: " + project.name )
+                    # print( "Parsed: " + project_list.file_name )  # or use the project_name macro?
+                    print( "Parsed: " + project_list.macros["$PROJECT_NAME"] )  # or use the project_name macro?
 
                 # i might need to get a project uuid from this, oof
                 # except i can't actually do that, because of hash checks
-                writer.CreateProject( project, project_types )
+                writer.CreateProject( project_list, project_types )
 
-                del project
+                del project_list
                 print( "" )
 
             else:
+                # TODO: make a function called "GetProjectDependencies", and use that here
+
                 # TODO: fix this for if the project script is in the root dir
                 if os.sep in project_path:
-                    print( "Valid: " + project_path.rsplit(os.sep, 1)[1] + "_hash_dep\n" )
+                    print( "Valid: " + project_path.rsplit(os.sep, 1)[1] + "_hash\n" )
                 else:
-                    print( "Valid: " + project_path + "_hash_dep\n" )
+                    print( "Valid: " + project_path + "_hash\n" )
 
-    # maybe change to /masterfile or something?
-    if base.FindCommand( "/mksln" ):
+    if base.FindCommand( "/masterfile" ):
         # maybe use a hash check here?
-        writer.MakeSolutionFile(project_types, project_def_list,
-                                base_macros["$ROOTDIR"], base.FindCommand("/mksln", True), configurations, platforms)
+        writer.MakeMasterFile(project_types, project_def_list,
+                              base_macros["$ROOTDIR"], base.FindCommand("/masterfile", True),
+                              configurations, platforms)
 
     # would be cool to add a timer here that would be running on another thread
     # if the cmd option "/benchmark" was specified, though that might be used as a conditional

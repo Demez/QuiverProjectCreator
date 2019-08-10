@@ -73,7 +73,7 @@ def ConvertVGC( vgc_dir, vgc_filename, vgc_project ):
                 project_block.condition = NormalizePlatformConditions(project_block.condition)
 
         else:
-            project_block.ReportError("Unknown Key:")
+            project_block.Warning("Unknown Key:")
 
     WriteProjectBlockItems( "", vgc_project, qpc_project_list )
 
@@ -147,7 +147,6 @@ class Configuration:
 
         compiler = ConfigGroup("compiler")
         compiler.options = [
-            # ConfigOption("include_directories", None, True),
             ConfigOption("preprocessor_definitions", None, True),
             ConfigOption("precompiled_header", None),
             ConfigOption("precompiled_header_file", None),
@@ -161,7 +160,6 @@ class Configuration:
             ConfigOption("debug_file", None),
             ConfigOption("import_library", None),
             ConfigOption("ignore_import_library", None),
-            # ConfigOption("library_directories", None, True),
             ConfigOption("libraries", None, True),
             ConfigOption("ignore_libraries", None, True),
             ConfigOption("options", None, True),
@@ -318,9 +316,6 @@ def MergeConfigConditions(cond, add_cond):
 
 
 def ConvertVPC( vpc_dir, vpc_filename, vpc_project ):
-
-    # qpc_project_path = vpc_dir + os.sep + vpc_filename + ".qpc"
-
     config_insert_index = 0
     qpc_project_list = []
     config = Configuration()
@@ -368,7 +363,7 @@ def ConvertVPC( vpc_dir, vpc_filename, vpc_project ):
             pass
 
         else:
-            project_block.ReportError("WARNING: Unknown Key: ")
+            project_block.Warning("Unknown Key: ")
 
     if libraries:
         # if not qpc_project_list[-1].endswith("\n") and qpc_project_list[-1] != "":
@@ -616,7 +611,7 @@ def WriteFile( file_block, qpc_project, indent ):
             qpc_project = WriteConfiguration( file_config, len(qpc_project)+1, indent+"\t", qpc_project )
             qpc_project.append(indent + "}")
     else:
-        file_block.ReportError("WARNING: Unknown Key: ")
+        file_block.Warning("Unknown Key: ")
     return qpc_project
 
 
@@ -715,7 +710,7 @@ def ParseConfiguration( vpc_config, qpc_config ):
         config_group_name = ConvertConfigGroupName( config_group.key )
 
         if not config_group_name:
-            config_group.ReportError("WARNING: Unknown config group: ")
+            config_group.Warning("Unknown config group: ")
             continue
 
         for option_block in config_group.items:
@@ -729,7 +724,7 @@ def ParseConfiguration( vpc_config, qpc_config ):
                 option_value = ConvertVPCOptionToQPCOption(option_block.values)
 
                 if not option_value:
-                    option_block.ReportError("WARNING: Unknown config option: ")
+                    option_block.Warning("Unknown config option: ")
                     continue
                 else:
                     option_name = "options"
@@ -805,6 +800,8 @@ def ConvertConfigGroupName( group_name ):
     elif group_name == "$compiler":
         return "compiler"
     elif group_name == "$linker":
+        return "linker"
+    elif group_name == "$librarian":
         return "linker"
     elif group_name == "$postbuildevent":
         return "post_build"

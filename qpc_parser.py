@@ -8,6 +8,7 @@ import os
 import hashlib
 import qpc_base as base
 import qpc_reader as reader
+from pathlib import PurePath
 
 
 class ProjectDefinition:
@@ -38,40 +39,30 @@ class ProjectGroup:
 
 
 class Project:
-    def __init__( self, name, path, macros ):
-        self.file_name = name  # the actual file name
-        # self.path = path # folder the project script is in (using $PROJECTDIR instead, maybe use this instead?)
-        
-        self.source_files = []
-        self.files = []
-
-        self.libraries = {}  # []
-        # self.dependencies = {}  # []  # store project script paths here
-
-        # maybe add an "self.other_files" dictionary where the files aren't objects and just the paths?
-        # and only use self.files for h and cpp files?
-
-        self.configs = []
+    def __init__( self, macros, config, platform ):
+        # self.file_name = name  # the actual file name
+        self.config = Configuration()
+        # self.source_files = []
+        self.source_files = {}
+        self.files = {}  # []
+        self.dependencies = {}  # store project script paths here, "name": "path"
 
         self.hash_list = {}
+        self.macros = { **macros,  "$" + config.upper(): "1", "$" + platform.upper(): "1", }
 
-        self.macros = { **macros, "$PROJECT_DIR": path, "$PROJECT_NAME": name }
-
-        self.name = self.macros["$PROJECT_NAME"]  # the project name
+        self.config_name = config
+        self.platform = platform
 
     def AddMacro( self, values ):
         key_name = "$" + values[0].upper()
 
-        if key_name == "$_CONFIG" or key_name == "$_PLATFORM":
-            raise Exception( "You cannot change the value of \"" + key_name + "\" in a project script." +
-                             "\nIf you want to change it, change it in the base file(s)" )
-
         try:
             value = values[1]
         except IndexError:
-            value = ''
+            if key_name not in self.macros:
+                self.macros[key_name] = ''
+            return
 
-        # if key_name not in self.macros:
         self.macros[ key_name ] = value
 
         self.ReplaceAnyUndefinedMacros()
@@ -83,21 +74,22 @@ class Project:
         for macro, value in self.macros.items():
             self.macros[ macro ] = ReplaceMacros( value, self.macros )
         
-    def AddFile( self, folder_list, file_path ):
-
-        if file_path.endswith(".cpp") or  file_path.endswith(".c") or file_path.endswith(".cxx"):
-            file_obj = self.GetSourceFileObject( file_path )
-        else:
-            file_obj = self.GetFileObject( file_path )
-
-        if file_obj:
-            if not base.FindCommand( "/hidewarnings" ):
-                print( "WARNING: File already added: \"" + file_path + "\"" )
-        else:
-            if file_path.endswith(".cpp") or file_path.endswith(".c") or file_path.endswith(".cxx"):
-                self.source_files.append(SourceFile(file_path, folder_list))
+    def AddFile( self, folder_list, file_block ):
+        wtf = ( file_block.key, *file_block.values )
+        for file_path in ( file_block.key, *file_block.values ):
+            if os.path.splitext(file_path)[1] in (".cpp", ".c", ".cxx"):
+                if self.IsSourceFileAdded(file_path):
+                    file_block.Warning("File already added")
+                else:
+                    # self.source_files[file_path] = (os.sep.join(folder_list), Compiler())
+                    self.source_files[file_path] = SourceFile(folder_list)
+                    continue
             else:
-                self.files.append(File(file_path, folder_list))
+                if self.IsFileAdded(file_path):
+                    file_block.Warning("File already added")
+                else:
+                    self.files[file_path] = os.sep.join(folder_list)
+                    continue
 
     # unused currently, might use in the future
     def GetAllFileFolderDepthLists( self ):
@@ -109,163 +101,193 @@ class Project:
 
         return folder_lists
 
+    # Gets every single folder in the project, splitting each one as well
+    # this function is awful
     def GetAllFileFolderPaths( self ):
+        folder_paths = set()
+        # TODO: is there a better way to do this?
+        [folder_paths.add(path) for path in self.files.values()]
+        [folder_paths.add(sf.folder) for sf in tuple([*self.source_files.values()])]
 
-        folder_paths = []
-        for file_obj in self.files:
-            if file_obj.folder_path not in folder_paths and file_obj.folder_path != '':
-                folder_paths.append( file_obj.folder_path )
+        full_folder_paths = set()
+        # split every single folder because visual studio bad
+        for folder_path in folder_paths:
+            current_path = list(PurePath(folder_path).parts)
+            if not current_path:
+                continue
+            folder_list = [current_path[0]]
+            del current_path[0]
+            for folder in current_path:
+                folder_list.append( folder_list[-1] + os.sep + folder )
+            full_folder_paths.update(folder_list)
 
-        for file_obj in self.source_files:
-            if file_obj.folder_path not in folder_paths and file_obj.folder_path != '':
-                folder_paths.append( file_obj.folder_path )
+        return tuple(full_folder_paths)
 
-        return folder_paths
-
+    # TODO: update this for the newer version
     def GetFileObjectsInFolder( self, folder_list ):
-
         file_obj_list = []
         for file_obj in self.files:
             if file_obj.folder_depth_list == folder_list:
                 file_obj_list.append( file_obj )
-
         return file_obj_list
 
-    def GetFileObject( self, file_path ):
-        for file_obj in self.files:
-            if file_obj.path == file_path:
-                return file_obj
+    def IsFileAdded(self, file_path):
+        try:
+            return self.files[file_path]
+        except KeyError:
+            return False
+
+    def IsSourceFileAdded(self, file_path):
+        try:
+            return self.source_files[file_path]
+        except KeyError:
+            return False
+
+    def GetFileFolder(self, file_path):
+        # TODO: setup try and except here if needed
+        return self.files[file_path]
+
+    def GetSourceFileFolder(self, file_path):
+        return self.GetSourceFileObject(file_path)[1]
+
+    def GetSourceFileOptions(self, file_path):
+        return self.GetSourceFileObject(file_path)[0]
+
+    def GetSourceFileObject(self, file_path):
+        # TODO: setup try and except here
+        return self.files[file_path]
+        # return False
+
+    def AddLib(self, lib_block):
+        for lib_path in ( lib_block.key, *lib_block.values ):
+            lib_path = self._FixLibPathAndExt(lib_path)
+            if lib_path not in self.config.linker.libraries:
+                self.config.linker.libraries.append( lib_path )
+            else:
+                lib_block.Warning("Library already added")
+
+    def RemoveLib( self, lib_block ):
+        for lib_path in lib_block.values:
+            lib_path = self._FixLibPathAndExt(lib_path)
+            if lib_path in self.config.linker.libraries:
+                self.config.linker.libraries.remove(lib_path)
+            else:
+                lib_block.Warning("Trying to remove a library that hasn't been added yet")
+
+    # actually do you even need the extension?
+    def _FixLibPathAndExt(self, lib_path):
+        lib_path = ReplaceMacros(lib_path, self.macros)
+        return os.path.splitext(os.path.normpath(lib_path))[0] + self.macros["$_STATICLIB_EXT"]
+
+    def RemoveFile( self, file_block ):
+        for file_path in file_block.values:
+            if os.path.splitext(file_path)[1] in (".cpp", ".c", ".cxx"):
+                if file_path in self.source_files:
+                    del self.source_files[file_path]
+                else:
+                    file_block.Warning("Trying to remove a file that hasn't been added yet")
+            else:
+                if file_path in self.files:
+                    del self.files[file_path]
+                else:
+                    file_block.Warning("Trying to remove a file that hasn't been added yet")
+
+
+# TODO: add shared source_files and files values here
+#  if the file condition doesn't contain config and platform, add it to shared files,
+#  actually, bring back the first single pass for files just so we can do that
+class ProjectList:
+    def __init__(self, name, path, base_macros):
+        self.file_name = name  # the actual file name
+        self.project_dir = path  # should use the macro instead tbh, might remove
+        self.projects = []
+        self.hash_dict = {}
+        # shared across configs, used as a base for them
+        self.macros = { **base_macros, "$PROJECT_DIR": path, "$PROJECT_NAME": name }
+
+    def AddParsedProject(self, project):
+        self.hash_dict.update({ **project.hash_list })
+
+        # update them in case they changed (i doubt the project_dir will change though)
+        self.macros.update({
+            "$PROJECT_DIR": project.macros["$PROJECT_DIR"],
+            "$PROJECT_NAME": project.macros["$PROJECT_NAME"],
+        })
+
+        del project.hash_list
+        del project.macros["$PROJECT_DIR"]
+        del project.macros["$PROJECT_NAME"]
+
+        self.projects.append(project)
+
+    # TODO: this is supposed to get all file objects in every project without duplicates
+    #  need to finish this and make one for source_files
+    def GetAllFileObjects( self, file_path ):
+        return
+        all_files = []
+        for project in self.projects:
+            for file_obj in project.files:
+                if file_obj.path == file_path:
+                    return file_obj
         return False
 
-    def GetSourceFileObject( self, file_path ):
-        for file_obj in self.source_files:
-            if file_obj.path == file_path:
-                return file_obj
-        return False
-
-    def AddLib(self, lib_path, implib=False):
-        lib_path = self.FixLibPathAndExt(lib_path, implib)
-
-        libraries = self.libraries[self.macros["$_CONFIG"]][self.macros["$_PLATFORM"]]
-
-        if lib_path not in libraries:
-            libraries.append( lib_path )
-        else:
-            if not base.FindCommand("/hidewarnings"):
-                print( "WARNING: Library already added: \"" + lib_path + "\"" )
-
-        # if lib_path not in self.dependencies:
-        #     self.dependencies.append( lib_path )
-        # else:
-            # if not base.FindCommand("/hidewarnings"):
-                # print( "WARNING: Dependency already added: \"" + lib_path + "\"" )
-
-    def RemoveLib( self, lib_path, implib=False ):
-        lib_path = self.FixLibPathAndExt(lib_path, implib)
-        self.libraries[self.macros["$_CONFIG"]][self.macros["$_PLATFORM"]].remove(lib_path)
-        # self.dependencies.remove(lib_path)
-
-    def FixLibPathAndExt(self, lib_path, implib=False):
-        lib_path = os.path.normpath(lib_path)
-
-        if implib:
-            lib_ext = self.macros["$_IMPLIB_EXT"]
-        else:
-            lib_ext = self.macros["$_STATICLIB_EXT"]
-
-        # this would break if, for whatever reason, we have a different extension
-        if not lib_path.endswith( lib_ext ):
-            lib_path += lib_ext
-
-        return lib_path
-
-    def RemoveFile( self, file_list ):
-        for file_obj in self.files:
-            if file_obj.path in file_list:
-                del self.files[ self.files.index(file_obj) ]
-                break
+    def GetAllFileFolderPaths( self ):
+        folder_paths = set()
+        for project in self.projects:
+            folder_paths.update(project.GetAllFileFolderPaths())
+        return tuple(folder_paths)
 
 
-class File:
-    def __init__( self, file_path, folder_list ):
-        self.path = file_path
-
-        # folder layout in any editor you want to use
-        self.folder_depth_list = []
-        self.folder_depth_list.extend( folder_list )  # make sure it's a list even if it's a string
-        self.folder_path = os.sep.join( folder_list )
-
-
-# class ProjectFile:
-class SourceFile(File):
-    def __init__( self, file_path, folder_list ):
-        # super().__init__( file_path, folder_list )
-        File.__init__( self, file_path, folder_list )
-        self.compiler = {}
+class SourceFile:
+    def __init__( self, folder_list ):
+        self.folder = os.sep.join(folder_list)
+        self.compiler = Compiler()
 
 
 class Configuration:
-    def __init__( self, config_name, platform_name ):
-        self.config_name = config_name
-        self.platform_name = platform_name
-
-        self.general = {
-            "out_dir": "",
-            "int_dir": "",
-            "configuration_type": "",
-            "language": "",
-            "include_directories": [],
-            "library_directories": [],
-            "options": [],
-        }
-
-        self.compiler = {
-            "include_directories": [],
-            "preprocessor_definitions": [],
-            "options": [],
-            # "treat_warning_as_error": "",
-        }
-
-        self.linker = {
-            "library_directories": [],
-            "options": [],
-        }
-
-        self.post_build = {
-            "command_line": [],
-            "use_in_build": "",
-        }
+    def __init__( self ):
+        self.general = General()
+        self.compiler = Compiler()
+        self.linker = Linker()
+        self.post_build = PostBuild()
 
 
-def AddConfigPlatform( project, macros ):
-    config, platform = macros["$_CONFIG"], macros["$_PLATFORM"]
-    # maybe change configuration to work the same as the rest?
-    project.configs.append( Configuration(config, platform) )
-
-    base.CreateNewDictValue(project.libraries, config, "dict")
-    project.libraries[config].update({ platform: [] })
-
-    # base.CreateNewDictValue(project.dependencies, config, "dict")
-    # project.dependencies[config].update({ platform: [] })
-    return
-
-
-def AddConfigPlatformForFile( file_obj, macros ):
-    config, platform = macros["$_CONFIG"], macros["$_PLATFORM"]
-    file_obj.configs.append( Configuration(config, platform) )
-    return
+class General:
+    def __init__( self ):
+        self.out_dir = ''
+        self.int_dir = ''
+        self.configuration_type = ''
+        self.language = ''
+        self.toolset_version = ''
+        self.include_directories = []
+        self.library_directories = []
+        self.options = []
 
 
-def AddConfigOption(config_group, option_name, option_value):
+class Compiler:
+    def __init__( self ):
+        self.preprocessor_definitions = []
+        self.precompiled_header = ''
+        self.precompiled_header_file = ''
+        self.precompiled_header_output_file = ''
+        self.options = []
 
-    if type(config_group[option_name]) == str:
-        config_group[option_name] = option_value
 
-    elif type(config_group[option_name]) == list:
-        config_group[option_name].append(option_value)
+class Linker:
+    def __init__( self ):
+        self.output_file = ''
+        self.debug_file = ''
+        self.import_library = ''
+        self.ignore_import_library = ''
+        self.libraries = []
+        self.ignore_libraries = []
+        self.options = []
 
-    else:
-        print( "wtf" )
+
+class PostBuild:
+    def __init__( self ):
+        self.command_line = []
+        self.use_in_build = ''
 
 
 def SolveCondition(condition, macros):
@@ -348,7 +370,7 @@ def SolveCondition(condition, macros):
     elif "||" in cond_test or "&&" in cond_test:
         for test in cond_test:
 
-			# TODO: fix these for strings, though idk if you could even compare them here anyway
+            # TODO: fix these for strings, though idk if you could even compare them here anyway
             if test == "||":
                 # can't be below zero
                 if sum(cond_list) > 0:
@@ -356,7 +378,7 @@ def SolveCondition(condition, macros):
 
             elif test == "&&":
                 # all of them have to be true, so we can't have any False
-                if not 0 in cond_list:
+                if 0 not in cond_list:
                     return True
     else:
         if cond_test == "==":
@@ -390,7 +412,7 @@ def SolveCondition(condition, macros):
 
 def ParseBaseFile(base_file, macros, unknown_macros, project_list, group_dict):
 
-    configurations, platforms = [], []
+    configurations = []
     for project_block in base_file:
 
         if project_block.key == "cmd_conditionals":
@@ -398,7 +420,7 @@ def ParseBaseFile(base_file, macros, unknown_macros, project_list, group_dict):
             for sub_project_block in project_block.items:
                 if sub_project_block.key.upper() in unknown_macros:
                     if SolveCondition(sub_project_block.condition, macros):
-                        macros[ "$" + sub_project_block.key.upper() ] = 1
+                        macros[ "$" + sub_project_block.key ] = "1"
                         del unknown_macros[ unknown_macros.index(sub_project_block.key.upper())]
 
         elif project_block.key == "project":
@@ -432,11 +454,6 @@ def ParseBaseFile(base_file, macros, unknown_macros, project_list, group_dict):
                 if SolveCondition(item.condition, macros):
                     configurations.append(item.key)
 
-        elif project_block.key == "platforms":
-            for item in project_block.items:
-                if SolveCondition(item.condition, macros):
-                    platforms.append(item.key)
-
         elif project_block.key == "include":
             # "Ah shit, here we go again."
             path = os.path.normpath(ReplaceMacros( project_block.values[0], macros ))
@@ -452,9 +469,9 @@ def ParseBaseFile(base_file, macros, unknown_macros, project_list, group_dict):
             ParseBaseFile(include_file, macros, unknown_macros, project_list, group_dict)
 
         else:
-            print("Unknown Key:\n\tLine  " + project_block.line_num + "\n\tKey: " + project_block.key)
+            project_block.Warning("Unknown Key: ")
 
-    return configurations, platforms
+    return configurations
 
 
 def ParseProjectGroupItems(project_group, project_list, project_block, macros, folder_list=None):
@@ -475,8 +492,6 @@ def ParseProjectGroupItems(project_group, project_list, project_block, macros, f
     return
 
 
-# this is the first pass of the project file only reading things that
-# won't be affected by the dynamic macros ($_CONFIG and $_PLATFORM) to save time
 def ParseProjectFile(project_file, project, depth=0):
     for project_block in project_file:
 
@@ -487,20 +502,17 @@ def ParseProjectFile(project_file, project, depth=0):
                 index = project_block.values.index( value )
                 project_block.values[ index ] = ReplaceMacros( value, project.macros )
 
-            # should i just have it be a macro in the file instead?
-            if project_block.key == "project_name":
-                project.macros["$PROJECT_NAME"] = project_block.values[0]
-                project.name = project_block.values[0]
+            if project_block.key == "macro":
+                project.AddMacro( project_block.values )
 
-            # issue with these: after the 1st path, it tries adding the same thing again
-            # if something is added only on a certain config or platform, it would be added to all here
-            # fuck
-            # i might have to do the same thing with configuration here, ugh
+            elif project_block.key == "configuration":
+                ParseConfigBlock(project_block, project)
+
             elif project_block.key == "files":
                 ParseFilesBlock(project_block, project, [])
 
-            elif project_block.key == "macro":
-                project.AddMacro( project_block.values )
+            elif project_block.key == "dependencies":
+                project_block.Warning("Project Dependencies are not setup yet")
 
             elif project_block.key == "include":
                 # Ah shit, here we go again.
@@ -509,48 +521,8 @@ def ParseProjectFile(project_file, project, depth=0):
                 ParseProjectFile( include_file, project, depth )
                 PrintIncludeFileFinished(path, depth)
 
-            elif project_block.key == "configuration" or project_block.key == "libraries":
-                pass
-
             else:
-                print( "WARNING: Unknown key found: " + project_block.key )
-    return
-
-
-# TODO: add the files block here
-# make it a dictionary, like libs, so "Files" = { "Debug": { "win32": [] } }
-# this is run multiple times depending on how many configurations and platforms being used
-def ParseProjectFileMulti(project_file, project, depth=0):
-    for project_block in project_file:
-
-        # check if the conditional result is true before checking the key
-        if SolveCondition(project_block.condition, project.macros):
-
-            for value in project_block.values:
-                index = project_block.values.index( value )
-                project_block.values[ index ] = ReplaceMacros( value, project.macros )
-
-            if project_block.key == "configuration":
-                ParseConfigBlock(project_block, project)
-
-            elif project_block.key == "libraries":
-                ParseLibrariesBlock(project_block, project)
-
-            elif project_block.key == "macro":
-                project.AddMacro( project_block.values )
-
-            elif project_block.key == "include":
-                # Ah shit, here we go again.
-                path = project_block.values[0]
-                include_file = IncludeFile(path, project, depth)
-                ParseProjectFileMulti( include_file, project, depth )
-                PrintIncludeFileFinished(path, depth)
-
-            elif project_block.key == "project_name" or project_block.key == "files":
-                pass
-
-            else:
-                print( "WARNING: Unknown key found: " + project_block.key )
+                project_block.Warning("Unknown key: ")
     return
 
 
@@ -609,120 +581,171 @@ def ParseFilesBlock(files_block, project, folder_list):
                     folder_list.remove(block.values[0])
 
                 elif block.key == "-":
-                    block.values = ReplaceMacros( block.values[0], project.macros )
-                    project.RemoveFile(block.values)
+                    for index, value in enumerate(block.values):
+                        block.values[index] = ReplaceMacros( value, project.macros )
+                    project.RemoveFile( block )
                 else:
                     block.key = ReplaceMacros( block.key, project.macros )
-                    project.AddFile( folder_list, block.key )
+                    project.AddFile( folder_list, block )
+
+                    # if block.items:
+                    #     block.Warning("Source File Compiler options aren't setup yet")
 
 
 def ParseConfigBlock(project_block, project, file_obj=None):
     if SolveCondition(project_block.condition, project.macros):
 
         if file_obj:
-            AddConfigPlatformForFile(file_obj, project.macros)
+            print( "setup file_obj's" )
+            pass
 
         for group_block in project_block.items:
             if SolveCondition(group_block.condition, project.macros):
                 for option_block in group_block.items:
                     if SolveCondition(option_block.condition, project.macros):
-                        ParseConfigOption(project, group_block.key, option_block, file_obj)
+                        ParseConfigOption(project, group_block, option_block, file_obj)
 
 
 # this could be so much better
-def ParseConfigOption(project, group_name, option_block, file_obj = None):
-    config = None
+def ParseConfigOption(project, group_block, option_block, file_obj=None):
     if file_obj:
-        for config_obj in file_obj.configs:
-            if config_obj.config_name == project.macros["$_CONFIG"] and \
-                    config_obj.platform_name == project.macros["$_PLATFORM"]:
-                config = config_obj
-                break
+        config = file_obj.config
     else:
-        for config_obj in project.configs:
-            if config_obj.config_name == project.macros["$_CONFIG"] and \
-                    config_obj.platform_name == project.macros["$_PLATFORM"]:
-                config = config_obj
-                break
+        config = project.config
 
-    if group_name == "general":
+    if group_block.key == "general":
+        # single path options
         if option_block.key in ("out_dir", "int_dir"):
-            value = ReplaceMacros(option_block.values[0], project.macros)
-            AddConfigOption(config.general, option_block.key, os.path.normpath(value))
+            if option_block.key == "out_dir":
+                config.general.out_dir = os.path.normpath(ReplaceMacros(option_block.values[0], project.macros))
+            elif option_block.key == "int_dir":
+                config.general.int_dir = os.path.normpath(ReplaceMacros(option_block.values[0], project.macros))
 
+        # multiple path options
         elif option_block.key in ("include_directories", "library_directories"):
             for item in option_block.items:
                 if SolveCondition(item.condition, project.macros):
-                    value = ReplaceMacros(item.key, project.macros)
-                    AddConfigOption(config.general, option_block.key, os.path.normpath(value))
+                    value_list = ReplaceMacrosInList(project.macros, item.key, *item.values)
+                    if option_block.key == "include_directories":
+                        config.general.include_directories.extend(value_list)
+                    elif option_block.key == "library_directories":
+                        config.general.library_directories.extend(value_list)
 
         elif option_block.key == "configuration_type":
-            if option_block.values[0] in ("static_library", "dynamic_library", "application"):
-                AddConfigOption(config.general, option_block.key, option_block.values[0])
-            else:
-                print( "Invalid Value for configuration_type: " + option_block.values[0] )
-
-        elif option_block.key == "commands":
-            AddConfigOption(config.general, option_block.key, option_block.values[0])
+            if option_block.values:
+                if option_block.values[0] in ("static_library", "dynamic_library", "application"):
+                    config.general.configuration_type = option_block.values[0]
+                else:
+                    option_block.InvalidOption( "static_library", "dynamic_library", "application" )
 
         elif option_block.key == "language":
-            pass
+            if option_block.values:
+                if option_block.values[0] in ("c", "cpp"):
+                    config.general.language = option_block.values[0]
+                else:
+                    option_block.InvalidOption( "c", "cpp" )
 
-    elif group_name == "compiler":
-        if option_block.key == "include_directories":
+    elif group_block.key == "compiler":
+
+        if option_block.key in ("preprocessor_definitions", "options"):
             for item in option_block.items:
                 if SolveCondition(item.condition, project.macros):
-                    value = ReplaceMacros(item.key, project.macros)
-                    AddConfigOption(config.compiler, option_block.key, os.path.normpath(value))
+                    if option_block.key == "preprocessor_definitions":
+                        config.compiler.preprocessor_definitions.extend([item.key, *item.values])
+                    elif option_block.key == "options":
+                        config.compiler.options.extend([item.key, *item.values])
 
-        elif option_block.key in ("preprocessor_definitions", "options"):
-            for item in option_block.items:
-                if SolveCondition(item.condition, project.macros):
-                    AddConfigOption(config.compiler, option_block.key, item.key)
-                    if item.values:
-                        for value in item.values:
-                            AddConfigOption(config.compiler, option_block.key, value)
+        elif option_block.key == "precompiled_header":
+            if option_block.values:
+                if option_block.values[0] in ("none", "create", "use"):
+                    config.compiler.precompiled_header = option_block.values[0]
+                else:
+                    option_block.InvalidOption("none", "create", "use")
 
-        elif option_block.key == "treat_warning_as_error":
-            AddConfigOption(config.compiler, option_block.key, option_block.values[0])
+        elif option_block.key in ("precompiled_header_file", "precompiled_header_output_file"):
+            config.compiler.precompiled_header = ReplaceMacros(option_block.values[0], project.macros)
 
-    elif group_name == "linker":
+    elif group_block.key == "linker":
 
-        if option_block.key == "library_directories":
-            for item in option_block.items:
-                if SolveCondition(item.condition, project.macros):
-                    value = ReplaceMacros(item.key, project.macros)
-                    AddConfigOption(config.linker, option_block.key, os.path.normpath(value))
+        if option_block.key in ("output_file", "debug_file", "import_library", "ignore_import_library"):
+            if option_block.values:
+
+                if option_block.key == "ignore_import_library":
+                    if option_block.values[0] in ("true", "false"):
+                        config.linker.ignore_import_library = option_block.values[0]
+                    else:
+                        option_block.InvalidOption( "true", "false" )
+                    return
+
+                # TODO: maybe split the extension here?
+                value = os.path.normpath(ReplaceMacros(option_block.values[0], project.macros))
+
+                if option_block.key == "output_file":
+                    config.linker.output_file = value
+                elif option_block.key == "debug_file":
+                    config.linker.debug_file = value
+                elif option_block.key == "import_library":
+                    config.linker.import_library = value
+
+        elif option_block.key in ("libraries", "ignore_libraries"):
+
+            if option_block.key == "libraries":
+                for item in option_block.items:
+                    if SolveCondition(item.condition, project.macros):
+                        if item.key != "-":
+                            project.AddLib( item )
+                        else:
+                            project.RemoveLib( item )
+
+            elif option_block.key == "ignore_libraries":
+                for item in option_block.items:
+                    if SolveCondition(item.condition, project.macros):
+                        config.linker.ignore_libraries.extend(ReplaceMacrosInList(project.macros, item.key, *item.values))
 
         elif option_block.key == "options":
             for item in option_block.items:
                 if SolveCondition(item.condition, project.macros):
-                    AddConfigOption(config.linker, option_block.key, item.key)
-                    if item.values:
-                        for value in item.values:
-                            AddConfigOption(config.linker, option_block.key, value)
+                    config.linker.options.extend([item.key, *item.values])
 
-    elif group_name == "post_build":
+    elif group_block.key == "post_build":
 
-        if group_name == "post_build":
+        if group_block.key == "post_build":
             event = config.post_build
 
-        # elif group_name == "pre_build":
+        # elif group_block.key == "pre_build":
         #     event = config.pre_build
 
-        # elif group_name == "pre_link":
+        # elif group_block.key == "pre_link":
         #     event = config.pre_link
+
+        else:
+            raise Exception("how tf did you get here, "
+                            "should only get here with post_build, pre_build, and pre_link")
 
         if option_block.key == "command_line":
             value = ReplaceMacros(' '.join( option_block.values ), project.macros)
-            value = value.replace( "\\n", "\n" )
-            AddConfigOption(event, option_block.key, value)
+            if value:
+                value = value.replace("\\n", "\n")
+                event.command_line.append(value)
 
         elif option_block.key == "use_in_build":
-            AddConfigOption(event, option_block.key, option_block.values[0])
-        pass
+            if option_block.values:
+                if option_block.values[0] in ("true", "false"):
+                    event.use_in_build = option_block.values[0]
+                else:
+                    option_block.InvalidOption("true", "false")
+
+    else:
+        group_block.Error("Unknown Configuration Group: ")
 
     return
+
+
+def ReplaceMacrosInList( macros, *value_list ):
+    value_list = list(value_list)
+    for index, item in enumerate(value_list):
+        value_list[index] = ReplaceMacros( item, macros )
+    return value_list
 
 
 def ReplaceMacros( string, macros ):
@@ -735,60 +758,40 @@ def ReplaceMacros( string, macros ):
     return string
 
 
-# keeping this since i might need it still, i hope not
-def WriteDependencies(hash_dep_file, dependencies, project_def_list):
-    for item in dependencies:
-        for project_def in project_def_list:
-            if project_def.name.lower() in item.lower():
-                # TODO: fix this for multiple scripts in a project def (im going to get rid of that probably)
-                # this is also very bad because the output name might be different than the project name
-                hash_dep_file.write(item + " " + project_def.script_list[0] + "\n")
-
-
 def ParseProject( project_script_path, base_macros, configurations, platforms ):
+    project_dir, project_filename = os.path.split(project_script_path)
+    project_name = os.path.splitext(project_filename)[0]
 
-    try:
-        project_filename = project_script_path.rsplit(os.sep, 1)[1]
-    except IndexError:
-        project_filename = project_script_path
+    if not os.path.isabs(project_dir):
+        project_dir = os.path.normpath(base_macros["$ROOTDIR"] + "/" + project_dir)
 
-    project_name = project_filename.rsplit( ".", 1 )[0]
-
-    if os.sep not in project_script_path:
-        project_dir = base_macros[ "$ROOTDIR" ]
-    else:
-        project_dir = os.path.join( base_macros[ "$ROOTDIR" ], project_script_path.rsplit(os.sep, 1)[0] )
-
-    project_path = os.path.join( project_dir, project_filename )
-
-    project = Project( project_name, project_dir, base_macros )
-
-    project.hash_list[ project_filename ] = MakeHash( project_path )
+    project_script_path = os.path.normpath(project_dir + "/" + project_filename)
 
     if base.FindCommand( "/verbose" ):
-        print( "Reading: " + project_filename)
+        print( "Reading: " + project_filename )
 
-    project_file = reader.ReadFile( project_path )
+    project_file = reader.ReadFile(project_script_path)
 
-    if base.FindCommand( "/verbose" ):
-        print( "Parsing: " + project_filename)
-    else:
-        print( "Parsing: " + project.name )
+    print( "Parsing: " + project_filename )
 
-    ParseProjectFile(project_file, project, 0)
+    project_hash = MakeHash(project_script_path)
+    # project_list = []
+    project_list = ProjectList(project_name, project_dir, base_macros)
 
-    # now for "multi-pass"
+    project_macros = { **base_macros, "$PROJECT_DIR": project_dir, "$PROJECT_NAME": project_name }
+
     for config in configurations:
-        project.macros["$_CONFIG"] = config
         for platform in platforms:
-            project.macros["$_PLATFORM"] = platform
-            # just add the configuration object here instead
-            AddConfigPlatform( project, project.macros )
-            ParseProjectFileMulti(project_file, project, 0)
+            project = Project(project_macros, config, platform)
+            project.hash_list[project_filename] = project_hash
+            # AddConfigPlatform( project, project.macros )
+            ParseProjectFile(project_file, project, 0)
+            project_list.AddParsedProject(project)
+    return project_list
 
-    return project
 
-
+# TODO: maybe move to a file called "qpc_hash.py",
+#  so you can run this from vstudio or something to check hash only?
 def HashCheck( root_dir, project_path ):
     project_hash_file_path = os.path.join( root_dir, project_path + "_hash" )
 
@@ -808,9 +811,6 @@ def HashCheck( root_dir, project_path ):
 
         for hash_line in hash_file:
             hash_line = hash_line.split(" ")
-
-            if hash_line[0] == '--------------------------------------------------':
-                break
             if os.path.isabs(hash_line[1]):
                 project_file_path = os.path.normpath( hash_line[1] )
             else:
@@ -828,11 +828,10 @@ def HashCheck( root_dir, project_path ):
 
 # Source: https://bitbucket.org/prologic/tools/src/tip/md5sum
 def MakeHash(filename):
-    hash = hashlib.md5()
     with open(filename, "rb") as f:
-        for chunk in iter(lambda: f.read(128 * hash.block_size), b""):
-            hash.update(chunk)
-    return hash.hexdigest()
+        for chunk in iter(lambda: f.read(128 * hashlib.md5().block_size), b""):
+            hashlib.md5().update(chunk)
+    return hashlib.md5().hexdigest()
 
 
 def WriteHashList(tmp_file, hash_list):

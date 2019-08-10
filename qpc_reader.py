@@ -27,17 +27,37 @@ class ProjectBlock:
     def AddItem( self, item ):
         self.items.append( item )
 
-    # maybe change to PrintInfo()?
-    def ReportError( self, error_message ):
-        print(  error_message +
-                "\n\tLine: " + self.line_num +
+    # would be cool if i could change the colors on this
+    def FatalError(self, message):
+        print( "FATAL ERROR: " + message )
+        self.PrintInfo()
+        quit()
+
+    # should Error and FatalError be the same?
+    def Error(self, message):
+        print( "ERROR: " + message )
+        self.PrintInfo()
+
+    def Warning(self, message):
+        print( "WARNING: " + message )
+        self.PrintInfo()
+
+    # def InvalidOption(self, valid_option_list):
+    def InvalidOption(self, *valid_option_list):
+        print( "Error: Invalid Option" )
+        print( "\tValid Options:\n\t\t" + '\n\t\t'.join(valid_option_list) )
+        self.PrintInfo()
+
+    def PrintInfo( self ):
+        print(  "\tLine: " + self.line_num +
                 "\n\tKey: " + self.key )
 
-        # quick temp thing for the converter
-        # print("\tCasefold Key: " + self.key.casefold())
-
         if self.values:
-            print("\tValues:\n\t\t" + '\n\t\t'.join(self.values) )
+            # TODO: maybe if there is only one value, write it on the same line?
+            if len(self.values) == 1:
+                print("\tValues: " + self.values[0] )
+            else:
+                print("\tValues:\n\t\t" + '\n\t\t'.join(self.values) )
 
         # not really useful
         # if self.condition:

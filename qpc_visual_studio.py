@@ -75,36 +75,42 @@ def ReturnConfigOption( value ):
 # C++ - {8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}
 
 
-def CreateProject( project ):
+def CreateProject(project_list):
 
-    print( "Creating: " + project.file_name + ".vcxproj" )
+    print( "Creating: " + project_list.file_name + ".vcxproj")
     # vcxproject = CreateVCXProj( project )
-    vcxproject, include_list, res_list, none_list = CreateVCXProj( project )
-    WriteProject( project, vcxproject )
+    vcxproject, include_list, res_list, none_list = CreateVCXProj(project_list)
+
+    # this is a little slow, maybe due to disk write speed?
+    WriteProject(project_list, vcxproject)
 
     # would this be too much printing for the normal output? idk
-    print( "Creating: " + project.file_name + ".vcxproj.filters" )
-    vcxproject_filters = CreateVCXProjFilters( project, vcxproject, include_list, res_list, none_list )
-    WriteProject( project, vcxproject_filters, True )
+    print( "Creating: " + project_list.file_name + ".vcxproj.filters")
+    vcxproject_filters = CreateVCXProjFilters(project_list, vcxproject, include_list, res_list, none_list)
+    WriteProject(project_list, vcxproject_filters, True)
 
     return
 
 
-def CreateVCXProj( project ):
+def CreateVCXProj(project_list):
 
-    vcxproj = et.Element( "Project" )
-    vcxproj.set( "DefaultTargets", "Build" )
-    vcxproj.set( "ToolsVersion", "4.0" )
+    vcxproj = et.Element("Project")
+    vcxproj.set("DefaultTargets", "Build")
+    vcxproj.set("ToolsVersion", "4.0")
+    # is this even needed?
     vcxproj.set( "xmlns", "http://schemas.microsoft.com/developer/msbuild/2003" )
 
+    # do this first so we don't do it EVERY TIME
+    project_list = FixPlatformNames(project_list)
+
     # Project Configurations
-    SetupProjectConfigurations( vcxproj, project )
-    SetupGlobals( vcxproj, project )
+    SetupProjectConfigurations(vcxproj, project_list)
+    SetupGlobals(vcxproj, project_list)
 
     elem_import = et.SubElement( vcxproj, "Import" )
     elem_import.set( "Project", "$(VCTargetsPath)\\Microsoft.Cpp.Default.props" )
 
-    SetupPropertyGroupConfigurations( vcxproj, project )
+    SetupPropertyGroupConfigurations(vcxproj, project_list)
 
     elem_import = et.SubElement( vcxproj, "Import" )
     elem_import.set( "Project", "$(VCTargetsPath)\\Microsoft.Cpp.props" )
@@ -112,40 +118,46 @@ def CreateVCXProj( project ):
     extension_settings = et.SubElement( vcxproj, "ImportGroup" )
     extension_settings.set( "Label", "ExtensionSettings" )
 
-    SetupPropertySheets( vcxproj, project )
+    SetupPropertySheets(vcxproj, project_list)
 
     user_macros = et.SubElement( vcxproj, "PropertyGroup" )
     user_macros.set( "Label", "UserMacros" )
 
-    SetupGeneralProperties( vcxproj, project )
-    SetupItemDefinitionGroups( vcxproj, project )
+    SetupGeneralProperties(vcxproj, project_list)
+    SetupItemDefinitionGroups(vcxproj, project_list)
 
     # --------------------------------------------------------------------
     # Now, add the files
-    # TODO: i assume this is the slowest part of this, should check if it is and try to speed this up somehow
-    # libraries = et.SubElement( vcxproj, "ItemGroup" )
-    # CreateFileItemGroups( "Library", project.libraries, libraries )
 
-    cl_compile = et.SubElement( vcxproj, "ItemGroup" )
-    CreateFileItemGroups( "ClCompile", project.source_files, cl_compile, True, project )
-    
-    # [ "rc", "c", "cxx", "cpp", "h", "hxx", "hpp" ]
-    cl_include = et.SubElement( vcxproj, "ItemGroup" )
-    include_list, remaining_files = GetProjectFiles( project.files, [ "h", "hxx", "hpp" ] )
-    CreateFileItemGroups( "ClInclude", include_list, cl_include )
-    
-    resource_compile = et.SubElement( vcxproj, "ItemGroup" )
-    # rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav
-    res_list, remaining_files = GetProjectFiles( remaining_files, [ "rc" ] )
-    CreateFileItemGroups( "ResourceCompile", res_list, resource_compile )
+    full_include_list = {}
+    full_res_list = {}
+    full_none_list = {}
 
-    # CustomBuild = et.SubElement( vcxProj, "ItemGroup" )
-    # include_list = GetProjectFiles( project.files, [] )
-    # CreateFileItemGroups( "CustomBuild", include_list, CustomBuild, True )
-    
-    item_group_none = et.SubElement( vcxproj, "ItemGroup" )
-    none_list, remaining_files = GetProjectFiles( remaining_files, invalid_exts=[ "rc", "h", "hxx", "hpp" ] )
-    CreateFileItemGroups( "None", none_list, item_group_none )
+    header_exts = (".h", ".hxx", ".hpp")
+
+    res_exts = (".rc", ".ico", ".cur", ".bmp", ".dlg", ".rc2", ".rct", ".bin", ".rgs",
+                ".gif", ".jpg", ".jpeg", ".jpe", ".resx", ".tiff", ".tif", ".png", ".wav")
+
+    none_exts = (*res_exts, ".h", ".hxx", ".hpp")
+
+    # TODO: merge everything together, for now, just add a condition on each one lmao
+    for project in project_list.projects:
+        condition = "'$(Configuration)|$(Platform)'=='" + project.config_name + "|" + project.platform + "'"
+
+        # maybe do the same below for this?
+        CreateSourceFileItemGroup( project.source_files, vcxproj, condition )
+
+        include_list, remaining_files = GetProjectFiles(project.files, header_exts)
+        full_include_list = { **full_include_list, **include_list }
+        CreateFileItemGroups("ClInclude", include_list, vcxproj, condition)
+
+        res_list, remaining_files = GetProjectFiles( remaining_files, res_exts )
+        full_res_list = { **full_res_list, **res_list }
+        CreateFileItemGroups("ResourceCompile", res_list, vcxproj, condition)
+
+        none_list = GetProjectFiles( remaining_files, (), none_exts )[0]
+        full_none_list = { **full_none_list, **none_list }
+        CreateFileItemGroups( "None", none_list, vcxproj, condition )
 
     # other vstudio stuff idk
     elem_import = et.SubElement( vcxproj, "Import" )
@@ -153,39 +165,49 @@ def CreateVCXProj( project ):
     import_group = et.SubElement( vcxproj, "ImportGroup" )
     import_group.set( "Label", "ExtensionTargets" )
 
-    return vcxproj, include_list, res_list, none_list
+    return vcxproj, full_include_list, full_res_list, full_none_list
 
 
-def SetupProjectConfigurations( vcxproj, project ):
+# this would change it in the platform itself, but maybe at the end we can change it back
+def FixPlatformNames(project_list):
+    for project in project_list.projects:
+        if project.platform == "win64":
+            project.platform = "x64"
+    return project_list
 
+
+# since we change it directly, we have to change it back for any other project we are generating for
+def RevertPlatformNameChanges(project_list):
+    for project in project_list.projects:
+        if project.platform == "x64":
+            project.platform = "win64"
+    return project_list
+
+
+def SetupProjectConfigurations(vcxproj, project_list):
     item_group = et.SubElement( vcxproj, "ItemGroup" )
     item_group.set( "Label", "ProjectConfigurations" )
 
-    for config in project.configs:
-        if config.platform_name == "win64":
-            platform = "x64"
-        else:
-            platform = config.platform_name
-
+    for project in project_list.projects:
         project_configuration = et.SubElement( item_group, "ProjectConfiguration" )
-        project_configuration.set( "Include", config.config_name + "|" + platform )
+        project_configuration.set( "Include", project.config_name + "|" + project.platform )
 
         configuration = et.SubElement( project_configuration, "Configuration" )
-        configuration.text = config.config_name
+        configuration.text = project.config_name
 
         elem_platform = et.SubElement( project_configuration, "Platform" )
-        elem_platform.text = platform
+        elem_platform.text = project.platform
 
     return
 
 
-def SetupGlobals( vcxproj, project ):
+def SetupGlobals(vcxproj, project_list):
 
     property_group = et.SubElement( vcxproj, "PropertyGroup" )
     property_group.set( "Label", "Globals" )
 
     project_name = et.SubElement( property_group, "ProjectName" )
-    project_name.text = project.name
+    project_name.text = project_list.macros["$PROJECT_NAME"]
 
     project_guid = et.SubElement( property_group, "ProjectGuid" )
     project_guid.text = MakeUUID()
@@ -193,48 +215,64 @@ def SetupGlobals( vcxproj, project ):
     return
 
 
-def SetupPropertyGroupConfigurations( vcxproj, project ):
-    for config in project.configs:
-        if config.platform_name.lower() == "win64":
-            platform = "x64"
-        else:
-            platform = config.platform_name
-
+def SetupPropertyGroupConfigurations(vcxproj, project_list):
+    for project in project_list.projects:
         property_group = et.SubElement(vcxproj, "PropertyGroup")
-        property_group.set("Condition", "'$(Configuration)|$(Platform)'=='" + config.config_name + "|" + platform + "'")
+        property_group.set("Condition", "'$(Configuration)|$(Platform)'=='" +
+                           project.config_name + "|" + project.platform + "'")
         property_group.set("Label", "Configuration")
+
+        config = project.config
 
         configuration_type = et.SubElement(property_group, "ConfigurationType")
 
-        if config.general["configuration_type"] == "application":
+        if config.general.configuration_type == "application":
             configuration_type.text = "Application"
-
-        elif config.general["configuration_type"] == "static_library":
+        elif config.general.configuration_type == "static_library":
             configuration_type.text = "StaticLibrary"
-
-        elif config.general["configuration_type"] == "dynamic_library":
+        elif config.general.configuration_type == "dynamic_library":
             configuration_type.text = "DynamicLibrary"
 
-        # TODO: add more options for this somehow
         toolset = et.SubElement(property_group, "PlatformToolset")
-        toolset.text = "v142"
 
-        # "CharacterSet",
+        if config.general.toolset_version == "msvc-v142":
+            toolset.text = "v142"
+        elif config.general.toolset_version == "msvc-v141":
+            toolset.text = "v141"
+        elif config.general.toolset_version == "msvc-v140":
+            toolset.text = "v140"
+        elif config.general.toolset_version == "msvc-v120":
+            toolset.text = "v120"
+        elif config.general.toolset_version == "msvc-v110":
+            toolset.text = "v110"
+        elif config.general.toolset_version == "msvc-v100":
+            toolset.text = "v100"
+        else:
+            toolset.text = "v142"
+
+        character_set_text = ''
+        if "_MBCS" in config.compiler.preprocessor_definitions:
+            character_set_text = "Unicode"
+            config.compiler.preprocessor_definitions.remove("_MBCS")
+        elif "MBCS" in config.compiler.preprocessor_definitions:
+            character_set_text = "MultiByte"
+            config.compiler.preprocessor_definitions.remove("MBCS")
+
+        if character_set_text:
+            character_set = et.SubElement(property_group, "CharacterSet")
+            character_set.text = character_set_text
+
         # "TargetName",
         # "WholeProgramOptimization",
 
     return
 
 
-def SetupPropertySheets( vcxProj, project ):
-    for config in project.configs:
-        if config.platform_name.lower() == "win64":
-            platform = "x64"
-        else:
-            platform = config.platform_name
-
-        import_group = et.SubElement( vcxProj, "ImportGroup")
-        import_group.set("Condition", "'$(Configuration)|$(Platform)'=='" + config.config_name + "|" + platform + "'")
+def SetupPropertySheets(vcxproj, project_list):
+    for project in project_list.projects:
+        import_group = et.SubElement(vcxproj, "ImportGroup")
+        import_group.set("Condition", "'$(Configuration)|$(Platform)'=='" +
+                         project.config_name + "|" + project.platform + "'")
         import_group.set("Label", "PropertySheets" )
 
         elem_import = et.SubElement( import_group, "Import" )
@@ -245,46 +283,42 @@ def SetupPropertySheets( vcxProj, project ):
     return
 
 
-def SetupGeneralProperties( vcxproj, project ):
+def SetupGeneralProperties(vcxproj, project_list):
 
     property_group = et.SubElement( vcxproj, "PropertyGroup" )
 
     version = et.SubElement( property_group, "_ProjectFileVersion" )
     version.text = "10.0.30319.1"
     
-    for config in project.configs:
-        if config.platform_name.lower() == "win64":
-            platform = "x64"
-        else:
-            platform = config.platform_name
-
-        condition = "'$(Configuration)|$(Platform)'=='" + config.config_name + "|" + platform + "'"
+    for project in project_list.projects:
+        condition = "'$(Configuration)|$(Platform)'=='" + project.config_name + "|" + project.platform + "'"
+        config = project.config
 
         property_group = et.SubElement( vcxproj, "PropertyGroup" )
         property_group.set( "Condition", condition )
 
         out_dir = et.SubElement(property_group, "OutDir")
-        out_dir.text = config.general["out_dir"] + os.sep
+        out_dir.text = config.general.out_dir + os.sep
 
         int_dir = et.SubElement(property_group, "IntDir")
-        int_dir.text = config.general["int_dir"] + os.sep
+        int_dir.text = config.general.int_dir + os.sep
 
         target_ext = et.SubElement(property_group, "TargetExt")
 
-        if config.general["configuration_type"] == "application":
-            target_ext.text = project.macros["$_APP_EXT"]
+        if config.general.configuration_type == "application":
+            target_ext.text = project_list.macros["$_APP_EXT"]
 
-        elif config.general["configuration_type"] == "static_library":
-            target_ext.text = project.macros["$_STATICLIB_EXT"]
+        elif config.general.configuration_type == "static_library":
+            target_ext.text = project_list.macros["$_STATICLIB_EXT"]
 
-        elif config.general["configuration_type"] == "dynamic_library":
-            target_ext.text = project.macros["$_BIN_EXT"]
+        elif config.general.configuration_type == "dynamic_library":
+            target_ext.text = project_list.macros["$_BIN_EXT"]
 
         include_paths = et.SubElement(property_group, "IncludePath")
-        include_paths.text = ';'.join(config.general["include_directories"]) + ";$(IncludePath)"
+        include_paths.text = ';'.join(config.general.include_directories) + ";$(IncludePath)"
 
         library_paths = et.SubElement(property_group, "LibraryPath")
-        library_paths.text = ';'.join(config.general["library_directories"]) + ";$(LibraryPath)"
+        library_paths.text = ';'.join(config.general.library_directories) + ";$(LibraryPath)"
 
         # "linker": [
         #   "IgnoreImportLibrary",
@@ -300,14 +334,10 @@ def SetupGeneralProperties( vcxproj, project ):
     return
 
 
-def SetupItemDefinitionGroups( vcxproj, project ):
-    for config in project.configs:
-        if config.platform_name.lower() == "win64":
-            platform = "x64"
-        else:
-            platform = config.platform_name
-
-        condition = "'$(Configuration)|$(Platform)'=='" + config.config_name + "|" + platform + "'"
+def SetupItemDefinitionGroups(vcxproj, project_list):
+    for project in project_list.projects:
+        condition = "'$(Configuration)|$(Platform)'=='" + project.config_name + "|" + project.platform + "'"
+        cfg = project.config
 
         item_def_group = et.SubElement( vcxproj, "ItemDefinitionGroup" )
         item_def_group.set( "Condition", condition )
@@ -319,179 +349,81 @@ def SetupItemDefinitionGroups( vcxproj, project ):
     
         # ------------------------------------------------------------------
         # compiler - ClCompile
-
-        compiler = et.SubElement( item_def_group, "ClCompile" )
-
-        additional_options = et.SubElement(compiler, "AdditionalOptions")
-        additional_options.text = ' '.join( config.compiler["options"] )
-
-        preprocessor_definitions = et.SubElement(compiler, "PreprocessorDefinitions")
-        preprocessor_definitions.text = ';'.join(config.compiler["preprocessor_definitions"]) + \
-            ";%(PreprocessorDefinitions)"
-
-        include_directories = et.SubElement(compiler, "AdditionalIncludeDirectories")
-        include_directories.text = ';'.join(config.compiler["include_directories"]) + \
-            ";%(AdditionalIncludeDirectories)"
-
-        print()
-
-        compiler_options = [
-            "AdditionalOptions",
-            "Optimization",
-            "InlineFunctionExpansion",
-            "IntrinsicFunctions",
-            "FavorSizeOrSpeed",
-            "AdditionalIncludeDirectories",
-            "PreprocessorDefinitions",
-            "StringPooling",
-            "MinimalRebuild",
-            "ExceptionHandling",
-            "BasicRuntimeChecks",
-            "RuntimeLibrary",
-            "BufferSecurityCheck",
-            "FunctionLevelLinking",
-            "EnableEnhancedInstructionSet",
-            "FloatingPointModel",
-            "TreatWChar_tAsBuiltInType",
-            "ForceConformanceInForLoopScope",
-            "RuntimeTypeInfo",
-            "OpenMPSupport",
-            "PrecompiledHeader",
-            "PrecompiledHeaderFile",
-            "PrecompiledHeaderOutputFile",
-            "ExpandAttributedSource",
-            "AssemblerOutput",
-            "AssemblerListingLocation",
-            "ObjectFileName",
-            "ProgramDataBaseFileName",
-            "GenerateXMLDocumentationFiles",
-            "BrowseInformation",
-            "WarningLevel",
-            "TreatWarningAsError",
-            "DebugInformationFormat",
-            "CompileAs",
-            "UseFullPaths",
-            "DisableSpecificWarnings",
-            "MultiProcessorCompilation",
-            "BrowseInformationFile",
-            "ErrorReporting",
-        ]
-
-        # AddOptionListToElement( compiler_options, compiler, config )
+        AddCompilerOptions( item_def_group, cfg.compiler, cfg.general )
     
         # ------------------------------------------------------------------
         # resources? - ResourceCompile
+        # resources = et.SubElement( item_def_group, "ResourceCompile" )
 
-        resources = et.SubElement( item_def_group, "ResourceCompile" )
-
-        resource_options = {
-            "$Resources" : [
-                "PreprocessorDefinitions",
-                "Culture",
-            ],
-        }        
-
-        # AddOptionListToElement( resource_options, resources, config )
+        # "PreprocessorDefinitions",
+        # "Culture",
     
         # ------------------------------------------------------------------
         # pre_link - PreLinkEvent
+        # pre_link_event = et.SubElement( item_def_group, "PreLinkEvent" )
 
-        pre_link_event = et.SubElement( item_def_group, "PreLinkEvent" )
-
-        pre_link_options = {
-            "$PreLinkEvent": [
-            ],
-        }        
-        # AddOptionListToElement( pre_link_options, pre_link_event, config, True )
-    
         # ------------------------------------------------------------------
-        # linker - Link
+        # linker - Link or Lib
+        if cfg.general.configuration_type in ("dynamic_library", "application"):
+            link_lib = et.SubElement( item_def_group, "Link" )
+        elif cfg.general.configuration_type == "static_library":
+            link_lib = et.SubElement( item_def_group, "Lib" )
+        else:
+            raise Exception("how tf did you manage to get here with the wrong configuration type?")
 
-        if config.general["configuration_type"] == "dynamic_library" or \
-                config.general["configuration_type"] == "application":
+        et.SubElement(link_lib, "AdditionalOptions").text = ' '.join(cfg.linker.options)
+        et.SubElement(link_lib, "AdditionalDependencies").text = ';'.join(cfg.linker.libraries) + \
+                                                                 ";%(AdditionalDependencies)"
 
-            linker = et.SubElement( item_def_group, "Link" )
+        if cfg.linker.output_file:
+            if cfg.general.configuration_type == "dynamic_library":
+                et.SubElement(link_lib, "OutputFile").text = cfg.linker.output_file + project.macros["$_BIN_EXT"]
+            elif cfg.general.configuration_type == "static_library":
+                et.SubElement(link_lib, "OutputFile").text = cfg.linker.output_file + project.macros["$_STATICLIB_EXT"]
+            elif cfg.general.configuration_type == "application":
+                et.SubElement(link_lib, "OutputFile").text = cfg.linker.output_file + project.macros["$_APP_EXT"]
 
-            additional_options = et.SubElement(linker, "AdditionalOptions")
-            additional_options.text = ' '.join(config.linker["options"])
+        if cfg.linker.debug_file:
+            et.SubElement(link_lib, "ProgramDatabaseFile").text = cfg.linker.debug_file + ".pdb"
 
-            # ugh
-            additional_dependencies = et.SubElement(linker, "AdditionalDependencies")
-            libraries = project.libraries[config.config_name][config.platform_name]
-            additional_dependencies.text = ';'.join(libraries) + ";%(AdditionalDependencies)"
+        if cfg.linker.import_library:
+            et.SubElement(link_lib, "ImportLibrary").text = cfg.linker.import_library + project.macros["$_IMPLIB_EXT"]
 
-            additional_lib_directories = et.SubElement(linker, "AdditionalLibraryDirectories")
-            additional_lib_directories.text = ';'.join(config.linker["library_directories"]) + \
-                                              ";%(AdditionalLibraryDirectories)"
+        # what does "IgnoreAllDefaultLibraries" do differently than this? is it a boolean? idk
+        et.SubElement(link_lib, "IgnoreSpecificDefaultLibraries").text = ';'.join(cfg.linker.ignore_libraries) + \
+                                                                         ";%(IgnoreSpecificDefaultLibraries)"
 
-            link_options = {
-                "$Linker": [
-                    "AdditionalOptions",
-                    "AdditionalDependencies",
-                    "ShowProgress",
-                    "OutputFile",
-                    "SuppressStartupBanner",
-                    "AdditionalLibraryDirectories",
-                    "IgnoreSpecificDefaultLibraries",
-                    "GenerateDebugInformation",
-                    "ProgramDatabaseFile",
-                    "GenerateMapFile",
-                    "MapFileName",
-                    "SubSystem",
-                    "OptimizeReferences",
-                    "EnableCOMDATFolding",
-                    "BaseAddress",
-                    "ImportLibrary",
-                    "TargetMachine",
-                    "LinkErrorReporting",
-                    "RandomizedBaseAddress",
-                    "ImageHasSafeExceptionHandlers",
-                ],
-            }
-
-            print()
-
-            # AddOptionListToElement( link_options, linker, config )
-
-        elif config.general["configuration_type"] == "static_library":
-
-            # ------------------------------------------------------------------
-            # librarian - Lib
-
-            librarian = et.SubElement( item_def_group, "Lib" )
-
-            lib_options = {
-                "$Librarian": [
-                    "UseUnicodeResponseFiles",
-                    "AdditionalDependencies",
-                    "OutputFile",
-                    "SuppressStartupBanner",
-                    "AdditionalOptions",
-                    "IgnoreAllDefaultLibraries",
-                ],
-            }
-
-            AddOptionListToElement( lib_options, librarian, config )
+        # TODO: convert options in the linker.options list to options here
+        #  remove any option name from this list once you convert that option
+        # "ShowProgress"
+        # "SuppressStartupBanner"
+        # "GenerateDebugInformation"
+        # "GenerateMapFile"
+        # "MapFileName"
+        # "SubSystem"
+        # "OptimizeReferences"
+        # "EnableCOMDATFolding"
+        # "BaseAddress"
+        # "TargetMachine"
+        # "LinkErrorReporting"
+        # "RandomizedBaseAddress"
+        # "ImageHasSafeExceptionHandlers"
 
         # ------------------------------------------------------------------
         # ManifestTool - Manifest
-
         # manifest = et.SubElement( item_def_group, "Manifest" )
         # option = et.SubElement( manifest, "SuppressStartupBanner" )
         # option.text = GetConfigOptionValue( config, "SuppressStartupBanner", "$ManifestTool" )
 
         # ------------------------------------------------------------------
         # XMLDocumentGenerator - Xdcmake
-
         # xdcmake = et.SubElement( item_def_group, "Xdcmake" )
         # option = et.SubElement( xdcmake, "SuppressStartupBanner" )
         # option.text = GetConfigOptionValue( config, "SuppressStartupBanner", "$XMLDocumentGenerator" )
 
         # ------------------------------------------------------------------
         # BrowseInformation - Bscmake
-
         # bscmake = et.SubElement( item_def_group, "Bscmake" )
-
         # browse_info_options = {
         #     "$BrowseInformation" : [
         #         "SuppressStartupBanner",
@@ -506,14 +438,9 @@ def SetupItemDefinitionGroups( vcxproj, project ):
 
         post_build = et.SubElement( item_def_group, "PostBuildEvent" )
 
-        command = et.SubElement(post_build, "Command")
-        command.text = ' '.join(config.post_build["command_line"])
-
-        # message = et.SubElement(post_build, "Message")
-        # message.text = config.post_build["message"]
-
-        use_in_build = et.SubElement(post_build, "PostBuildEventUseInBuild")
-        use_in_build.text = config.post_build["use_in_build"]
+        et.SubElement(post_build, "Command").text = ' '.join(cfg.post_build.command_line)
+        # et.SubElement(post_build, "Message").text = cfg.post_build.message
+        et.SubElement(post_build, "PostBuildEventUseInBuild").text = cfg.post_build.use_in_build
 
         # ------------------------------------------------------------------
         # CustomBuildStep
@@ -522,179 +449,178 @@ def SetupItemDefinitionGroups( vcxproj, project ):
     return
 
 
-def AddOptionListToElement( option_dict, element, config, replace_new_lines=False ):
-    for option_group, option_list in option_dict.items():
-        for option_name in option_list:
-            option_value = GetConfigOptionValue( config, option_name, option_group )
-            if option_value != None:
-                option = et.SubElement( element, option_name )
+# TODO: this creates an empty element if we add a source file with no options in it
+def AddCompilerOptions( element, compiler, general=None ):
+    compiler_elem = et.SubElement(element, "ClCompile")
+    added_option = False
 
-                if option_value == "True" or option_value == "False":
-                    option_value = str(option_value).lower()
+    if compiler.preprocessor_definitions:
+        added_option = True
+        preprocessor_definitions = et.SubElement(compiler_elem, "PreprocessorDefinitions")
+        preprocessor_definitions.text = ';'.join(compiler.preprocessor_definitions) + \
+                                        ";%(PreprocessorDefinitions)"
 
-                if replace_new_lines:
-                    option_value = option_value.replace( "\\n", "\n" )
+    if general:
+        if general.language:
+            compile_as = et.SubElement(compiler_elem, "CompileAs")
+            if general.language == "c":
+                compile_as.text = "CompileAsC"
+            elif general.language == "cpp":
+                compile_as.text = "CompileAsCpp"
 
-                option.text = option_value
+    if compiler.options:
+        added_option = True
+        warnings_list = []
+
+        for index, option in enumerate(compiler.options):
+            if option.startswith("/ignore:"):
+                warnings_list.append(option[8:])
+                compiler.options[index] = ''  # can't remove it in this for loop
+
+        if warnings_list:
+            disable_warnings = et.SubElement(compiler_elem, "DisableSpecificWarnings")
+            disable_warnings.text = ';'.join(warnings_list)
+
+        # now add any unchanged options
+        et.SubElement(compiler_elem, "AdditionalOptions").text = ' '.join(compiler.options)
+
+    # TODO: convert options in the compiler.options list to options here
+    #  remove any option name from this list once you convert that option
+    # "Optimization"
+    # "InlineFunctionExpansion"
+    # "IntrinsicFunctions"
+    # "FavorSizeOrSpeed"
+    # "PreprocessorDefinitions"
+    # "StringPooling"
+    # "MinimalRebuild"
+    # "ExceptionHandling"
+    # "BasicRuntimeChecks"
+    # "RuntimeLibrary"
+    # "BufferSecurityCheck"
+    # "FunctionLevelLinking"
+    # "EnableEnhancedInstructionSet"
+    # "FloatingPointModel"
+    # "TreatWChar_tAsBuiltInType"
+    # "ForceConformanceInForLoopScope"
+    # "RuntimeTypeInfo"
+    # "OpenMPSupport"
+    # "PrecompiledHeader"
+    # "PrecompiledHeaderFile"
+    # "PrecompiledHeaderOutputFile"
+    # "ExpandAttributedSource"
+    # "AssemblerOutput"
+    # "AssemblerListingLocation"
+    # "ObjectFileName"
+    # "ProgramDataBaseFileName"
+    # "GenerateXMLDocumentationFiles"
+    # "BrowseInformation"
+    # "WarningLevel"
+    # "TreatWarningAsError"
+    # "DebugInformationFormat"
+    # "UseFullPaths"
+    # "MultiProcessorCompilation"
+    # "BrowseInformationFile"
+    # "ErrorReporting"
+
+    if not added_option:
+        element.remove(compiler_elem)
     return
 
 
-def CreateFileItemGroups(file_type, file_list, item_group, source_file=False, project=None):
-
-    for file in file_list:
-
-        elem_file = et.SubElement(item_group, file_type)
-        elem_file.set("Include", file.path)
-
-        if source_file:
-            if project:
-                # file specific settings, idk if we can have more here
-                for config in project.configs:
-                    if config.platform_name.lower() == "win64":
-                        platform = "x64"
-                    else:
-                        platform = config.platform_name
-
-                    condition = "'$(Configuration)|$(Platform)'=='" + config.config_name + "|" + platform + "'"
-
-                    # empty
-                    if not file.compiler:
-                        break
-
-                    if file.compiler["options"]:
-                        additional_options = et.SubElement(elem_file, "AdditionalOptions")
-                        additional_options.set("Condition", condition)
-                        additional_options.text = ' '.join(file.compiler["options"])
-
-                    if file.compiler["preprocessor_definitions"]:
-                        preprocessor_definitions = et.SubElement(elem_file, "PreprocessorDefinitions")
-                        preprocessor_definitions.set("Condition", condition)
-                        preprocessor_definitions.text = ';'.join(file.compiler["preprocessor_definitions"])
-
-                    if file.compiler["include_directories"]:
-                        include_directories = et.SubElement(elem_file, "AdditionalIncludeDirectories")
-                        include_directories.set("Condition", condition)
-                        include_directories.text = ';'.join(file.compiler["include_directories"])
-
-                    # "PrecompiledHeader",
-                    # "PrecompiledHeaderFile",
-                    # "PrecompiledHeaderOutputFile",
-                    # "ExceptionHandling",
+def CreateSourceFileItemGroup(file_list, parent_elem, condition):
+    if file_list:
+        item_group = et.SubElement(parent_elem, "ItemGroup")
+        item_group.set( "Condition", condition )
+        for file_path, values in file_list.items():
+            elem_file = et.SubElement(item_group, "ClCompile")
+            elem_file.set("Include", file_path)
+            AddCompilerOptions(elem_file, values.compiler)
 
 
-# TODO: maybe move this to the project class?
-def GetProjectFiles( project_files, valid_exts=[], invalid_exts=[] ):
+def CreateFileItemGroups(file_type, file_dict, parent_elem, condition):
+    if file_dict:
+        item_group = et.SubElement(parent_elem, "ItemGroup")
+        item_group.set( "Condition", condition )
+        for file_path in file_dict:
+            elem_file = et.SubElement(item_group, file_type)
+            elem_file.set("Include", file_path)
+
+
+# TODO: maybe move this to the project class and rename to GetFilesByExt?
+def GetProjectFiles( project_files, valid_exts=None, invalid_exts=None ):
+
+    if not valid_exts:
+        valid_exts = ()
+    if not invalid_exts:
+        invalid_exts = ()
 
     # now get only add any file that has any of the valid file extensions and none of the invalid ones
-
-    wanted_files = []
-    unwanted_files = []
-    for file_obj in project_files:
-        if file_obj not in wanted_files:
-            # what if this file doesn't have a file extension?
-            file_ext = file_obj.path.rsplit( ".", 1 )[1]
-            # if file_ext in valid_exts and file_ext not in invalid_exts:
-
+    wanted_files = {}
+    unwanted_files = {}
+    for file_path, folder_tuple in project_files.items():
+        if file_path not in wanted_files:
+            file_ext = os.path.splitext(file_path)[1]
             if file_ext not in invalid_exts:
-                if valid_exts and file_ext not in valid_exts:
-                    unwanted_files.append( file_obj )
+                if file_ext not in valid_exts:
+                    unwanted_files[file_path] = folder_tuple
                 else:
-                    wanted_files.append( file_obj )
+                    wanted_files[file_path] = folder_tuple
 
     return wanted_files, unwanted_files
 
 
-def CreateVCXProjFilters( project, vcxproj, include_list, res_list, none_list ):
+def CreateVCXProjFilters(project_list, vcxproj, include_list, res_list, none_list):
 
     proj_filters = et.Element( "Project" ) 
     proj_filters.set( "ToolsVersion", "4.0" )
     proj_filters.set( "xmlns", "http://schemas.microsoft.com/developer/msbuild/2003" )
 
-    Create_FolderFilters( proj_filters, project )
+    Create_FolderFilters(proj_filters, project_list)
 
     # Create_ItemGroupFiltersLibrary( proj_filters, vcxproj )
-    
-    # these functions here are slow, oof
-    # all_files = GetProjectFiles( project.files, [ "cpp", "c", "cxx" ] )
-    Create_ItemGroupFilters( proj_filters, vcxproj, project.source_files, "ClCompile" )
 
-    # all_files = GetProjectFiles( project.files, [ "h", "hpp", "hxx" ] )
-    Create_ItemGroupFilters( proj_filters, vcxproj, include_list, "ClInclude" )
-
-    # all_files = GetProjectFiles( project.files, [ "rc" ] )
-    Create_ItemGroupFilters( proj_filters, vcxproj, res_list, "ResourceCompile" )
-
-    # all_files = GetProjectFiles( project.files, invalid_exts = [ "cpp", "c", "cxx", "h", "hpp", "hxx", "lib", "rc" ] )
-    Create_ItemGroupFilters( proj_filters, vcxproj, none_list, "None" )
+    for project in project_list.projects:
+        # these functions here are slow, oof
+        Create_SourceFileItemGroupFilters( proj_filters, project.source_files, "ClCompile")
+    Create_ItemGroupFilters( proj_filters, include_list, "ClInclude" )
+    Create_ItemGroupFilters( proj_filters, res_list, "ResourceCompile" )
+    Create_ItemGroupFilters( proj_filters, none_list, "None" )
 
     return proj_filters
 
 
-def Create_FolderFilters( proj_filters, project ):
+def Create_FolderFilters(proj_filters, project_list):
+    folder_list = project_list.GetAllFileFolderPaths()
+    if folder_list:
+        item_group = et.SubElement( proj_filters, "ItemGroup" )
+        for folder in folder_list:
+            elem_folder = et.SubElement( item_group, "Filter" )
+            elem_folder.set( "Include", folder )
+            unique_identifier = et.SubElement( elem_folder, "UniqueIdentifier" )
+            unique_identifier.text = MakeUUID()
+    return
 
-    # project.GetFileObjectsInFolder( folder_list )
-    # project.GetFileObject( file_path )
 
-    folder_list = project.GetAllFileFolderPaths()
-
-    # default folder for libraries
-    # if "Link Libraries" not in folder_list:
-    #     folder_list.append( "Link Libraries" )
-
-    item_group = et.SubElement( proj_filters, "ItemGroup" )
-
-    for folder in folder_list:
-        elem_folder = et.SubElement( item_group, "Filter" )
-        elem_folder.set( "Include", folder )
-        unique_identifier = et.SubElement( elem_folder, "UniqueIdentifier" )
-        unique_identifier.text = MakeUUID()
+def Create_SourceFileItemGroupFilters(proj_filters, files_dict, filter_name):
+    item_group = et.SubElement(proj_filters, "ItemGroup")
+    for file_path, source_file in files_dict.items():
+        elem_file = et.SubElement(item_group, filter_name)
+        elem_file.set("Include", file_path)
+        if source_file.folder:
+            folder = et.SubElement(elem_file, "Filter")
+            folder.text = source_file.folder
 
     return
 
 
-def Create_ItemGroupFiltersLibrary( proj_filters, vcxproj ):
-
-    item_groups = vcxproj.findall( "ItemGroup" )
-
-    all_items = []
-    for item in item_groups:
-        if not all_items:
-            all_items = item.findall( "Library" )
-        else:
-            break
-        
+def Create_ItemGroupFilters( proj_filters, files_dict, filter_name ):
     item_group = et.SubElement( proj_filters, "ItemGroup" )
-
-    for item in all_items:
-        elem_file = et.SubElement( item_group, "Library" )
-        elem_file.set( "Include", item.attrib[ "Include" ] )
-        folder = et.SubElement( elem_file, "Filter" )
-        folder.text = "Link Libraries"
-
-
-def Create_ItemGroupFilters( proj_filters, vcxproj, files_list, filter_name ):
-
-    item_groups = vcxproj.findall( "ItemGroup" )
-
-    # all_items = []
-    # for item in item_groups:
-    #     if not all_items:
-    #         all_items = item.findall( filter_name )
-    #     else:
-    #         break
-        
-    item_group = et.SubElement( proj_filters, "ItemGroup" )
-
-    # unchecked_files = files_list
-
-    # this is a bit slow, not really sure if i can speed it up
-    # for item in all_items:
-    for file_obj in files_list:
+    for file_path, folder_path in files_dict.items():
         elem_file = et.SubElement( item_group, filter_name )
-        # unchecked_files.remove(file_obj)
-        elem_file.set( "Include", file_obj.path )
-        folder = et.SubElement( elem_file, "Filter" )
-        folder.text = file_obj.folder_path
+        elem_file.set( "Include", file_path )
+        if folder_path:
+            folder = et.SubElement( elem_file, "Filter" )
+            folder.text = folder_path
 
     return
 
@@ -702,9 +628,9 @@ def Create_ItemGroupFilters( proj_filters, vcxproj, files_list, filter_name ):
 # --------------------------------------------------------------------------------------------------
 
 
-def WriteProject( project, xml_file, filters = False ):
+def WriteProject(project_list, xml_file, filters=False):
 
-    file_path = project.macros[ "$PROJECT_DIR" ] + os.sep + project.file_name.rsplit( ".", 1 )[0] + ".vcxproj"
+    file_path = project_list.macros["$PROJECT_DIR"] + os.sep + os.path.splitext(project_list.file_name)[0] + ".vcxproj"
 
     if filters:
         file_path += ".filters"
@@ -714,9 +640,7 @@ def WriteProject( project, xml_file, filters = False ):
 
 
 def AddFormattingToXML( elem ):
-    raw_string = et.tostring(elem, 'utf-8')
-    reparsed = minidom.parseString( raw_string )
-    return reparsed.toprettyxml(indent="  ")
+    return minidom.parseString( et.tostring(elem, 'utf-8') ).toprettyxml(indent="  ")
 
 
 # --------------------------------------------------------------------------------------------------
@@ -764,26 +688,11 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name, configuratio
 
                 SLN_WriteProjectLine( solution_file, project_name, vcxproj_path, cpp_uuid, project_uuid )
 
+                # TODO: add dependencies to the project class and then use that here
+                #  and have a GetDependencies() function for if the hash check passes
                 # write any project dependencies
-
-                project_uuid_deps = GetProjectDependencies( root_folder, script_path )
-
-                SLN_WriteSection(solution_file, "ProjectDependencies", project_uuid_deps, True, True)
-
-                # Get all the libraries in the vcxproj file
-                # open EVERY ITEM IN THE PATH LIST and check if there is the output path is the in the libs list?
-                # then check for the same file (no ext) in the project_path_list?
-
-                # or you could just have this output another file, like .pyqpc_deps (dependencies)
-                # and then just read that and input it here
-                # except, how are you going to know the project path of the files?
-
-                # you might just have to check the projects you are currently using i guess
-
-                # tree = et.parse( os.path.join( root_folder, vcxproj_path + ".vcxproj.filters" ) )
-                # vcxproj_filters = tree.getroot()
-
-                # vcxproj_uuid = GetDependencyUUID( vcxproj_filters )
+                # project_uuid_deps = GetProjectDependencies( root_folder, script_path )
+                # SLN_WriteSection(solution_file, "ProjectDependencies", project_uuid_deps, True, True)
 
                 solution_file.write( "EndProject\n" )
 
@@ -864,13 +773,11 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name, configuratio
 
 
 def WriteTopOfSolution( solution_file ):
-
     solution_file.write( "Microsoft Visual Studio Solution File, Format Version 12.00\n" )
 
     # solution_file.write( "# Visual Studio Version 16\n" )
-    solution_file.write( "# Visual Studio Version 16\n#\n" )
-    solution_file.write( "# Automatically generated solution:\n" )
-    solution_file.write( "# " + ' '.join( sys.argv ) + "\n#\n" )
+    solution_file.write( "# Automatically generated solution by Quiver Project Creator\n" )
+    solution_file.write( "# Command Line: " + ' '.join( sys.argv[1:] ) + "\n#\n" )
 
     solution_file.write( "VisualStudioVersion = 16.0.28917.181\n" )
     solution_file.write( "MinimumVisualStudioVersion = 10.0.40219.1\n" )
