@@ -103,7 +103,7 @@ class Project:
 
     # Gets every single folder in the project, splitting each one as well
     # this function is awful
-    def GetAllFileFolderPaths( self ):
+    def GetAllEditorFolderPaths(self):
         folder_paths = set()
         # TODO: is there a better way to do this?
         [folder_paths.add(path) for path in self.files.values()]
@@ -113,6 +113,26 @@ class Project:
         # split every single folder because visual studio bad
         for folder_path in folder_paths:
             current_path = list(PurePath(folder_path).parts)
+            if not current_path:
+                continue
+            folder_list = [current_path[0]]
+            del current_path[0]
+            for folder in current_path:
+                folder_list.append( folder_list[-1] + os.sep + folder )
+            full_folder_paths.update(folder_list)
+
+        return tuple(full_folder_paths)
+
+    def GetAllFolderPaths(self):
+        folder_paths = set()
+        # TODO: is there a better way to do this?
+        [folder_paths.add(path) for path in self.files]
+        [folder_paths.add(sf) for sf in tuple([*self.source_files])]
+
+        full_folder_paths = set()
+        # split every single folder because visual studio bad
+        for folder_path in folder_paths:
+            current_path = list(PurePath(os.path.split(folder_path)[0]).parts)
             if not current_path:
                 continue
             folder_list = [current_path[0]]
@@ -193,9 +213,6 @@ class Project:
                     file_block.Warning("Trying to remove a file that hasn't been added yet")
 
 
-# TODO: add shared source_files and files values here
-#  if the file condition doesn't contain config and platform, add it to shared files,
-#  actually, bring back the first single pass for files just so we can do that
 class ProjectList:
     def __init__(self, name, path, base_macros):
         self.file_name = name  # the actual file name
@@ -231,10 +248,16 @@ class ProjectList:
                     return file_obj
         return False
 
-    def GetAllFileFolderPaths( self ):
+    def GetAllEditorFolderPaths(self):
         folder_paths = set()
         for project in self.projects:
-            folder_paths.update(project.GetAllFileFolderPaths())
+            folder_paths.update(project.GetAllEditorFolderPaths())
+        return tuple(folder_paths)
+
+    def GetAllFolderPaths(self):
+        folder_paths = set()
+        for project in self.projects:
+            folder_paths.update(project.GetAllFolderPaths())
         return tuple(folder_paths)
 
 

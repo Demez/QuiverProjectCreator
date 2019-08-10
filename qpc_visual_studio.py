@@ -592,7 +592,7 @@ def CreateVCXProjFilters(project_list, vcxproj, include_list, res_list, none_lis
 
 
 def Create_FolderFilters(proj_filters, project_list):
-    folder_list = project_list.GetAllFileFolderPaths()
+    folder_list = project_list.GetAllEditorFolderPaths()
     if folder_list:
         item_group = et.SubElement( proj_filters, "ItemGroup" )
         for folder in folder_list:
