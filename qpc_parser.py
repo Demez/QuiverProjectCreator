@@ -124,24 +124,9 @@ class Project:
         return tuple(full_folder_paths)
 
     def GetAllFolderPaths(self):
-        folder_paths = set()
-        # TODO: is there a better way to do this?
-        [folder_paths.add(path) for path in self.files]
-        [folder_paths.add(sf) for sf in tuple([*self.source_files])]
-
-        full_folder_paths = set()
-        # split every single folder because visual studio bad
-        for folder_path in folder_paths:
-            current_path = list(PurePath(os.path.split(folder_path)[0]).parts)
-            if not current_path:
-                continue
-            folder_list = [current_path[0]]
-            del current_path[0]
-            for folder in current_path:
-                folder_list.append( folder_list[-1] + os.sep + folder )
-            full_folder_paths.update(folder_list)
-
-        return tuple(full_folder_paths)
+        folder_paths = set( GetAllPaths(self.files) )
+        folder_paths.update( GetAllPaths(tuple([*self.source_files])) )
+        return tuple(folder_paths)
 
     # TODO: update this for the newer version
     def GetFileObjectsInFolder( self, folder_list ):
@@ -311,6 +296,22 @@ class PostBuild:
     def __init__( self ):
         self.command_line = []
         self.use_in_build = ''
+
+
+def GetAllPaths( path_list ):
+    full_folder_paths = set()
+
+    for folder_path in set(path_list):
+        current_path = list(PurePath(os.path.split(folder_path)[0]).parts)
+        if not current_path:
+            continue
+        folder_list = [current_path[0]]
+        del current_path[0]
+        for folder in current_path:
+            folder_list.append( folder_list[-1] + os.sep + folder )
+        full_folder_paths.update(folder_list)
+
+    return tuple(full_folder_paths)
 
 
 def SolveCondition(condition, macros):
