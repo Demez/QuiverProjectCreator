@@ -19,6 +19,7 @@ def FindItemsWithStartingChar( search_list, item ):
         return None
 
 
+# TODO: update with try and except
 def FindItem( value_list, item, return_value=False ):
     if item in value_list:
         if return_value:
@@ -29,6 +30,7 @@ def FindItem( value_list, item, return_value=False ):
         return False
 
 
+# TODO: update with try and except
 def FindItemValue( value_list, item, return_value=False ):
     if item in value_list:
         if return_value:
@@ -73,4 +75,12 @@ def GetAllDictValues( d ):
 def CreateDirectory(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
+
+
+def MakePathAbsolute( path, root_dir ):
+    if os.path.isabs(path):
+        path = os.path.normpath( path )
+    else:
+        path = os.path.normpath( root_dir + os.sep + path )
+    return path
 
