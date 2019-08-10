@@ -81,13 +81,15 @@ def CreateProject(project_list):
     # vcxproject = CreateVCXProj( project )
     vcxproject, include_list, res_list, none_list = CreateVCXProj(project_list)
 
-    # this is a little slow, maybe due to disk write speed?
+    # this is a little slow due to AddFormattingToXML()
     WriteProject(project_list, vcxproject)
 
     # would this be too much printing for the normal output? idk
     print( "Creating: " + project_list.file_name + ".vcxproj.filters")
     vcxproject_filters = CreateVCXProjFilters(project_list, vcxproject, include_list, res_list, none_list)
     WriteProject(project_list, vcxproject_filters, True)
+
+    RevertPlatformNameChanges(project_list)
 
     return
 
