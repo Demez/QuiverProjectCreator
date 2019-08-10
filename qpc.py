@@ -1,23 +1,6 @@
 # ---------------------------------------------------------------------
-# Purpose: Be a pretty much exact copy of Valve Project Creator
-#   except i strongly doubt i will even come close to finishing lol
-# 
+# Quiver Project Creator
 # Written by Demez
-# 
-# Days worked on:
-#   07/02/2019
-#   07/03/2019
-#   07/04/2019
-#   07/05/2019
-#   07/06/2019
-#   07/07/2019
-#   07/08/2019
-#   07/09/2019 - finished parsing vgc files with ReadFile() (it can also read keyvalues)
-#   07/10/2019
-#   07/11/2019
-#   07/12/2019
-#   07/13/2019
-#   07/14/2019
 # ---------------------------------------------------------------------
 
 import os
@@ -149,16 +132,9 @@ def SetupCMDMacros( cmdline_conditionals ):
         cmdline_conditionals.remove("rootdir")
 
     for conditional in cmdline_conditionals:
-
         if conditional in cmd_options:
             cmd_options[conditional] = True
-
-        elif conditional in project_types:
-            project_types[conditional] = True
-            # should i even bother forcing it to be uppercase?
-            base_macros["$" + conditional.upper()] = "1"
-
-        else:
+        elif not project_types.SetProjectType( conditional ):
             unknown_macros.append(conditional.upper())
 
 
@@ -189,6 +165,36 @@ def GetPlatforms():
         return [ "macos" ]
 
 
+class ProjectTypes:
+    def __init__(self):
+        self.vstudio = False
+        self.vscode = False
+        self.vpc_convert = False
+        self.makefile = False
+
+    def SetProjectType(self, name):
+        if name in ("vstudio", "vs2019"):
+            self.vstudio = True
+            base_macros[ "$VSTUDIO" ] = "1"
+            if name == "vs2019":
+                base_macros[ "$VS2019" ] = "1"
+            return True
+
+        if name == "vscode":
+            self.vscode = True
+            return True
+
+        if name == "vpc_convert":
+            self.vpc_convert = True
+            return True
+
+        if name == "makefile":
+            self.makefile = True
+            return True
+
+        return False
+
+
 if __name__ == "__main__":
     
     print( "----------------------------------------------------------------------------------" )
@@ -211,15 +217,7 @@ if __name__ == "__main__":
         "?",
     ]
 
-    project_types = {
-        "vstudio": False,
-        "vs2019": False,
-
-        "vpc_convert": False,
-
-        # "vscode": False,
-        # "make": False,
-    }
+    project_types = ProjectTypes()
 
     unknown_macros = []
 
@@ -232,7 +230,7 @@ if __name__ == "__main__":
     base_file_path = SetRootDirAndBaseFile( base.FindCommand("/rootdir", True), base.FindCommand("/basefile", True) )
     SetupCMDMacros( base.FindCommandValues("/") )
 
-    if project_types[ "vpc_convert" ]:
+    if project_types.vpc_convert:
         VPCConvert()
 
     if cmd_options[ "verbose" ]:
