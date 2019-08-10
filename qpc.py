@@ -142,7 +142,7 @@ def GetAllProjects():
     return project_def_list
 
 
-def SetupCMDMacros():
+def SetupCMDMacros( cmdline_conditionals ):
     if "basefile" in cmdline_conditionals:
         cmdline_conditionals.remove("basefile")
     if "rootdir" in cmdline_conditionals:
@@ -226,28 +226,24 @@ if __name__ == "__main__":
     all_groups = {}
     all_projects = []
 
-    base_macros = SetupBaseDefines()
-
     # TODO: replace all this FindCommand() stuff with argparse, this here is really bad
 
+    base_macros = SetupBaseDefines()
     base_file_path = SetRootDirAndBaseFile( base.FindCommand("/rootdir", True), base.FindCommand("/basefile", True) )
-
-    cmdline_conditionals = base.FindCommandValues("/")
-
-    if cmdline_conditionals:
-        SetupCMDMacros()
+    SetupCMDMacros( base.FindCommandValues("/") )
 
     if project_types[ "vpc_convert" ]:
         VPCConvert()
-    else:
-        if cmd_options[ "verbose" ]:
-            print( "Reading: " + base_file_path )
 
-        base_file = reader.ReadFile(base_file_path)
+    if cmd_options[ "verbose" ]:
+        print( "Reading: " + base_file_path )
 
-        configurations = parser.ParseBaseFile(
-            base_file, base_macros, unknown_macros, all_projects, all_groups)
+    base_file = reader.ReadFile(base_file_path)
 
+    configurations = parser.ParseBaseFile(
+        base_file, base_macros, unknown_macros, all_projects, all_groups)
+
+    # just in case if it was changed
     base_macros[ "$ROOTDIR" ] = os.path.normpath( base_macros[ "$ROOTDIR" ] )
     
     # TODO: check the cmd options if help was set
