@@ -1,4 +1,4 @@
-# PyQuiverProjectCreator
+# Quiver Project Creator
 Recreation of Valve's VPC (Valve Project Creator) in Python 3.7
 
 ## Command Line usage:
@@ -15,13 +15,15 @@ Recreation of Valve's VPC (Valve Project Creator) in Python 3.7
 
 `/showlegacyoptions` Show any Configuration options using the legacy key
 
-`/name` Enable a conditional to use in projects, which are defined in the $CommandLineConditionals Block
+`/name` Enable a conditional to use in projects, which are defined in the cmd_conditionals Block
 
-`/mksln "solution name"` Create a solution file to build all projects with
+`/masterfile "solution name"` Create a master file to build all projects with (ex. visual studio solution file)
 
 ### Project Types Supported:
 
 All of these will set a conditional to use in project scripts by the option name
 
 `/vstudio` - Create Visual Studio Projects
+
+`/vs2019` - Create Visual Studio Projects
 
