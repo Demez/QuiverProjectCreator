@@ -950,13 +950,19 @@ command_convert_dict = {
     "No (/WX-)": "/WX-",
     "Yes (/WX)": "/WX",  # TODO: check if this is correct
 
-    "Yes (/NOLOGO)": "/NOLOGO",
-
     "No (/INCREMENTAL:NO)": "/INCREMENTAL:NO",
 
+    "Yes (/NOLOGO)": "/NOLOGO",
     "Yes (/Gy)": "/Gy",
-
     "Yes (/GF)": "/GF",
+    "Yes (/Gm)": "/Gm",
+    "Yes (/GR)": "/GR",
+    "Yes (/Oi)": "/Oi",
+    "Yes (/MAP)": "/MAP",
+    "Yes (/Wp64)": "/Wp64",
+
+    "Yes (/Zc:forScope)": "/Zc:forScope",
+    "Yes (/Zc:wchar_t)": "/Zc:wchar_t",
 
     "Yes (/DEBUG)": "/DEBUG",
 
@@ -1088,6 +1094,7 @@ command_convert_dict = {
     "Remove Redundant COMDATs (/OPT:ICF)": "/OPT:ICF",
     "Yes (/OPT:ICF)": "/OPT:ICF",
 
+    "Use Link Time Code Generation": "/ltcg",
     "Use Link Time Code Generation (/ltcg)": "/ltcg",
     "Profile Guided Optimization - Instrument (/ltcg:pginstrument)": "/ltcg:pginstrument",
     "Profile Guided Optimization - Optimize (/ltcg:pgoptimize)": "/ltcg:pgoptimize",

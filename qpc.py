@@ -54,7 +54,7 @@ def VPCConvert():
     print("\nConverting VPC Scripts to QPC Scripts")
 
     print("Finding All VPC and VGC Scripts")
-    vgc_path_list, vpc_path_list = vpc_converter.GetAllVPCScripts(base_macros["$ROOTDIR"])
+    vgc_path_list, vpc_path_list = vpc_converter.GetAllVPCScripts( args.root_dir )
 
     if vgc_path_list:
         print("\nConverting VGC Scripts")
@@ -101,7 +101,7 @@ def GetAllProjects():
             if added_item in all_groups:
                 if added_item not in args.remove:
 
-                    # TODO: move to a function
+                    # TODO: move to another function
                     for project in all_groups[added_item].projects:
                         if project.name not in unwanted_projects:
                             for added_project in project_def_list:
@@ -205,8 +205,9 @@ if __name__ == "__main__":
 
                 project_dir, project_name = os.path.split(project_path)
 
-                # change to the project directory
-                os.chdir( project_dir )
+                # change to the project directory if needed
+                if project_dir:
+                    os.chdir( project_dir )
 
                 # TODO: maybe make this multi-threaded?
                 #  would speed it up a bit now that you're reading it multiple times
@@ -223,8 +224,9 @@ if __name__ == "__main__":
                 del project_list
                 print( "" )
 
-                # change back to the root_dir
-                os.chdir( args.root_dir )
+                # change back to the root_dir if needed:
+                if project_dir:
+                    os.chdir( args.root_dir )
 
             else:
                 # TODO: make a function called "GetProjectDependencies", and use that here
