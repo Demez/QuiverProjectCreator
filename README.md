@@ -3,27 +3,39 @@ Recreation of Valve's VPC (Valve Project Creator) in Python 3.7
 
 ## Command Line usage:
 
-`+name` Add a group or a project
+`/rootdir` or `/dir` - Change the current working directory of the script
 
-`-name` Remove a group or a project
+`/basefile` - Set the path to the base script to use
 
-`/f` Force Regenerate All Projects
+`/force` or `/f` - Force Regenerate All Projects
 
-`/verbose` Enable verbose console output
+`/verbose` or `/v` - Enable verbose console output
 
-`/hidewarnings` Hide console output of any mistakes found in the project scripts
+`/hidewarnings` or `/hide` - Suppress all warnings
 
-`/showlegacyoptions` Show any Configuration options using the legacy key
+`/masterfile` or `/master` - `"solution name"` - Create a master file to build all projects with (ex. visual studio solution file)
 
-`/name` Enable a conditional to use in projects, which are defined in the cmd_conditionals Block
+### Adding and removing projects:
 
-`/masterfile "solution name"` Create a master file to build all projects with (ex. visual studio solution file)
+`/add` - `[projects or groups]` - Add groups or projects
+
+`/remove` or `/rm` - `[projects or groups]` Remove groups or projects
+
+### Setting Macros in the command line:
+
+`/macros` - `[names]` Set macros with these names to 1 to use in projects
 
 ### Project Types Supported:
 
+Setting a project type is done with adding any valid project type name into the input list here
+
+`/types [types]`
+
 All of these will set a conditional to use in project scripts by the option name
 
-`/vstudio` - Create Visual Studio Projects
+Valid project Types:
 
-`/vs2019` - Create Visual Studio Projects
+`vstudio` - Create Visual Studio Projects
+
+`vpc_convert` - Convert all vpc scripts in the root directory to qpc scrtipts
 
