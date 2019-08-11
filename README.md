@@ -34,7 +34,7 @@ Setting a project type is done with adding any valid project type name into the 
 
 `/types [types]`
 
-All of these will set a conditional to use in project scripts by the option name
+All of these will set a macro to "1" to use in project scripts by the option name
 
 Valid project Types:
 
