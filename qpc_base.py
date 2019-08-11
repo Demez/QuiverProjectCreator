@@ -1,6 +1,7 @@
 
 import sys
 import os
+import argparse
 
 
 def FindItemsWithStartingChar( search_list, item ):
@@ -41,14 +42,6 @@ def FindItemValue( value_list, item, return_value=False ):
         return False
 
 
-def FindCommand( arg, return_value=False ):
-    return FindItemValue( sys.argv, arg, return_value )
-
-
-def FindCommandValues( arg ):
-    return FindItemsWithStartingChar( sys.argv, arg )
-
-
 def CreateNewDictValue( dictionary, key, value_type ):
     try:
         dictionary[ key ]
@@ -77,10 +70,50 @@ def CreateDirectory(directory):
         os.makedirs(directory)
 
 
-def MakePathAbsolute( path, root_dir ):
-    if os.path.isabs(path):
-        path = os.path.normpath( path )
-    else:
-        path = os.path.normpath( root_dir + os.sep + path )
-    return path
+# this is here so i can check arguments globally across files
+def ParseArgs():
+    valid_project_types = ("vstudio", "vscode", "makefile", "vpc_convert")
+
+    cmd_parser = argparse.ArgumentParser(prefix_chars="/")
+
+    # maybe change to path? meh
+    cmd_parser.add_argument('/rootdir', '/dir', default=os.getcwd(), dest="root_dir",
+                            help='Set the root directory of the script')
+    cmd_parser.add_argument('/basefile', default=os.getcwd() + "/_qpc_scripts/_default.qpc_base",
+                            dest="base_file", help='Set the root directory of the script')
+
+    cmd_parser.add_argument('/verbose', '/v', action='store_true', help='Enable verbose console output')
+    cmd_parser.add_argument('/force', '/f', action='store_true', help='Force recreate all projects')
+    cmd_parser.add_argument('/hidewarnings', '/hide', dest="hide_warnings", action='store_true',
+                            help="Suppress all warnings")
+    cmd_parser.add_argument('/checkfiles', '/check', dest="check_files", action='store_true',
+                            help="Check if any file that's added actually exists (DOESN'T WORK ATM)")
+
+    cmd_parser.add_argument('/types', nargs="+", choices=valid_project_types, help='Project types to generate')
+    cmd_parser.add_argument('/add', nargs="+", help='Add a project or group to generate')
+    cmd_parser.add_argument('/remove', "/rm", nargs="+", help='Remove a project or group from generating')
+    cmd_parser.add_argument('/macros', nargs="+", dest="macros", help='Macros to define and set to "1" in projects')
+
+    # TODO: figure out how vpc handles these and recreate it here
+    #  might come waaay later since it's very low priority
+    # cmd_parser.add_argument('/add_tree', nargs="+", help='Add a project and all projects that depend on it')
+    # cmd_parser.add_argument('/add_depend', nargs="+", help='Add a project and all projects that it depends on')
+    # Use /h spew final target build set only (no .vcproj created). - what?
+
+    cmd_parser.add_argument('/masterfile', '/master', dest="master_file",
+                            help='Create a master file for building all projects with')
+
+    return cmd_parser
+
+
+# global var
+arg_parser = ParseArgs()
+args = arg_parser.parse_args()
+
+if os.path.isabs(args.root_dir):
+    args.root_dir = os.path.normpath(args.root_dir)
+else:
+    args.root_dir = os.path.normpath(os.getcwd() + os.sep + args.root_dir)
+
+
 

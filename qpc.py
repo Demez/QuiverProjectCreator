@@ -5,44 +5,48 @@
 
 import os
 import sys
+from time import perf_counter
 
-import qpc_base as base
+from qpc_base import args
 import qpc_reader as reader
 import qpc_parser as parser
 import qpc_writer as writer
 
 
-def SetupBaseDefines():
-    macros = {
-        "$ROOTDIR": os.path.dirname(os.path.realpath(__file__)),
-    }
-
+def GetBaseMacros():
     # OS Specific Defines
     if sys.platform == "win32":
-        macros.update( {
+        return {
             "$WINDOWS": "1",
             "$_BIN_EXT": ".dll",
             "$_STATICLIB_EXT": ".lib",
             "$_IMPLIB_EXT": ".lib",
             "$_APP_EXT": ".exe",
-            # what does sym mean?
-            # "$_SYM_EXT": ".pdb",
-        } )
+            # "$_DBG_EXT": ".pdb",
+        }
 
-    # fix this, these are pretty much for linux only
-    elif sys.platform.startswith('linux'):
-        macros.update( {
+    elif sys.platform.startswith("linux"):
+        return {
             "$POSIX": "1",
             "$LINUX": "1",
             "$_BIN_EXT": ".so",
             "$_STATICLIB_EXT": ".a",
             "$_IMPLIB_EXT": ".so",
             "$_APP_EXT": "",
-            # what does sym mean?
-            # "$_SYM_EXT": ".dbg",
-        } )
+            # "$_DBG_EXT": ".dbg",
+        }
 
-    return macros
+    # TODO: finish setting up MacOS stuff here
+    elif sys.platform == "darwin":
+        return {
+            "$POSIX": "1",
+            "$MACOS": "1",
+            "$_BIN_EXT": ".so",
+            "$_STATICLIB_EXT": ".a",
+            "$_IMPLIB_EXT": ".so",
+            "$_APP_EXT": "",
+            # "$_DBG_EXT": ".dbg",
+        }
 
 
 def VPCConvert():
@@ -79,7 +83,7 @@ def GetAllProjects():
     project_def_list = []
 
     unwanted_projects = {}
-    for removed_item in rm_proj_and_grps:
+    for removed_item in args.remove:
         if removed_item in all_groups:
             for project in all_groups[removed_item].projects:
                 if project.name not in unwanted_projects:
@@ -92,10 +96,10 @@ def GetAllProjects():
                     break
 
     # TODO: clean up this mess
-    if add_proj_and_grps:
-        for added_item in add_proj_and_grps:
+    if args.add:
+        for added_item in args.add:
             if added_item in all_groups:
-                if added_item not in rm_proj_and_grps:
+                if added_item not in args.remove:
 
                     # TODO: move to a function
                     for project in all_groups[added_item].projects:
@@ -108,7 +112,7 @@ def GetAllProjects():
                                 continue
 
             else:
-                if added_item not in rm_proj_and_grps:
+                if added_item not in args.remove:
                     for project in all_projects:
                         if added_item == project.name:
                             for added_project in project_def_list:
@@ -120,38 +124,9 @@ def GetAllProjects():
                 # else:
                 # print("hey this item doesn't exist: " + added_item)
     else:
-        print("add some projects or groups ffs")
+        raise Exception("No projects were added to generate for")
 
     return project_def_list
-
-
-def SetupCMDMacros( cmdline_conditionals ):
-    if "basefile" in cmdline_conditionals:
-        cmdline_conditionals.remove("basefile")
-    if "rootdir" in cmdline_conditionals:
-        cmdline_conditionals.remove("rootdir")
-
-    for conditional in cmdline_conditionals:
-        if conditional in cmd_options:
-            cmd_options[conditional] = True
-        elif not project_types.SetProjectType( conditional ):
-            unknown_macros.append(conditional.upper())
-
-
-def SetRootDirAndBaseFile( _root_dir, _base_file_path ):
-    if _root_dir:
-        base_macros["$ROOTDIR"] = base.MakePathAbsolute( _root_dir, base_macros["$ROOTDIR"] )
-
-    if _base_file_path:
-        abs_base_file_path = base.MakePathAbsolute( _base_file_path, base_macros["$ROOTDIR"] )
-    elif _root_dir:
-        print( "Setting Base File to default: /_qpc_scripts/_default.qpc_base" )
-        abs_base_file_path = os.path.normpath( base_macros["$ROOTDIR"] + "/_qpc_scripts/_default.qpc_base" )
-    else:
-        raise Exception( "Base File path not defined.\n" +
-                         "\tUse /basefile \"Path\" on the command line, relative to the script location." )
-
-    return abs_base_file_path
 
 
 def GetPlatforms():
@@ -165,101 +140,45 @@ def GetPlatforms():
         return [ "macos" ]
 
 
-class ProjectTypes:
-    def __init__(self):
-        self.vstudio = False
-        self.vscode = False
-        self.vpc_convert = False
-        self.makefile = False
-
-    def SetProjectType(self, name):
-        if name in ("vstudio", "vs2019"):
-            self.vstudio = True
-            base_macros[ "$VSTUDIO" ] = "1"
-            if name == "vs2019":
-                base_macros[ "$VS2019" ] = "1"
-            return True
-
-        if name == "vscode":
-            self.vscode = True
-            return True
-
-        if name == "vpc_convert":
-            self.vpc_convert = True
-            return True
-
-        if name == "makefile":
-            self.makefile = True
-            return True
-
-        return False
+def SetProjectTypeMacros(project_types_list):
+    for name in project_types_list:
+        base_macros["$" + name.upper()] = "1"
+        if args.verbose:
+            print('Set Macro: ${0} = "1"'.format(name.upper()))
 
 
 if __name__ == "__main__":
-    
-    print( "----------------------------------------------------------------------------------" )
-    print( " Quiver Project Creator\n " + ' '.join(sys.argv[1:]) )
-    print( "----------------------------------------------------------------------------------" )
 
-    # TODO: setup argparse and ditch base.FindCommand()
-    cmd_options = {
-        "verbose": False,
-        "showlegacyoptions": False,
-        "hidewarnings": False,
-        "mksln": False,
-        "checkfiles": False,
-    }
+    # TODO: maybe print more info here if verbose?
+    print( "----------------------------------------------------------------------------------\n" +
+           " Quiver Project Creator\n " + ' '.join(sys.argv[1:]) + "\n" +
+           "----------------------------------------------------------------------------------" )
 
-    # this does nothing currently
-    cmd_help = [
-        "help",
-        "h",
-        "?",
-    ]
+    base_macros = GetBaseMacros()
 
-    project_types = ProjectTypes()
+    if args.verbose:
+        print()
+        for macro_name, macro_value in base_macros.items():
+            print( 'Set Macro: {0} = "{1}"'.format(macro_name, macro_value) )
 
-    unknown_macros = []
+    SetProjectTypeMacros(args.types)
+
+    os.chdir(args.root_dir)
+
+    if "vpc_convert" in args.types:
+        VPCConvert()
+
+    if args.verbose:
+        print( "\nReading: " + args.base_file)
+
+    base_file = reader.ReadFile(args.base_file)
 
     all_groups = {}
     all_projects = []
+    configurations = parser.ParseBaseFile(base_file, base_macros, all_projects, all_groups)
 
-    # TODO: replace all this FindCommand() stuff with argparse, this here is really bad
-
-    base_macros = SetupBaseDefines()
-    base_file_path = SetRootDirAndBaseFile( base.FindCommand("/rootdir", True), base.FindCommand("/basefile", True) )
-    SetupCMDMacros( base.FindCommandValues("/") )
-
-    if project_types.vpc_convert:
-        VPCConvert()
-
-    if cmd_options[ "verbose" ]:
-        print( "Reading: " + base_file_path )
-
-    base_file = reader.ReadFile(base_file_path)
-
-    configurations = parser.ParseBaseFile(
-        base_file, base_macros, unknown_macros, all_projects, all_groups)
-
-    # just in case if it was changed
-    base_macros[ "$ROOTDIR" ] = os.path.normpath( base_macros[ "$ROOTDIR" ] )
-    
-    # TODO: check the cmd options if help was set
-
-    # setup any defines from the command line for what projects and/or groups we want
-    # AddedProjectsOrGroups
-    add_proj_and_grps = base.FindCommandValues("+")
-    # RemovedProjectsOrGroups
-    rm_proj_and_grps = base.FindCommandValues("-")
-
-    if not rm_proj_and_grps:
-        rm_proj_and_grps = []
-
-    # TODO: figure out how vpc handles these and recreate it here
-    # might come waaay later since it's very low priority
-    # FindCommandValues( "*" ) # add a project and all projects that depend on it.
-    # FindCommandValues( "@" ) # add a project and all projects that it depends on.
-    # Use /h spew final target build set only (no .vcproj created). - what?
+    if not args.remove:
+        args.remove = []
 
     # --------------------------------------------------------------------------------------
 
@@ -268,11 +187,14 @@ if __name__ == "__main__":
     print( "" )
     platforms = GetPlatforms()
 
+    if args.verbose:
+        start_time = perf_counter()
+
     for project_def in project_def_list:
         for project_path in project_def.script_list:
 
             # only run if the hash check fails or if the user force creates the projects
-            if base.FindCommand( "/f" ) or parser.HashCheck(base_macros["$ROOTDIR"], project_path):
+            if args.force or parser.HashCheck(project_path):
 
                 # OPTIMIZATION IDEA that i don't feel like setting up:
                 # every time you call ReadFile(), add the return onto some dictionary,
@@ -281,34 +203,41 @@ if __name__ == "__main__":
                 # and then just grab it from the last to parse again
                 # so you don't slow it down with re-reading it for no damn reason
 
-                project_list = parser.ParseProject(project_path, base_macros, configurations, platforms)
+                project_dir, project_name = os.path.split(project_path)
 
-                hash_file_path = os.path.join(base_macros["$ROOTDIR"], project_path) + "_hash"
-                with open(hash_file_path, mode="w", encoding="utf-8") as hash_file:
+                # change to the project directory
+                os.chdir( project_dir )
+
+                # TODO: maybe make this multi-threaded?
+                #  would speed it up a bit now that you're reading it multiple times
+                project_list = parser.ParseProject(project_dir, project_name, base_macros, configurations, platforms)
+
+                with open(project_name + "_hash", mode="w", encoding="utf-8") as hash_file:
                     parser.WriteHashList(hash_file, project_list.hash_dict)
 
-                if base.FindCommand( "/verbose" ):
+                if args.verbose:
                     print( "Parsed: " + project_list.macros["$PROJECT_NAME"] )
 
-                writer.CreateProject( project_list, project_types )
+                writer.CreateProject( project_list )
 
                 del project_list
                 print( "" )
 
+                # change back to the root_dir
+                os.chdir( args.root_dir )
+
             else:
                 # TODO: make a function called "GetProjectDependencies", and use that here
 
-                # TODO: fix this for if the project script is in the root dir
-                if os.sep in project_path:
-                    print( "Valid: " + project_path.rsplit(os.sep, 1)[1] + "_hash\n" )
-                else:
-                    print( "Valid: " + project_path + "_hash\n" )
+                print("Valid: " + project_path + "_hash\n")
 
-    if base.FindCommand( "/masterfile" ):
+    if args.verbose:
+        end_time = perf_counter()
+        print("Finished Parsing Projects - Time: " + str(end_time - start_time))
+
+    if args.master_file:
         # maybe use a hash check here?
-        writer.MakeMasterFile(project_types, project_def_list,
-                              base_macros["$ROOTDIR"], base.FindCommand("/masterfile", True),
-                              configurations, platforms)
+        writer.MakeMasterFile(project_def_list, args.master_file, configurations, platforms)
 
     # would be cool to add a timer here that would be running on another thread
     # if the cmd option "/benchmark" was specified, though that might be used as a conditional

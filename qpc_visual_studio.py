@@ -70,15 +70,9 @@ def ReturnConfigOption( value ):
         return value
 
 
-# sln keys:
-# https://www.codeproject.com/Reference/720512/List-of-Visual-Studio-Project-Type-GUIDs
-# C++ - {8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}
-
-
 def CreateProject(project_list):
 
     print( "Creating: " + project_list.file_name + ".vcxproj")
-    # vcxproject = CreateVCXProj( project )
     vcxproject, include_list, res_list, none_list = CreateVCXProj(project_list)
 
     # this is a little slow due to AddFormattingToXML()
@@ -366,30 +360,30 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
 
         # ------------------------------------------------------------------
         # linker - Link or Lib
-        if cfg.general.configuration_type in ("dynamic_library", "application"):
-            link_lib = et.SubElement( item_def_group, "Link" )
-        elif cfg.general.configuration_type == "static_library":
+        if cfg.general.configuration_type == "static_library":
             link_lib = et.SubElement( item_def_group, "Lib" )
         else:
-            raise Exception("how tf did you manage to get here with the wrong configuration type?")
+            link_lib = et.SubElement( item_def_group, "Link" )
 
         et.SubElement(link_lib, "AdditionalOptions").text = ' '.join(cfg.linker.options)
         et.SubElement(link_lib, "AdditionalDependencies").text = ';'.join(cfg.linker.libraries) + \
                                                                  ";%(AdditionalDependencies)"
 
         if cfg.linker.output_file:
+            output_file = os.path.splitext(cfg.linker.output_file)[0]
             if cfg.general.configuration_type == "dynamic_library":
-                et.SubElement(link_lib, "OutputFile").text = cfg.linker.output_file + project.macros["$_BIN_EXT"]
+                et.SubElement(link_lib, "OutputFile").text = output_file + project.macros["$_BIN_EXT"]
             elif cfg.general.configuration_type == "static_library":
-                et.SubElement(link_lib, "OutputFile").text = cfg.linker.output_file + project.macros["$_STATICLIB_EXT"]
+                et.SubElement(link_lib, "OutputFile").text = output_file + project.macros["$_STATICLIB_EXT"]
             elif cfg.general.configuration_type == "application":
-                et.SubElement(link_lib, "OutputFile").text = cfg.linker.output_file + project.macros["$_APP_EXT"]
+                et.SubElement(link_lib, "OutputFile").text = output_file + project.macros["$_APP_EXT"]
 
         if cfg.linker.debug_file:
-            et.SubElement(link_lib, "ProgramDatabaseFile").text = cfg.linker.debug_file + ".pdb"
+            et.SubElement(link_lib, "ProgramDatabaseFile").text = os.path.splitext(cfg.linker.debug_file)[0] + ".pdb"
 
         if cfg.linker.import_library:
-            et.SubElement(link_lib, "ImportLibrary").text = cfg.linker.import_library + project.macros["$_IMPLIB_EXT"]
+            et.SubElement(link_lib, "ImportLibrary").text = os.path.splitext(cfg.linker.import_library)[0] + \
+                                                            project.macros["$_IMPLIB_EXT"]
 
         # what does "IgnoreAllDefaultLibraries" do differently than this? is it a boolean? idk
         et.SubElement(link_lib, "IgnoreSpecificDefaultLibraries").text = ';'.join(cfg.linker.ignore_libraries) + \
@@ -559,14 +553,14 @@ def GetProjectFiles( project_files, valid_exts=None, invalid_exts=None ):
     # now get only add any file that has any of the valid file extensions and none of the invalid ones
     wanted_files = {}
     unwanted_files = {}
-    for file_path, folder_tuple in project_files.items():
+    for file_path, folder_path in project_files.items():
         if file_path not in wanted_files:
-            file_ext = os.path.splitext(file_path)[1]
+            file_ext = os.path.splitext(file_path)[1].casefold()
             if file_ext not in invalid_exts:
-                if file_ext not in valid_exts:
-                    unwanted_files[file_path] = folder_tuple
+                if valid_exts and file_ext not in valid_exts:
+                    unwanted_files[file_path] = folder_path
                 else:
-                    wanted_files[file_path] = folder_tuple
+                    wanted_files[file_path] = folder_path
 
     return wanted_files, unwanted_files
 
@@ -579,11 +573,10 @@ def CreateVCXProjFilters(project_list, vcxproj, include_list, res_list, none_lis
 
     Create_FolderFilters(proj_filters, project_list)
 
-    # Create_ItemGroupFiltersLibrary( proj_filters, vcxproj )
-
     for project in project_list.projects:
         # these functions here are slow, oof
         Create_SourceFileItemGroupFilters( proj_filters, project.source_files, "ClCompile")
+
     Create_ItemGroupFilters( proj_filters, include_list, "ClInclude" )
     Create_ItemGroupFilters( proj_filters, res_list, "ResourceCompile" )
     Create_ItemGroupFilters( proj_filters, none_list, "None" )
@@ -632,7 +625,7 @@ def Create_ItemGroupFilters( proj_filters, files_dict, filter_name ):
 
 def WriteProject(project_list, xml_file, filters=False):
 
-    file_path = project_list.macros["$PROJECT_DIR"] + os.sep + os.path.splitext(project_list.file_name)[0] + ".vcxproj"
+    file_path = os.path.splitext(project_list.file_name)[0] + ".vcxproj"
 
     if filters:
         file_path += ".filters"
@@ -647,21 +640,19 @@ def AddFormattingToXML( elem ):
 
 # --------------------------------------------------------------------------------------------------
 
+# sln keys:
+# https://www.codeproject.com/Reference/720512/List-of-Visual-Studio-Project-Type-GUIDs
 
-# this will need a ton of uuid's,
-# the Project Name, and the vcxproj path
-def MakeSolutionFile( project_def_list, root_folder, solution_name, configurations, platforms ):
+def MakeSolutionFile( project_def_list, solution_path, configurations, platforms ):
 
     cpp_uuid = "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}"
     filter_uuid = "{2150E333-8FDC-42A3-9474-1A3956D46DE8}"
 
-    solution_name += ".sln"
+    solution_path += ".sln"
 
-    print( "Creating Solution File: " + solution_name + "\n" )
+    print( "Creating Solution File: " + solution_path + "\n" )
 
-    solution_path = os.path.join( root_folder, solution_name )
-
-    with open( solution_path, "w", encoding = "utf-8" ) as solution_file:
+    with open( solution_path, "w", encoding="utf-8" ) as solution_file:
 
         WriteTopOfSolution( solution_file )
 
@@ -676,10 +667,9 @@ def MakeSolutionFile( project_def_list, root_folder, solution_name, configuratio
 
             for script_path in project_def.script_list:
 
-                vcxproj_path = script_path.rsplit(".", 1)[0] + ".vcxproj"
-                abs_vcxproj_path = os.path.normpath( root_folder + "/" + vcxproj_path )
+                vcxproj_path = os.path.splitext(script_path)[0] + ".vcxproj"
 
-                tree = et.parse( abs_vcxproj_path )
+                tree = et.parse( vcxproj_path )
                 vcxproj = tree.getroot()
 
                 project_name, project_uuid = GetNeededItemsFromProject(vcxproj)
@@ -797,24 +787,6 @@ def GetNeededItemsFromProject(vcxproj):
     # platforms = []
     item_groups = vcxproj.findall( xmlns + "ItemGroup" )
 
-    '''
-    for property_group in item_groups:
-        project_configurations = property_group.findall( xmlns + "ProjectConfiguration" )
-        if project_configurations:
-            break
-            
-    for project_configuration_elem in project_configurations:
-        configurations.extend(project_configuration_elem.findall( xmlns + "Configuration" ))
-        platforms_elems.extend(project_configuration_elem.findall( xmlns + "Platform" ))
-
-    for index, configuration_elem in enumerate(configurations):
-        if configuration_elem.text not in configurations:
-            configurations[index] = configuration_elem.text
-
-    for index, platform_elem in enumerate(platforms_elems):
-        if platform_elem.text not in platforms:
-            platforms.append(platform_elem.text)
-    '''
     property_groups = vcxproj.findall( xmlns + "PropertyGroup" )
 
     project_name = None
@@ -835,20 +807,17 @@ def GetNeededItemsFromProject(vcxproj):
             project_guid = project_guid.text
             break
 
-    return project_name, project_guid  #, configurations, platforms
+    return project_name, project_guid
 
 
 def SLN_WriteProjectLine( solution_file, project_name, vcxproj_path, cpp_uuid, vcxproj_uuid ):
-    solution_file.write( "Project(\"" + cpp_uuid + "\") = \"" + project_name + \
-                         "\", \"" + vcxproj_path + "\", \"" + vcxproj_uuid + "\"\n" )
+    solution_file.write(
+        'Project("{0}") = "{1}", "{2}", "{3}"\n'.format(cpp_uuid, project_name, vcxproj_path, vcxproj_uuid))
     return
 
 
-def SLN_WriteSection(solution_file, section_name, key_value_dict,
-                       is_post=False, is_project_section=False):
-
+def SLN_WriteSection(solution_file, section_name, key_value_dict, is_post=False, is_project_section=False):
     if key_value_dict:
-
         if is_project_section:
             section_type = "Project"
             section_type_prepost = "Project\n"
@@ -861,14 +830,15 @@ def SLN_WriteSection(solution_file, section_name, key_value_dict,
         else:
             solution_type = "pre" + section_type_prepost
 
-        solution_file.write( "\t" + section_type + "Section(" + section_name + ") = " + solution_type )
+        solution_file.write( "\t{0}Section({1}) = {2}".format(section_type, section_name, solution_type) )
 
         for key, value in key_value_dict.items():
-            solution_file.write("\t\t" + key + " = " + value + "\n")
+            solution_file.write("\t\t{0} = {1}\n".format(key, value))
 
-        solution_file.write( "\tEnd" + section_type + "Section\n" )
+        solution_file.write( "\tEnd{0}Section\n".format(section_type) )
 
 
+# unused, remove later
 # should change this to look every vcxproj file and
 # check if the output file in Lib fits what the project needs
 # first check if the config type is a StaticLibrary, then check OutputFile in Lib

@@ -6,19 +6,19 @@
 
 import os
 import hashlib
-import qpc_base as base
+from time import perf_counter
+
+from qpc_base import args
 import qpc_reader as reader
-from pathlib import PurePath
 
 
 class ProjectDefinition:
-    def __init__( self, project_name, folder_list=[] ):
+    def __init__( self, project_name, *folder_list ):
         self.name = project_name
         self.script_list = []
 
         # this is just so it stops changing this outside of the function
-        self.group_folder_list = []
-        self.group_folder_list.extend( folder_list )
+        self.group_folder_list = folder_list
 
     def AddScript(self, script_path):
         self.script_list.append(script_path)
@@ -33,7 +33,7 @@ class ProjectGroup:
         self.projects = []
 
     def AddProject(self, project_name, project_scripts, folder_list):
-        project_def = ProjectDefinition( project_name, folder_list)
+        project_def = ProjectDefinition( project_name, *folder_list)
         project_def.AddScriptList(project_scripts)
         self.projects.append( project_def )
 
@@ -112,8 +112,8 @@ class Project:
         full_folder_paths = set()
         # split every single folder because visual studio bad
         for folder_path in folder_paths:
-            current_path = list(PurePath(folder_path).parts)
-            if not current_path:
+            current_path = list(folder_path.split(os.sep))
+            if not current_path or not current_path[0]:
                 continue
             folder_list = [current_path[0]]
             del current_path[0]
@@ -205,19 +205,15 @@ class ProjectList:
         self.projects = []
         self.hash_dict = {}
         # shared across configs, used as a base for them
-        self.macros = { **base_macros, "$PROJECT_DIR": path, "$PROJECT_NAME": name }
+        self.macros = { **base_macros, "$PROJECT_NAME": name }
 
     def AddParsedProject(self, project):
         self.hash_dict.update({ **project.hash_list })
 
-        # update them in case they changed (i doubt the project_dir will change though)
-        self.macros.update({
-            "$PROJECT_DIR": project.macros["$PROJECT_DIR"],
-            "$PROJECT_NAME": project.macros["$PROJECT_NAME"],
-        })
+        # update the name in case it changed
+        self.macros.update({ "$PROJECT_NAME": project.macros["$PROJECT_NAME"] })
 
         del project.hash_list
-        del project.macros["$PROJECT_DIR"]
         del project.macros["$PROJECT_NAME"]
 
         self.projects.append(project)
@@ -302,7 +298,7 @@ def GetAllPaths( path_list ):
     full_folder_paths = set()
 
     for folder_path in set(path_list):
-        current_path = list(PurePath(os.path.split(folder_path)[0]).parts)
+        current_path = list(os.path.split(folder_path)[0].split(os.sep))
         if not current_path:
             continue
         folder_list = [current_path[0]]
@@ -314,6 +310,7 @@ def GetAllPaths( path_list ):
     return tuple(full_folder_paths)
 
 
+# TODO: could improve this, it doesn't work that well
 def SolveCondition(condition, macros):
     if not condition:
         return True
@@ -434,20 +431,12 @@ def SolveCondition(condition, macros):
     return False
 
 
-def ParseBaseFile(base_file, macros, unknown_macros, project_list, group_dict):
+def ParseBaseFile(base_file, macros, project_list, group_dict):
 
     configurations = []
     for project_block in base_file:
 
-        if project_block.key == "cmd_conditionals":
-
-            for sub_project_block in project_block.items:
-                if sub_project_block.key.upper() in unknown_macros:
-                    if SolveCondition(sub_project_block.condition, macros):
-                        macros[ "$" + sub_project_block.key ] = "1"
-                        del unknown_macros[ unknown_macros.index(sub_project_block.key.upper())]
-
-        elif project_block.key == "project":
+        if project_block.key == "project":
             project_def = ProjectDefinition(project_block.values[0])
 
             for item in project_block.items:
@@ -482,15 +471,15 @@ def ParseBaseFile(base_file, macros, unknown_macros, project_list, group_dict):
             # "Ah shit, here we go again."
             path = os.path.normpath(ReplaceMacros( project_block.values[0], macros ))
 
-            # maybe add a depth counter like in parsing projects?
-            if base.FindCommand( "/verbose" ):
+            if args.verbose:
                 print( "Reading: " + path )
 
-            if not os.path.isabs(path):
-                path = os.path.normpath(macros["$ROOTDIR"] + os.sep + path)
-
             include_file = reader.ReadFile( path )
-            ParseBaseFile(include_file, macros, unknown_macros, project_list, group_dict)
+
+            if args.verbose:
+                print( "Parsing... " )
+
+            ParseBaseFile(include_file, macros, project_list, group_dict)
 
         else:
             project_block.Warning("Unknown Key: ")
@@ -516,15 +505,14 @@ def ParseProjectGroupItems(project_group, project_list, project_block, macros, f
     return
 
 
-def ParseProjectFile(project_file, project, depth=0):
+def ParseProjectFile(project_file, project, indent):
     for project_block in project_file:
-
-        # check if the conditional result is true before checking the key
         if SolveCondition(project_block.condition, project.macros):
 
-            for value in project_block.values:
-                index = project_block.values.index( value )
-                project_block.values[ index ] = ReplaceMacros( value, project.macros )
+            project_block.values = ReplaceMacrosInList(project.macros, *project_block.values)
+            # for value in project_block.values:
+            #     index = project_block.values.index( value )
+            #     project_block.values[ index ] = ReplaceMacros( value, project.macros )
 
             if project_block.key == "macro":
                 project.AddMacro( project_block.values )
@@ -541,44 +529,33 @@ def ParseProjectFile(project_file, project, depth=0):
             elif project_block.key == "include":
                 # Ah shit, here we go again.
                 path = project_block.values[0]
-                include_file = IncludeFile(path, project, depth)
-                ParseProjectFile( include_file, project, depth )
-                PrintIncludeFileFinished(path, depth)
+                include_file = IncludeFile(path, project, indent+"    ")
+                ParseProjectFile( include_file, project, indent+"    " )
+                PrintIncludeFileFinished(path, indent+"    ")
 
             else:
                 project_block.Warning("Unknown key: ")
     return
 
 
-def IncludeFile(path, project, depth):
-    if base.FindCommand("/verbose"):
-        depth += 1
-        space = []
-        while len(space) < depth:
-            space.append("    ")
+def IncludeFile(path, project, indent):
+    # a bit too much
+    # if args.verbose:
+    #     print(indent + "    " + "Reading: " + path)
 
-        print(''.join(space) + "Reading: " + path)
+    project.hash_list[path] = MakeHash(path)
+    include_file = reader.ReadFile(path)
 
-    # full_path = os.path.join( project.macros[ "$PROJECT_DIR" ], path )
-    full_path = os.path.normpath(project.macros["$PROJECT_DIR"] + os.sep + path)
-
-    project.hash_list[path] = MakeHash(full_path)
-    include_file = reader.ReadFile(full_path)
-
-    if base.FindCommand("/verbose"):
-        print(''.join(space) + "Parsing: " + path)
+    if args.verbose:
+        print(indent + "Parsing: " + path)
 
     return include_file
 
 
-def PrintIncludeFileFinished(path, depth):
-    if base.FindCommand("/verbose"):
-        depth += 1
-        space = []
-        while len(space) < depth:
-            space.append("    ")
-        print(''.join(space) + "Parsed: " + path)
-        depth -= 1
+def PrintIncludeFileFinished(path, indent):
+    if args.verbose:
+        # print(indent + "Parsed: " + path)
+        print(indent + "Finished Parsing" )
 
 
 def ParseLibrariesBlock(libraries_block, project):
@@ -782,49 +759,51 @@ def ReplaceMacros( string, macros ):
     return string
 
 
-def ParseProject( project_script_path, base_macros, configurations, platforms ):
-    project_dir, project_filename = os.path.split(project_script_path)
+def ParseProject( project_dir, project_filename, base_macros, configurations, platforms ):
     project_name = os.path.splitext(project_filename)[0]
 
-    if not os.path.isabs(project_dir):
-        project_dir = os.path.normpath(base_macros["$ROOTDIR"] + "/" + project_dir)
-
-    project_script_path = os.path.normpath(project_dir + "/" + project_filename)
-
-    if base.FindCommand( "/verbose" ):
+    if args.verbose:
         print( "Reading: " + project_filename )
 
-    project_file = reader.ReadFile(project_script_path)
+    project_file = reader.ReadFile(project_filename)
 
     print( "Parsing: " + project_filename )
 
-    project_hash = MakeHash(project_script_path)
-    # project_list = []
+    project_hash = MakeHash(project_filename)
     project_list = ProjectList(project_name, project_dir, base_macros)
 
-    project_macros = { **base_macros, "$PROJECT_DIR": project_dir, "$PROJECT_NAME": project_name }
+    project_macros = { **base_macros, "$PROJECT_NAME": project_name }
 
+    if args.verbose:
+        start_time = perf_counter()
+
+    # you might have to loop through all project types you want to make, aaaa
+    project_pass = 0
     for config in configurations:
         for platform in platforms:
+
+            project_pass += 1
+            if args.verbose:
+                print( "Pass {0}: {1} - {2}".format(
+                    str(project_pass), config, platform) )
+
             project = Project(project_macros, config, platform)
             project.hash_list[project_filename] = project_hash
-            # AddConfigPlatform( project, project.macros )
-            ParseProjectFile(project_file, project, 0)
+            ParseProjectFile(project_file, project, "")
             project_list.AddParsedProject(project)
+
+    if args.verbose:
+        end_time = perf_counter()
+        print( "Finished Parsing Project - Time: " + str(end_time - start_time) )
+
     return project_list
 
 
 # TODO: maybe move to a file called "qpc_hash.py",
 #  so you can run this from vstudio or something to check hash only?
-def HashCheck( root_dir, project_path ):
-    project_hash_file_path = os.path.join( root_dir, project_path + "_hash" )
-
-    if os.sep in project_path:
-        project_path = project_path.rsplit( os.sep, 1 )[0]
-    else:
-        project_path = ''
-
-    project_dir = os.path.normpath( root_dir + project_path ) + os.sep
+def HashCheck( project_path ):
+    project_hash_file_path = os.path.join( project_path + "_hash" )
+    project_dir = os.path.split(project_path)[0]
 
     # open the hash file if it exists,
     # run MakeHash on every file there

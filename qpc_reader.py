@@ -5,14 +5,12 @@
 # it would probably slow it down as well
 
 import os
-import hashlib
-import qpc_base as base
+from qpc_base import args
 
 
 # TODO: add file path for error reporting
 class ProjectBlock:
-    # def __init__( self, line_num, file_path, key, values=None, condition=None ):
-    def __init__( self, line_num, key, values=None, condition=None ):
+    def __init__( self, file_path, line_num, key, values=None, condition=None ):
         self.key = key
         if values:
             self.values = values
@@ -22,7 +20,10 @@ class ProjectBlock:
         self.items = []
 
         self.line_num = str(line_num)
-        # self.file_path = file_path
+
+        # split this by the root_dir and the file_path
+        relative_dir = ''.join( os.getcwd().split(args.root_dir) )
+        self.file_path = os.path.normpath(relative_dir + os.sep + file_path)
 
     def AddItem( self, item ):
         self.items.append( item )
@@ -39,39 +40,36 @@ class ProjectBlock:
         self.PrintInfo()
 
     def Warning(self, message):
-        print( "WARNING: " + message )
-        self.PrintInfo()
+        if not args.hide_warnings:
+            print( "WARNING: " + message )
+            self.PrintInfo()
 
     # def InvalidOption(self, valid_option_list):
     def InvalidOption(self, *valid_option_list):
-        print( "Error: Invalid Option" )
-        print( "\tValid Options:\n\t\t" + '\n\t\t'.join(valid_option_list) )
-        self.PrintInfo()
+        if not args.hide_warnings:
+            print( "Error: Invalid Option" )
+            print( "\tValid Options:\n\t\t" + '\n\t\t'.join(valid_option_list) )
+            self.PrintInfo()
 
     def PrintInfo( self ):
-        print(  "\tLine: " + self.line_num +
+        print(  "\tFile Path: " + self.file_path +
+                "\n\tLine: " + self.line_num +
                 "\n\tKey: " + self.key )
 
         if self.values:
-            # TODO: maybe if there is only one value, write it on the same line?
+            # if there is only one value, write it on the same line
             if len(self.values) == 1:
                 print("\tValues: " + self.values[0] )
             else:
                 print("\tValues:\n\t\t" + '\n\t\t'.join(self.values) )
 
-        # not really useful
-        # if self.condition:
-        #     print("\tCondition: " + self.condition)
 
-
-# maybe add a depth variable here as well? idk
 def ReadFile( path ):
     with open( path, mode="r", encoding="utf-8" ) as file:
         file = file.read().splitlines()
     file = RemoveCommentsAndFixLines( file, path )
     file = _FormatConfigBlocks( file )
-    file = CreateFileBlockObjects( file )
-
+    file = CreateFileBlockObjects( file, path )
     return file
 
 
@@ -113,19 +111,17 @@ def RemoveCommentsAndFixLines( config, file_path ):
         if in_quote:
             in_quote = False
 
-            # TODO: might be able to move this into a function in base, idk
-
             # remove the last quote
             new_line_quote_split = new_line.rsplit( '"', 1 )
-            quote_position_line = "{0}{1}".format(" " * len(new_line_quote_split[0]), "^")
 
-            # TODO: use argparse
-            if not base.FindCommand( "/hidewarnings" ):
+            if not args.hide_warnings:
                 # might be an escape quote
                 if new_line_quote_split[0][-1] == "\\":
                     print( "WARNING: tried to close quote with an escape character:" )
                 else:
                     print( "WARNING: quote does not close, removing last quote:" )
+
+                quote_position_line = "{0}{1}".format(" " * len(new_line_quote_split[0]), "^")
 
                 # report warning
                 print(  "\tFile Path: " + file_path +
@@ -135,11 +131,9 @@ def RemoveCommentsAndFixLines( config, file_path ):
 
             # might be an escape quote
             if new_line_quote_split[0][-1] == "\\":
-                print("WARNING: tried to close quote with an escape character:")
                 # just add another quote onto it to close it
                 new_line = '""'.join(new_line_quote_split)
             else:
-                print("WARNING: quote does not close, removing last quote:")
                 new_line = ''.join(new_line_quote_split)
 
         new_line = _RemoveQuotesAndSplitLine(new_line)
@@ -153,12 +147,6 @@ def RemoveCommentsAndFixLines( config, file_path ):
 
 # remove quotes in the string if there is any
 def _RemoveQuotesAndSplitLine( line ):
-
-    # add a gap in between these if they exist just in case
-    # so we can have no spaces in the actual file if we want
-    # line = line.replace( "{", " { ")
-    # line = line.replace( "}", " } ")
-
     line_split = []
     raw_line_split = line.split(" ")
 
@@ -199,7 +187,6 @@ def _RemoveQuotesAndSplitLine( line ):
 
 
 def JoinConditionLine(line_split):
-
     cond_line_len, cond_line = GetConditionLine(line_split)
 
     new_line_split = line_split
@@ -218,7 +205,6 @@ def JoinConditionLine(line_split):
 
 
 def GetConditionLine(line_split):
-
     found_cond = False
     cond_len = 0
 
@@ -242,7 +228,6 @@ def GetConditionLine(line_split):
 
 # Re-Formats the config, so no more blocks in one single line
 def _FormatConfigBlocks(script):
-
     new_config = {}
     # for line_num, split_line in enumerate(script):
     for line_num, split_line in script.items():
@@ -253,22 +238,19 @@ def _FormatConfigBlocks(script):
                 if "{" in item or "}" in item:
                     # what about if the length is over 2?
                     if new_split_line:
-                        # new_config.append( new_split_line )
                         new_config[line_num] = new_split_line
                     # TODO: this would override the existing line if the semicolon was put on the same line
                     new_config[line_num] = [item]
                     new_split_line = []
 
                 elif len(new_split_line) >= 2:
-                    # new_config.append( new_split_line )
                     new_config[line_num] = new_split_line
                     new_split_line = [item]
 
                 else:
                     new_split_line.append( item )
 
-            # new_config.append( new_split_line )
-
+        # aaaaaa
         elif len(new_config) > 1 and len(list(new_config.values())[-1]) > 1 and list(new_config.values())[-1][-1] == "\\":
             if split_line:
                 del list(new_config.values())[-1][-1]
@@ -276,25 +258,21 @@ def _FormatConfigBlocks(script):
             continue
 
         else:
-            # new_config.append( split_line )
-
             new_config[line_num] = split_line
 
     return new_config
 
 
 # Purpose: to clean up the project script to make parsing it easier
-def CreateFileBlockObjects( file ):
-
+def CreateFileBlockObjects( file, path ):
     cleaned_file = []
-
     line_num = 0
     while line_num < len( file ):
 
         line_num, block = GetFileBlockSplit( file, line_num )
 
         line_num = line_num - 1
-        block = CreateFileBlockObject( block )
+        block = CreateFileBlockObject( block, path )
         cleaned_file.append( block )
             
         line_num += 1
@@ -303,8 +281,7 @@ def CreateFileBlockObjects( file ):
     return cleaned_file
 
 
-def CreateFileBlockObject( block ):
-
+def CreateFileBlockObject( block, path ):
     value_list = []
     condition = None
 
@@ -318,8 +295,7 @@ def CreateFileBlockObject( block ):
             value_list.append( block_0[value_index] )
         value_index += 1
 
-    # key = ProjectBlock( block_0[0], value_list, condition )
-    key = ProjectBlock( list(block.keys())[0], block_0[0], value_list, condition )
+    key = ProjectBlock( path, list(block.keys())[0], block_0[0], value_list, condition )
 
     if len( block ) > 1:
 
@@ -335,7 +311,7 @@ def CreateFileBlockObject( block ):
 
                 if isinstance( sub_block, dict ):
                     block_line_num = line_num  # - 1
-                    sub_block = CreateFileBlockObject( sub_block )
+                    sub_block = CreateFileBlockObject( sub_block, path )
                     key.AddItem( sub_block )
                     continue
 
@@ -346,15 +322,10 @@ def CreateFileBlockObject( block ):
 
 # Returns a block into a list with each string split up starting from a line number
 def GetFileBlockSplit( file, line_number ):
-
     block_depth_num = 0
-
     block = { list(file.keys())[line_number]: list(file.values())[line_number] }
     if list(file.values())[line_number] == ['{']:
         block_depth_num = 1
-    # else:
-    # if file[ line_number ] != ["{"]:
-    #     return [ line_number, block ]
 
     line_number += 1
 
