@@ -90,8 +90,8 @@ def ParseArgs():
                             help="Check if any file that's added actually exists (DOESN'T WORK ATM)")
 
     cmd_parser.add_argument('/types', nargs="+", choices=valid_project_types, help='Project types to generate')
-    cmd_parser.add_argument('/add', nargs="+", help='Add a project or group to generate')
-    cmd_parser.add_argument('/remove', "/rm", nargs="+", help='Remove a project or group from generating')
+    cmd_parser.add_argument('/add', nargs="+", help='Add projects or groups to generate')
+    cmd_parser.add_argument('/remove', "/rm", nargs="+", help='Remove projects or groups from generating')
     cmd_parser.add_argument('/macros', nargs="+", dest="macros", help='Macros to define and set to "1" in projects')
 
     # TODO: figure out how vpc handles these and recreate it here
