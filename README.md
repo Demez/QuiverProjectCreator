@@ -1,5 +1,8 @@
 # Quiver Project Creator
-Recreation of Valve's VPC (Valve Project Creator) in Python 3.7
+
+Project Creator based off of Valve's VPC (Valve Project Creator) in Python 3.7
+
+Will support many project types to generate and many platforms
 
 ## Command Line usage:
 
