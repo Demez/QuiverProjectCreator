@@ -75,7 +75,6 @@ class Project:
             self.macros[ macro ] = ReplaceMacros( value, self.macros )
         
     def AddFile( self, folder_list, file_block ):
-        wtf = ( file_block.key, *file_block.values )
         for file_path in ( file_block.key, *file_block.values ):
             if os.path.splitext(file_path)[1] in (".cpp", ".c", ".cxx"):
                 if self.IsSourceFileAdded(file_path):
@@ -153,14 +152,14 @@ class Project:
         return self.files[file_path]
 
     def GetSourceFileFolder(self, file_path):
-        return self.GetSourceFileObject(file_path)[1]
+        return self.GetSourceFileObject(file_path).folder
 
-    def GetSourceFileOptions(self, file_path):
-        return self.GetSourceFileObject(file_path)[0]
+    def GetSourceFileCompiler(self, file_path):
+        return self.GetSourceFileObject(file_path).compiler
 
     def GetSourceFileObject(self, file_path):
         # TODO: setup try and except here
-        return self.files[file_path]
+        return self.source_files[file_path]
         # return False
 
     def AddLib(self, lib_block):
@@ -589,38 +588,51 @@ def ParseFilesBlock(files_block, project, folder_list):
                     block.key = ReplaceMacros( block.key, project.macros )
                     project.AddFile( folder_list, block )
 
-                    # if block.items:
-                    #     block.Warning("Source File Compiler options aren't setup yet")
+                    if block.items:
+                        for file_path in (block.key, *block.values):
+                            source_file = project.GetSourceFileObject(file_path)
+
+                            # TODO: set this to directly edit the configuration options
+                            #  remove need to write out configuration {}
+                            #  also this is messy
+
+                            for config_block in block.items:
+                                if SolveCondition(config_block.condition, project.macros):
+                                    for group_block in config_block.items:
+
+                                        if group_block.key != "compiler":
+                                            group_block.Error("Invalid Group, can only use compiler")
+                                            continue
+
+                                        if SolveCondition(group_block.condition, project.macros):
+                                            for option_block in group_block.items:
+                                                if SolveCondition(option_block.condition, project.macros):
+                                                    ParseCompilerOption(project, source_file.compiler, option_block)
 
 
-def ParseConfigBlock(project_block, project, file_obj=None):
+def ParseConfigBlock(project_block, project):
     if SolveCondition(project_block.condition, project.macros):
-
-        if file_obj:
-            print( "setup file_obj's" )
-            pass
-
         for group_block in project_block.items:
             if SolveCondition(group_block.condition, project.macros):
                 for option_block in group_block.items:
                     if SolveCondition(option_block.condition, project.macros):
-                        ParseConfigOption(project, group_block, option_block, file_obj)
+                        ParseConfigOption(project, group_block, option_block)
 
 
 # this could be so much better
-def ParseConfigOption(project, group_block, option_block, file_obj=None):
-    if file_obj:
-        config = file_obj.config
-    else:
-        config = project.config
-
+def ParseConfigOption(project, group_block, option_block):
+    config = project.config
     if group_block.key == "general":
         # single path options
-        if option_block.key in ("out_dir", "int_dir"):
+        if option_block.key in ("out_dir", "int_dir", "toolset_version"):
+            if not option_block.values:
+                return
             if option_block.key == "out_dir":
                 config.general.out_dir = os.path.normpath(ReplaceMacros(option_block.values[0], project.macros))
             elif option_block.key == "int_dir":
                 config.general.int_dir = os.path.normpath(ReplaceMacros(option_block.values[0], project.macros))
+            elif option_block.key == "toolset_version":
+                config.general.toolset_version = option_block.values[0]
 
         # multiple path options
         elif option_block.key in ("include_directories", "library_directories"):
@@ -647,24 +659,8 @@ def ParseConfigOption(project, group_block, option_block, file_obj=None):
                     option_block.InvalidOption( "c", "cpp" )
 
     elif group_block.key == "compiler":
-
-        if option_block.key in ("preprocessor_definitions", "options"):
-            for item in option_block.items:
-                if SolveCondition(item.condition, project.macros):
-                    if option_block.key == "preprocessor_definitions":
-                        config.compiler.preprocessor_definitions.extend([item.key, *item.values])
-                    elif option_block.key == "options":
-                        config.compiler.options.extend([item.key, *item.values])
-
-        elif option_block.key == "precompiled_header":
-            if option_block.values:
-                if option_block.values[0] in ("none", "create", "use"):
-                    config.compiler.precompiled_header = option_block.values[0]
-                else:
-                    option_block.InvalidOption("none", "create", "use")
-
-        elif option_block.key in ("precompiled_header_file", "precompiled_header_output_file"):
-            config.compiler.precompiled_header = ReplaceMacros(option_block.values[0], project.macros)
+        # TODO: maybe do the same for the rest? only moving this to it's own function for source files
+        ParseCompilerOption(project, config.compiler, option_block)
 
     elif group_block.key == "linker":
 
@@ -742,6 +738,28 @@ def ParseConfigOption(project, group_block, option_block, file_obj=None):
     return
 
 
+def ParseCompilerOption(project, compiler, option_block):
+    if option_block.key in ("preprocessor_definitions", "options"):
+        for item in option_block.items:
+            if SolveCondition(item.condition, project.macros):
+                if option_block.key == "preprocessor_definitions":
+                    compiler.preprocessor_definitions.extend([item.key, *item.values])
+                elif option_block.key == "options":
+                    compiler.options.extend([item.key, *item.values])
+
+    elif option_block.key == "precompiled_header":
+        if option_block.values:
+            if option_block.values[0] in ("none", "create", "use"):
+                compiler.precompiled_header = option_block.values[0]
+            else:
+                option_block.InvalidOption("none", "create", "use")
+
+    elif option_block.key in ("precompiled_header_file", "precompiled_header_output_file"):
+        compiler.precompiled_header = ReplaceMacros(option_block.values[0], project.macros)
+
+    return
+
+
 def ReplaceMacrosInList( macros, *value_list ):
     value_list = list(value_list)
     for index, item in enumerate(value_list):
@@ -749,6 +767,8 @@ def ReplaceMacrosInList( macros, *value_list ):
     return value_list
 
 
+# TODO: make sure it's the EXACT string, so maybe split the string up by all operators,
+#  and then check if each string equals the macro
 def ReplaceMacros( string, macros ):
     if "$" in string:
         # go through all the known macros and check if each one is in the value
@@ -814,7 +834,7 @@ def HashCheck( project_path ):
 
         for hash_line in hash_file:
             hash_line = hash_line.split(" ")
-            if os.path.isabs(hash_line[1]):
+            if os.path.isabs(hash_line[1]) or not project_dir:
                 project_file_path = os.path.normpath( hash_line[1] )
             else:
                 project_file_path = os.path.normpath( project_dir + os.sep + hash_line[1] )
@@ -831,10 +851,11 @@ def HashCheck( project_path ):
 
 # Source: https://bitbucket.org/prologic/tools/src/tip/md5sum
 def MakeHash(filename):
+    md5 = hashlib.md5()
     with open(filename, "rb") as f:
-        for chunk in iter(lambda: f.read(128 * hashlib.md5().block_size), b""):
-            hashlib.md5().update(chunk)
-    return hashlib.md5().hexdigest()
+        for chunk in iter(lambda: f.read(128 * md5.block_size), b""):
+            md5.update(chunk)
+    return md5.hexdigest()
 
 
 def WriteHashList(tmp_file, hash_list):
