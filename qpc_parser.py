@@ -770,21 +770,23 @@ def ReplaceMacrosInList( macros, *value_list ):
     return value_list
 
 
-# TODO: make sure it's the EXACT string, so maybe split the string up by all operators,
-#  and then check if each string equals the macro
 def ReplaceMacros( string, macros ):
     if "$" in string:
-        operator_list = ("(", ")", "||", "&&", ">=", "<=", "==", "!=", ">", "<")
-        pattern = "(" + '|'.join(map(re.escape, operator_list)) + ")"
-        split_string = re.split(pattern, string)
-
         for macro, macro_value in macros.items():
-            for index, item in enumerate(split_string):
-                if macro == item:
-                    split_string[index] = macro_value
-
-        return ''.join(split_string)
+            if macro in string:
+                string_split = string.split(macro)
+                string = str(macro_value).join(string_split)
     return string
+
+
+# used in solving conditions
+def ReplaceExactMacros( split_string, macros ):
+    for macro, macro_value in macros.items():
+        for index, item in enumerate(split_string):
+            if macro == item:
+                split_string[index] = macro_value
+
+    return split_string
 
 
 def ParseProject( project_dir, project_filename, base_macros, configurations, platforms ):
