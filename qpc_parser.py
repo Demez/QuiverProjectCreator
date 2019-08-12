@@ -6,6 +6,7 @@
 
 import os
 import hashlib
+import re
 from time import perf_counter
 
 from qpc_base import args
@@ -330,6 +331,8 @@ def SolveCondition(condition, macros):
         condition = condition[0] + condition[1].split(')')[1]
 
     condition = ReplaceMacros(condition, macros)
+
+    # control_operators = ["(", ")", "||", "&&"]
 
     operator_list = ["||", "&&", ">=", "<=", "==", "!=", ">", "<"]
 
@@ -771,11 +774,16 @@ def ReplaceMacrosInList( macros, *value_list ):
 #  and then check if each string equals the macro
 def ReplaceMacros( string, macros ):
     if "$" in string:
-        # go through all the known macros and check if each one is in the value
+        operator_list = ("(", ")", "||", "&&", ">=", "<=", "==", "!=", ">", "<")
+        pattern = "(" + '|'.join(map(re.escape, operator_list)) + ")"
+        split_string = re.split(pattern, string)
+
         for macro, macro_value in macros.items():
-            if macro in string:
-                string_split = string.split( macro )
-                string = str(macro_value).join( string_split )
+            for index, item in enumerate(split_string):
+                if macro == item:
+                    split_string[index] = macro_value
+
+        return ''.join(split_string)
     return string
 
 
