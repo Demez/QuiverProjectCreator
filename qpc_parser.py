@@ -402,12 +402,18 @@ def ParseBaseFile(base_file, macros, project_list, group_dict):
 
         if project_block.key == "project":
             project_def = ProjectDefinition(project_block.values[0])
+            
+            # could have values next to it as well now
+            for script_path in project_block.values[1:]:
+                script_path = ReplaceMacros(script_path, macros)
+                project_def.AddScript(script_path)
 
             for item in project_block.items:
                 if SolveCondition(item.condition, macros):
                     item.key = ReplaceMacros(item.key, macros)
                     project_def.AddScript(item.key)
                     # project_dict[ project_block.values[0] ].append( item.key )
+                    
             project_list.append(project_def)
 
         elif project_block.key == "group":
