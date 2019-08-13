@@ -315,128 +315,85 @@ def SolveCondition(condition, macros):
     if not condition:
         return True
 
-    sub_cond_values = []
-
     # split by "(" for any sub conditionals
-    # maybe do the same for anything with "!" in it?
-    if "(" in condition:
-        sub_cond_line = (condition.split('(')[1]).split(')')[0]
+    while "(" in condition:
+        sub_cond_line = (condition.split( '(' )[1]).split( ')' )[0]
+        sub_cond_value = SolveCondition( sub_cond_line, macros )
+        condition = condition.split('(', 1)[0] + str(sub_cond_value * 1) + condition.split(')', 1)[1]
 
-        sub_cond_values.append(SolveCondition(sub_cond_line, macros))
+    operators = re.compile( '(\\(|\\)|\\|\\||\\&\\&|>=|<=|==|!=|>|<)' )
+    split_string = operators.split( condition )
 
-        # convert the booleans to ints
-        sub_cond_values = [boolean * 1 for boolean in sub_cond_values]
+    condition = ReplaceMacrosCondition( split_string, macros )
+    
+    while len(condition) > 1:
+        condition = SolveSingleCondition(condition)
+    
+    return condition[0]
+        
+        
+def SolveSingleCondition( cond ):
+    index = 1
+    result = 0
+    # highest precedence order
+    if "<" in cond:
+        index = cond.index("<")
+        if cond[index-1] < cond[index+1]:
+            result = 1
 
-        condition = (condition.split('('))
-        condition = condition[0] + condition[1].split(')')[1]
+    elif "<=" in cond:
+        index = cond.index("<=")
+        if cond[index-1] <= cond[index+1]:
+            result = 1
 
-    condition = ReplaceMacros(condition, macros)
+    elif ">=" in cond:
+        index = cond.index(">=")
+        if cond[index-1] >= cond[index+1]:
+            result = 1
+    
+    elif ">" in cond:
+        index = cond.index(">")
+        if cond[index-1] > cond[index+1]:
+            result = 1
+        
+    # next in order of precedence, check equality
+    # you can compare stings with these 2
+    elif "==" in cond:
+        index = cond.index("==")
+        if str(cond[index-1]) == str(cond[index+1]):
+            result = 1
 
-    # control_operators = ["(", ")", "||", "&&"]
+    elif "!=" in cond:
+        index = cond.index("!=")
+        if str(cond[index-1]) != str(cond[index+1]):
+            result = 1
 
-    operator_list = ["||", "&&", ">=", "<=", "==", "!=", ">", "<"]
+    # and then, check for any &&'s
+    elif "&&" in cond:
+        index = cond.index("&&")
+        if int(cond[index-1]) > 0 and int(cond[index+1]) > 0:
+            result = 1
 
-    cond_list = []
-    cond_test = []
+    # and finally, check for any ||'s
+    elif "||" in cond:
+        index = cond.index("||")
+        if int(cond[index-1]) > 0 or int(cond[index+1]) > 0:
+            result = 1
 
-    if not cond_list:
-        for operator in operator_list:
-            if operator in condition:
-                cond_list.extend(condition.split(operator))
+    cond[index] = result
+    del cond[index+1]
+    del cond[index-1]
 
-                if operator == "||" or operator == "&&":
-                    cond_test.append(operator)
-                else:
-                    cond_test = operator
-                    break
-
-    if not cond_list:
-        cond_list.append(condition)
-
-    # are there any empty values here?
-    if '' in cond_list:
-        del cond_list[cond_list.index('')]
-
-    for cond in cond_list:
-        cond_index = cond_list.index(cond)
-        if cond.startswith("!"):
-            try:
-                cond_value = int(not cond[1:])
-            except ValueError:
-                if "$" in cond:
-                    cond_value = 1
-                else:
-                    # maybe raise an exception for trying to set a string to the opposite instead?
-                    cond_value = 0
-        else:
-            try:
-                cond_value = int(cond)
-            except ValueError:
-                if "$" in cond:
-                    cond_value = 0
-                else:
-                    cond_value = cond
-
-        cond_list[cond_index] = cond_value
-
-    [cond_list.insert(0, value) for value in sub_cond_values]
-
-    # must be a single condition
-    if not cond_test:
-        if not cond_value:
-            return False  # ?
-        elif type(cond_value) == int:
-            return bool(cond_value)
-        else:
-            return True
-
-    elif "||" in cond_test or "&&" in cond_test:
-        for test in cond_test:
-
-            # TODO: fix these for strings, though idk if you could even compare them here anyway
-            if test == "||":
-                # can't be below zero
-                if sum(cond_list) > 0:
-                    return True
-
-            elif test == "&&":
-                # all of them have to be true, so we can't have any False
-                if 0 not in cond_list:
-                    return True
-    else:
-        if cond_test == "==":
-            if cond_list[0] == cond_list[1]:
-                return True
-
-        elif cond_test == "!=":
-            if cond_list[0] != cond_list[1]:
-                return True
-
-        # TODO: test this
-        if type(cond_list[0]) == int and type(cond_list[1]) == int:
-            if cond_test == ">":
-                if cond_list[0] > cond_list[1]:
-                    return True
-
-            elif cond_test == ">=":
-                if cond_list[0] >= cond_list[1]:
-                    return True
-
-            elif cond_test == "<=":
-                if cond_list[0] <= cond_list[1]:
-                    return True
-
-            elif cond_test == "<":
-                if cond_list[0] < cond_list[1]:
-                    return True
-
-    return False
+    return cond
 
 
 def ParseBaseFile(base_file, macros, project_list, group_dict):
 
     configurations = []
     for project_block in base_file:
+        
+        if not SolveCondition(project_block.condition, macros):
+            continue
 
         if project_block.key == "project":
             project_def = ProjectDefinition(project_block.values[0])
@@ -779,12 +736,34 @@ def ReplaceMacros( string, macros ):
     return string
 
 
-# used in solving conditions
+# unused, idk if this will ever be useful either
 def ReplaceExactMacros( split_string, macros ):
     for macro, macro_value in macros.items():
         for index, item in enumerate(split_string):
             if macro == item:
                 split_string[index] = macro_value
+
+    return split_string
+
+
+# used in solving conditions
+def ReplaceMacrosCondition( split_string, macros ):
+    # for macro, macro_value in macros.items():
+    for index, item in enumerate(split_string):
+        if item in macros or item[1:] in macros:
+            if str(item).startswith("!"):
+                try:
+                    split_string[index] = str(int(not macros[item]))
+                except ValueError as error:
+                    raise ValueError("You can't use logical not on a string\n" + str(error))
+            else:
+                split_string[index] = macros[item]
+
+        elif item.startswith("$"):
+            split_string[index] = "0"
+
+        elif item.startswith("!$"):
+            split_string[index] = "1"
 
     return split_string
 
