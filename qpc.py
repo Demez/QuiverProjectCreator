@@ -194,7 +194,7 @@ if __name__ == "__main__":
         for project_path in project_def.script_list:
 
             # only run if the hash check fails or if the user force creates the projects
-            if args.force or parser.HashCheck(project_path):
+            if args.force or parser.HashCheck(project_path) or not writer.FindProject(project_path):
 
                 # OPTIMIZATION IDEA that i don't feel like setting up:
                 # every time you call ReadFile(), add the return onto some dictionary,
@@ -213,13 +213,13 @@ if __name__ == "__main__":
                 #  would speed it up a bit now that you're reading it multiple times
                 project_list = parser.ParseProject(project_dir, project_name, base_macros, configurations, platforms)
 
-                with open(project_name + "_hash", mode="w", encoding="utf-8") as hash_file:
-                    parser.WriteHashList(hash_file, project_list.hash_dict)
-
                 if args.verbose:
                     print( "Parsed: " + project_list.macros["$PROJECT_NAME"] )
 
                 writer.CreateProject( project_list )
+
+                with open(project_name + "_hash", mode="w", encoding="utf-8") as hash_file:
+                    parser.WriteHashList(hash_file, project_list.hash_dict)
 
                 del project_list
                 print( "" )
