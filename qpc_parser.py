@@ -310,12 +310,11 @@ def GetAllPaths( path_list ):
     return tuple(full_folder_paths)
 
 
-# TODO: could improve this, it doesn't work that well
 def SolveCondition(condition, macros):
     if not condition:
         return True
 
-    # split by "(" for any sub conditionals
+    # solve any sub conditionals first
     while "(" in condition:
         sub_cond_line = (condition.split( '(' )[1]).split( ')' )[0]
         sub_cond_value = SolveCondition( sub_cond_line, macros )
@@ -325,6 +324,12 @@ def SolveCondition(condition, macros):
     split_string = operators.split( condition )
 
     condition = ReplaceMacrosCondition( split_string, macros )
+
+    if len(condition) == 1:
+        try:
+            return int(condition[0])
+        except ValueError:
+            return 1
     
     while len(condition) > 1:
         condition = SolveSingleCondition(condition)
@@ -464,7 +469,7 @@ def ParseProjectGroupItems(project_group, project_list, project_block, macros, f
     return
 
 
-def ParseProjectFile(project_file, project, indent):
+def ParseProjectFile(project_file, project, path, indent):
     for project_block in project_file:
         if SolveCondition(project_block.condition, project.macros):
 
@@ -487,34 +492,33 @@ def ParseProjectFile(project_file, project, indent):
 
             elif project_block.key == "include":
                 # Ah shit, here we go again.
-                path = project_block.values[0]
-                include_file = IncludeFile(path, project, indent+"    ")
-                ParseProjectFile( include_file, project, indent+"    " )
-                PrintIncludeFileFinished(path, indent+"    ")
+                include_path = project_block.values[0]
+                include_file = IncludeFile(include_path, project, path, indent+"    ")
+                ParseProjectFile( include_file, project, include_path, indent+"    " )
+                if args.verbose:
+                    print(indent + "    " + "Finished Parsing")
 
             else:
                 project_block.Warning("Unknown key: ")
     return
 
 
-def IncludeFile(path, project, indent):
+def IncludeFile( include_path, project, path, indent ):
     # a bit too much
     # if args.verbose:
-    #     print(indent + "    " + "Reading: " + path)
+    #     print(indent + "    " + "Reading: " + include_path)
 
-    project.hash_list[path] = MakeHash(path)
-    include_file = reader.ReadFile(path)
+    project.hash_list[include_path] = MakeHash(include_path)
+    include_file = reader.ReadFile(include_path)
+    
+    if not include_file:
+        raise FileNotFoundError(
+            "File does not exist:\n\tScript: {0}\n\tFile: {1}".format(path, include_path) )
 
     if args.verbose:
-        print(indent + "Parsing: " + path)
+        print(indent + "Parsing: " + include_path)
 
     return include_file
-
-
-def PrintIncludeFileFinished(path, indent):
-    if args.verbose:
-        # print(indent + "Parsed: " + path)
-        print(indent + "Finished Parsing" )
 
 
 def ParseLibrariesBlock(libraries_block, project):
@@ -753,7 +757,7 @@ def ReplaceMacrosCondition( split_string, macros ):
         if item in macros or item[1:] in macros:
             if str(item).startswith("!"):
                 try:
-                    split_string[index] = str(int(not macros[item]))
+                    split_string[index] = str(int(not macros[item[1:]]))
                 except ValueError as error:
                     raise ValueError("You can't use logical not on a string\n" + str(error))
             else:
@@ -769,6 +773,7 @@ def ReplaceMacrosCondition( split_string, macros ):
 
 
 def ParseProject( project_dir, project_filename, base_macros, configurations, platforms ):
+    project_path = project_dir + os.sep + project_filename
     project_name = os.path.splitext(project_filename)[0]
 
     if args.verbose:
@@ -798,7 +803,7 @@ def ParseProject( project_dir, project_filename, base_macros, configurations, pl
 
             project = Project(project_macros, config, platform)
             project.hash_list[project_filename] = project_hash
-            ParseProjectFile(project_file, project, "")
+            ParseProjectFile(project_file, project, project_path, "")
             project_list.AddParsedProject(project)
 
     if args.verbose:
@@ -829,22 +834,27 @@ def HashCheck( project_path ):
                 project_file_path = os.path.normpath( project_dir + os.sep + hash_line[1] )
 
             if hash_line[0] != MakeHash( project_file_path ):
-                print( "Invalid: " + hash_line[1] + "_hash" )
+                if args.verbose:
+                    print( "Invalid: " + hash_line[1] )
                 return True
 
         return False
     else:
-        print( "Hash File does not exist" )
+        if args.verbose:
+            print( "Hash File does not exist" )
         return True
 
 
 # Source: https://bitbucket.org/prologic/tools/src/tip/md5sum
 def MakeHash(filename):
     md5 = hashlib.md5()
-    with open(filename, "rb") as f:
-        for chunk in iter(lambda: f.read(128 * md5.block_size), b""):
-            md5.update(chunk)
-    return md5.hexdigest()
+    try:
+        with open(filename, "rb") as f:
+            for chunk in iter(lambda: f.read(128 * md5.block_size), b""):
+                md5.update(chunk)
+        return md5.hexdigest()
+    except FileNotFoundError:
+        return ""
 
 
 def WriteHashList(tmp_file, hash_list):
