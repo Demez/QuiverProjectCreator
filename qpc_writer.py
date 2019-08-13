@@ -4,7 +4,7 @@ import os
 from qpc_base import args
 
 import qpc_visual_studio as vstudio
-import qpc_vscode as vscode
+# import qpc_vscode as vscode
 # import qpc_makefile as makefile
 
 
@@ -12,8 +12,8 @@ def CreateProject(project_list):
     if "vstudio" in args.types:
         vstudio.CreateProject(project_list)
 
-    if "vscode" in args.types:
-        vscode.CreateProject(project_list)
+    # if "vscode" in args.types:
+    #     vscode.CreateProject(project_list)
 
     if "makefile" in args.types:
         pass
