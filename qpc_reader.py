@@ -58,12 +58,15 @@ class ProjectBlock:
 
 
 def ReadFile( path ):
-    with open( path, mode="r", encoding="utf-8" ) as file:
-        file = file.read().splitlines()
-    file = ParseFileByEachChar(file)
-    file = FormatParsedFile( file )
-    file = CreateFileBlockObjects( file, path )
-    return file
+    try:
+        with open( path, mode="r", encoding="utf-8" ) as file:
+            file = file.read().splitlines()
+        file = ParseFileByEachChar(file)
+        file = FormatParsedFile( file )
+        file = CreateFileBlockObjects( file, path )
+        return file
+    except FileNotFoundError:
+        return None
     
 
 # this is the slowest function, but it's not that bad now
@@ -115,7 +118,15 @@ def ParseFileByEachChar( config ):
                 keep_from = chari + 1
                 while True:
                     chari += 1
-                    char = line[chari]
+                    try:
+                        char = line[chari]
+                    except IndexError:
+                        if line[chari - 3] == '\\' and line[chari - 2] in escape_chars:
+                            new_str += line[keep_from:chari - 2]
+                        else:
+                            new_str += line[keep_from:chari - 1]
+                        keep_from = chari - 1
+                        break
                     
                     if char == '\\' and next_char() in escape_chars:
                         chari += 2
