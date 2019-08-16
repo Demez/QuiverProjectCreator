@@ -18,9 +18,11 @@ def GenGnuCFlags( conf ):
     if len(conf.compiler.preprocessor_definitions) > 0:
         mk +=' -D ' + ' -D '.join(conf.compiler.preprocessor_definitions)
     if len(conf.linker.libraries):
-        mk +=' -l' + ' -l'.join(conf.linker.libraries)
-    if len(conf.general.library_directories):
+        mk +=' -l' + ' -l'.join(['.'.join(i.split('.')[:-1]) for i in conf.linker.libraries])
+    if len(conf.general.library_directories) > 0:
         mk += ' -L' + ' -L'.join(conf.general.library_directories)
+    if len(conf.general.include_directories) > 0:
+        mk += ' -I' + ' -I'.join(conf.general.include_directories)
     return mk
 
 # TODO: add a non-gnu flag option (/ instead of --, etc)
