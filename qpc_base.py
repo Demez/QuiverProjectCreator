@@ -82,6 +82,7 @@ def ParseArgs():
     cmd_parser.add_argument('/basefile', default=os.getcwd() + "/_qpc_scripts/_default.qpc_base",
                             dest="base_file", help='Set the root directory of the script')
 
+    cmd_parser.add_argument('/time', '/t', action='store_true', help='Print the time taken to parse')
     cmd_parser.add_argument('/verbose', '/v', action='store_true', help='Enable verbose console output')
     cmd_parser.add_argument('/force', '/f', action='store_true', help='Force recreate all projects')
     cmd_parser.add_argument('/hidewarnings', '/hide', dest="hide_warnings", action='store_true',
@@ -89,9 +90,9 @@ def ParseArgs():
     cmd_parser.add_argument('/checkfiles', '/check', dest="check_files", action='store_true',
                             help="Check if any file that's added actually exists (DOESN'T WORK ATM)")
 
-    cmd_parser.add_argument('/types', nargs="+", choices=valid_project_types, help='Project types to generate')
-    cmd_parser.add_argument('/add', nargs="+", help='Add projects or groups to generate')
-    cmd_parser.add_argument('/remove', "/rm", nargs="+", help='Remove projects or groups from generating')
+    cmd_parser.add_argument('/types', nargs="+", default=(), choices=valid_project_types, help='Project types to generate')
+    cmd_parser.add_argument('/add', nargs="+", default=(), help='Add projects or groups to generate')
+    cmd_parser.add_argument('/remove', "/rm", default=(), nargs="+", help='Remove projects or groups from generating')
     cmd_parser.add_argument('/macros', nargs="+", dest="macros", help='Macros to define and set to "1" in projects')
 
     # TODO: figure out how vpc handles these and recreate it here

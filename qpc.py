@@ -5,12 +5,14 @@
 
 import os
 import sys
-from time import perf_counter
 
 from qpc_base import args
 import qpc_reader as reader
 import qpc_parser as parser
 import qpc_writer as writer
+
+if args.time:
+    from time import perf_counter
 
 
 def GetBaseMacros():
@@ -177,9 +179,6 @@ if __name__ == "__main__":
     all_projects = []
     configurations = parser.ParseBaseFile(base_file, base_macros, all_projects, all_groups)
 
-    if not args.remove:
-        args.remove = []
-
     # --------------------------------------------------------------------------------------
 
     # get all the projects the user wants (this is probably the worst part in this whole project)
@@ -187,7 +186,7 @@ if __name__ == "__main__":
     print( "" )
     platforms = GetPlatforms()
 
-    if args.verbose:
+    if args.time:
         start_time = perf_counter()
 
     for project_def in project_def_list:
@@ -233,7 +232,7 @@ if __name__ == "__main__":
 
                 print("Valid: " + project_path + "_hash\n")
 
-    if args.verbose:
+    if args.time:
         end_time = perf_counter()
         print("Finished Parsing Projects - Time: " + str(end_time - start_time))
 
