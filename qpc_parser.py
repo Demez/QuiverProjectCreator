@@ -7,10 +7,12 @@
 import os
 import hashlib
 import re
-from time import perf_counter
 
 from qpc_base import args
 import qpc_reader as reader
+
+if args.time:
+    from time import perf_counter
 
 
 class ProjectDefinition:
@@ -186,7 +188,7 @@ class Project:
 
     def RemoveFile( self, file_block ):
         for file_path in file_block.values:
-            if os.path.splitext(file_path)[1] in (".cpp", ".c", ".cxx"):
+            if os.path.splitext(file_path)[1] in (".cpp", ".cxx", ".c", ".cc"):
                 if file_path in self.source_files:
                     del self.source_files[file_path]
                 else:
@@ -480,13 +482,10 @@ def ParseProjectFile(project_file, project, path, indent):
         if SolveCondition(project_block.condition, project.macros):
 
             project_block.values = ReplaceMacrosInList(project.macros, *project_block.values)
-            # for value in project_block.values:
-            #     index = project_block.values.index( value )
-            #     project_block.values[ index ] = ReplaceMacros( value, project.macros )
 
             if project_block.key == "macro":
                 project.AddMacro( project_block.values )
-
+            
             elif project_block.key == "configuration":
                 ParseConfigBlock(project_block, project)
 
@@ -794,8 +793,12 @@ def ParseProject( project_dir, project_filename, base_macros, configurations, pl
 
     project_macros = { **base_macros, "$PROJECT_NAME": project_name }
 
-    if args.verbose:
+    if args.time:
         start_time = perf_counter()
+        
+    # TODO: read all include files in the project, and then put them into a list here, and then use that in parsing
+    #  and maybe even return them as well so you don't have to read the same file like 40 times?
+    #  apparently ReadFile is actually really slow, oof
 
     # you might have to loop through all project types you want to make, aaaa
     project_pass = 0
@@ -812,7 +815,7 @@ def ParseProject( project_dir, project_filename, base_macros, configurations, pl
             ParseProjectFile(project_file, project, project_path, "")
             project_list.AddParsedProject(project)
 
-    if args.verbose:
+    if args.time:
         end_time = perf_counter()
         print( "Finished Parsing Project - Time: " + str(end_time - start_time) )
 
