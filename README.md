@@ -40,5 +40,7 @@ Valid project Types:
 
 `vstudio` - Create Visual Studio Projects
 
+`makefile` - Create Makefiles for every project
+
 `vpc_convert` - Convert all vpc scripts in the root directory to qpc scrtipts
 
