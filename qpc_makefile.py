@@ -32,7 +32,7 @@ def GenCompileExeGnu( compiler, conf ):
     return f"@{compiler} -o $@ $(SOURCES) {GenGnuCFlags(conf)}"
 
 def GenCompileDynGnu( compiler, conf ):
-    return f"@{compiler} -static -o $@ $(SOURCES) {GenGnuCFlags(conf)}"
+    return f"@{compiler} -shared -fPIC -o $@ $(SOURCES) {GenGnuCFlags(conf)}"
 
 def GenProjectTargets( conf ):
     makefile = "\n\n# TARGETS\n\n"
@@ -61,10 +61,13 @@ def GenProjectTargets( conf ):
 
 def GenDependencyTree(objects, headers, conf):
     makefile = "\n#DEPENDENCY TREE:\n\n"
+    pic = ""
+    if conf.general.configuration_type == "shared_library":
+        pic = "-fPIC"
     for obj in objects.keys():
         makefile += f"\n{obj}: {objects[obj]} {' '.join(cp.GetIncludes(objects[obj]))}\n"
         makefile += f"\t@echo '$(CYAN)Building Object\t{objects[obj]}$(NC)'\n"
-        makefile += f"\t@$(TOOLSET-VERSION) -c -o $@ {objects[obj]} {GenGnuCFlags(conf, libs = False)}\n"
+        makefile += f"\t@$(TOOLSET-VERSION) -c {pic} -o $@ {objects[obj]} {GenGnuCFlags(conf, libs = False)}\n"
 
     for h in headers:
         makefile += f"\n{h}: {' '.join(cp.GetIncludes(h))}\n"
