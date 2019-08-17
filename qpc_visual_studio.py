@@ -114,7 +114,7 @@ def CreateVCXProj(project_list):
     extension_settings = et.SubElement( vcxproj, "ImportGroup" )
     extension_settings.set( "Label", "ExtensionSettings" )
 
-    SetupPropertySheets(vcxproj, project_list)
+    SetupPropertySheets(vcxproj)
 
     user_macros = et.SubElement( vcxproj, "PropertyGroup" )
     user_macros.set( "Label", "UserMacros" )
@@ -131,10 +131,10 @@ def CreateVCXProj(project_list):
 
     header_exts = (".h", ".hxx", ".hpp")
 
-    res_exts = (".rc", ".ico", ".cur", ".bmp", ".dlg", ".rc2", ".rct", ".bin", ".rgs",
-                ".gif", ".jpg", ".jpeg", ".jpe", ".resx", ".tiff", ".tif", ".png", ".wav")
+    # res_exts = (".rc", ".ico", ".cur", ".bmp", ".dlg", ".rc2", ".rct", ".bin", ".rgs",
+    #             ".gif", ".jpg", ".jpeg", ".jpe", ".resx", ".tiff", ".tif", ".png", ".wav")
 
-    none_exts = (*res_exts, ".h", ".hxx", ".hpp")
+    none_exts = (".rc", ".h", ".hxx", ".hpp")
 
     # TODO: merge everything together, for now, just add a condition on each one lmao
     for project in project_list.projects:
@@ -147,7 +147,7 @@ def CreateVCXProj(project_list):
         full_include_list = { **full_include_list, **include_list }
         CreateFileItemGroups("ClInclude", include_list, vcxproj, condition)
 
-        res_list, remaining_files = GetProjectFiles( remaining_files, res_exts )
+        res_list, remaining_files = GetProjectFiles( remaining_files, (".rc") )
         full_res_list = { **full_res_list, **res_list }
         CreateFileItemGroups("ResourceCompile", res_list, vcxproj, condition)
 
@@ -264,27 +264,21 @@ def SetupPropertyGroupConfigurations(vcxproj, project_list):
     return
 
 
-def SetupPropertySheets(vcxproj, project_list):
-    for project in project_list.projects:
-        import_group = et.SubElement(vcxproj, "ImportGroup")
-        import_group.set("Condition", "'$(Configuration)|$(Platform)'=='" +
-                         project.config_name + "|" + project.platform + "'")
-        import_group.set("Label", "PropertySheets" )
+def SetupPropertySheets(vcxproj):
+    import_group = et.SubElement(vcxproj, "ImportGroup")
+    import_group.set("Label", "PropertySheets" )
 
-        elem_import = et.SubElement( import_group, "Import" )
-        elem_import.set("Project", "$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props")
-        elem_import.set("Condition", "exists('$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props')")
-        elem_import.set("Label", "LocalAppDataPlatform")
+    elem_import = et.SubElement( import_group, "Import" )
+    elem_import.set("Project", "$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props")
+    elem_import.set("Condition", "exists('$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props')")
+    elem_import.set("Label", "LocalAppDataPlatform")
 
     return
 
 
 def SetupGeneralProperties(vcxproj, project_list):
-
     property_group = et.SubElement( vcxproj, "PropertyGroup" )
-
-    version = et.SubElement( property_group, "_ProjectFileVersion" )
-    version.text = "10.0.30319.1"
+    et.SubElement( property_group, "_ProjectFileVersion" ).text = "10.0.30319.1"
     
     for project in project_list.projects:
         condition = "'$(Configuration)|$(Platform)'=='" + project.config_name + "|" + project.platform + "'"
@@ -298,6 +292,12 @@ def SetupGeneralProperties(vcxproj, project_list):
 
         int_dir = et.SubElement(property_group, "IntDir")
         int_dir.text = config.general.int_dir + os.sep
+
+        target_name = et.SubElement(property_group, "TargetName")
+        if config.linker.output_file:
+            target_name.text = os.path.splitext(config.linker.output_file)[0]
+        else:
+            target_name.text = project_list.file_name
 
         target_ext = et.SubElement(property_group, "TargetExt")
 
@@ -345,7 +345,7 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
     
         # ------------------------------------------------------------------
         # compiler - ClCompile
-        AddCompilerOptions( item_def_group, cfg.compiler, cfg.general )
+        AddCompilerOptions( et.SubElement(item_def_group, "ClCompile"), cfg.compiler, cfg.general )
     
         # ------------------------------------------------------------------
         # resources? - ResourceCompile
@@ -368,19 +368,7 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
         et.SubElement(link_lib, "AdditionalOptions").text = ' '.join(cfg.linker.options)
         et.SubElement(link_lib, "AdditionalDependencies").text = ';'.join(cfg.linker.libraries) + \
                                                                  ";%(AdditionalDependencies)"
-
-        if cfg.linker.output_file:
-            output_file = os.path.splitext(cfg.linker.output_file)[0]
-            if cfg.general.configuration_type == "dynamic_library":
-                et.SubElement(link_lib, "OutputFile").text = output_file + project.macros["$_BIN_EXT"]
-            elif cfg.general.configuration_type == "static_library":
-                et.SubElement(link_lib, "OutputFile").text = output_file + project.macros["$_STATICLIB_EXT"]
-            elif cfg.general.configuration_type == "application":
-                et.SubElement(link_lib, "OutputFile").text = output_file + project.macros["$_APP_EXT"]
-
-        if cfg.linker.debug_file:
-            et.SubElement(link_lib, "ProgramDatabaseFile").text = os.path.splitext(cfg.linker.debug_file)[0] + ".pdb"
-
+        
         if cfg.linker.import_library:
             et.SubElement(link_lib, "ImportLibrary").text = os.path.splitext(cfg.linker.import_library)[0] + \
                                                             project.macros["$_IMPLIB_EXT"]
@@ -446,8 +434,7 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
 
 
 # TODO: this creates an empty element if we add a source file with no options in it
-def AddCompilerOptions( element, compiler, general=None ):
-    compiler_elem = et.SubElement(element, "ClCompile")
+def AddCompilerOptions( compiler_elem, compiler, general=None ):
     added_option = False
 
     if compiler.preprocessor_definitions:
@@ -456,13 +443,22 @@ def AddCompilerOptions( element, compiler, general=None ):
         preprocessor_definitions.text = ';'.join(compiler.preprocessor_definitions) + \
                                         ";%(PreprocessorDefinitions)"
 
-    if general:
-        if general.language:
-            compile_as = et.SubElement(compiler_elem, "CompileAs")
-            if general.language == "c":
-                compile_as.text = "CompileAsC"
-            elif general.language == "cpp":
-                compile_as.text = "CompileAsCpp"
+    if compiler.precompiled_header:
+        added_option = True
+        precompiled_header = et.SubElement(compiler_elem, "PrecompiledHeader")
+        precompiled_header.text = {"none": "NotUsing", "use": "Use", "create": "Create"}[compiler.precompiled_header]
+
+    if compiler.precompiled_header_file:
+        added_option = True
+        et.SubElement(compiler_elem, "PrecompiledHeaderFile").text = compiler.precompiled_header_file
+
+    if compiler.precompiled_header_output_file:
+        added_option = True
+        et.SubElement(compiler_elem, "PrecompiledHeaderOutputFile").text = compiler.precompiled_header_output_file
+
+    if general and general.language:
+        added_option = True
+        et.SubElement(compiler_elem, "CompileAs").text = {"c": "CompileAsC", "cpp": "CompileAsCpp"}[general.language]
 
     if compiler.options:
         added_option = True
@@ -517,10 +513,8 @@ def AddCompilerOptions( element, compiler, general=None ):
     # "MultiProcessorCompilation"
     # "BrowseInformationFile"
     # "ErrorReporting"
-
-    if not added_option:
-        element.remove(compiler_elem)
-    return
+    
+    return added_option
 
 
 def CreateSourceFileItemGroup(file_list, parent_elem, condition):
