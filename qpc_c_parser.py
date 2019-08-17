@@ -1,7 +1,7 @@
 import re
+import os.path
 
-
-include_pattern = re.compile(r'^[ \t]*#include[ \t]+"(a-zA-Z\-_\./)"')
+include_pattern = re.compile(r"^[ \t]*#include[ \t]+\"([a-zA-Z\-_\./]+)\"")
 
 def GetIncludes(file_path):
     includes = []
@@ -9,6 +9,6 @@ def GetIncludes(file_path):
         lines = f.read().split('\n')
         for line in lines:
             m = include_pattern.match(line)
-            if m:
+            if m and os.path.isfile(m.group(1)):
                 includes.append(m.group(1))
     return includes
