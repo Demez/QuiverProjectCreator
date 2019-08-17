@@ -238,6 +238,7 @@ class Configuration:
         self.compiler = Compiler()
         self.linker = Linker()
         self.pre_build = BuildEvent()
+        self.pre_link = BuildEvent()
         self.post_build = BuildEvent()
 
 
@@ -656,11 +657,11 @@ def ParseConfigOption(project, group_block, option_block):
         if group_block.key == "post_build":
             event = config.post_build
         
-        # elif group_block.key == "pre_build":
-        #     event = config.pre_build
+        elif group_block.key == "pre_build":
+            event = config.pre_build
         
-        # elif group_block.key == "pre_link":
-        #     event = config.pre_link
+        elif group_block.key == "pre_link":
+            event = config.pre_link
         
         else:
             raise Exception("how tf did you get here, "
