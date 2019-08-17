@@ -49,11 +49,11 @@ def GenProjectTargets( conf ):
 
     if conf.general.configuration_type == "application":
         makefile += f"{target_name}: $(OBJECTS) $(FILES)\n"
-        makefile += f"\t@echo '$(CYAN)Compiling executable {target_name}$(NC)'\n"
+        makefile += f"\t@echo '$(GREEN)Compiling executable\t{target_name}$(NC)'\n"
         makefile += '\t' + '\n\t'.join(GenCompileExeGnu(compiler, conf).split('\n'))
     elif conf.general.configuration_type == "dynamic_library":
         makefile += f"$(addsuffix .so,{target_name}): $(OBJECTS) $(FILES)\n"
-        makefile += f"\t@echo '$(CYAN)Compiling dynamic library {target_name + '.so'}$(NC)'\n"
+        makefile += f"\t@echo '$(CYAN)Compiling dynamic library\t{target_name + '.so'}$(NC)'\n"
         makefile += '\t' + '\n\t'.join(GenCompileDynGnu(compiler, conf).split('\n'))
 
     return makefile
@@ -62,9 +62,12 @@ def GenDependencyTree(objects, headers, conf):
     makefile = "\n#DEPENDENCY TREE:\n\n"
     for obj in objects.keys():
         makefile += f"\n{obj}: {objects[obj]} {' '.join(cp.GetIncludes(objects[obj]))}\n"
-        makefile += f"\t@echo '$(CYAN)Building Object {objects[obj]}$(NC)'\n"
+        makefile += f"\t@echo '$(CYAN)Building Object\t{objects[obj]}$(NC)'\n"
         makefile += f"\t@$(TOOLSET-VERSION) -c -o $@ {objects[obj]} {GenGnuCFlags(conf, libs = False)}\n"
-    
+
+    for h in headers:
+        makefile += f"\n{h}: {' '.join(cp.GetIncludes(h))}\n"
+
     return makefile
 
 def GenCleanTarget():
@@ -154,8 +157,9 @@ TOOLSET-VERSION = gcc
 # COLORS!!!
 
 
-RED     = \033[0;31m
+RED     =\033[0;31m
 CYAN    =\033[0;36m
+GREEN   =\033[0;32m
 NC      =\033[0m
 
 ############################
