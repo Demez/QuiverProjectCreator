@@ -76,7 +76,7 @@ def GenCleanTarget():
 
 clean:
 \t@echo "Cleaning objects, archives, shared objects, and dynamic libs"
-\trm -f $(wildcard *.o *.a *.so *.dll *.dylib)
+\t@rm -f $(wildcard *.o *.a *.so *.dll *.dylib)
 
 .PHONY: clean
 
