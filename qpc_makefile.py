@@ -48,13 +48,14 @@ def GenProjectTargets( conf ):
         compiler = lang_switch[conf.general.language]
 
     if conf.general.configuration_type == "application":
-        makefile += f"{target_name}: $(OBJECTS) $(FILES)\n"
+        makefile += f"{target_name}: __PREBUILD $(OBJECTS) $(FILES) __PRELINK\n"
         makefile += f"\t@echo '$(GREEN)Compiling executable\t{target_name}$(NC)'\n"
         makefile += '\t' + '\n\t'.join(GenCompileExeGnu(compiler, conf).split('\n'))
     elif conf.general.configuration_type == "dynamic_library":
-        makefile += f"$(addsuffix .so,{target_name}): $(OBJECTS) $(FILES)\n"
+        makefile += f"$(addsuffix .so,{target_name}): __PREBUILD $(OBJECTS) $(FILES) __PRELINK\n"
         makefile += f"\t@echo '$(CYAN)Compiling dynamic library\t{target_name + '.so'}$(NC)'\n"
         makefile += '\t' + '\n\t'.join(GenCompileDynGnu(compiler, conf).split('\n'))
+    makefile += "\n\t" + "\n\t".join(conf.post_build.command_line)
 
     return makefile
 
@@ -78,10 +79,19 @@ clean:
 \t@echo "Cleaning objects, archives, shared objects, and dynamic libs"
 \t@rm -f $(wildcard *.o *.a *.so *.dll *.dylib)
 
-.PHONY: clean
+.PHONY: clean __PREBUILD __PRELINK __POSTBUILD
 
 
 """
+
+def GenScriptTargets( conf ):
+    makefile = "\n\n__PREBUILD:\n"
+    makefile += '\t' + '\n\t'.join(conf.pre_build.command_line) + "\n\n"
+
+    makefile += "\n\n__PRELINK:\n"
+    makefile += '\t' + '\n\t'.join(conf.pre_link.command_line) + "\n\n"
+
+    return makefile
 
 # TODO: less shit name
 def GenProjConfDefs( project ):
@@ -116,6 +126,8 @@ def GenProjConfDefs( project ):
 
     makefile += GenDependencyTree(objects, headers, project.config)
     # print(project.config)
+
+    makefile += GenScriptTargets(project.config)
 
     return MkIfEq(project.config_name, "$(CONFIG)",
         MkIfEq(project.platform, "$(PLATFORM)", makefile))
