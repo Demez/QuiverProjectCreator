@@ -115,25 +115,19 @@ def ParseFileByEachChar( config ):
                 qchar = char
                 
                 new_str += line[keep_from:chari]
-                keep_from = chari + 1
-                while True:
+                while chari < len(line) - 1:
                     chari += 1
-                    try:
-                        char = line[chari]
-                    except IndexError:
-                        if line[chari - 3] == '\\' and line[chari - 2] in escape_chars:
-                            new_str += line[keep_from:chari - 2]
-                        else:
-                            new_str += line[keep_from:chari - 1]
-                        keep_from = chari - 1
-                        break
+                    char = line[chari]
                     
                     if char == '\\' and next_char() in escape_chars:
-                        chari += 2
+                        new_str += next_char()
+                        chari += 1
                     elif char == qchar:
-                        new_str += line[keep_from:chari]
-                        keep_from = chari + 1
                         break
+                    else:
+                        new_str += char
+
+                keep_from = chari + 1
             
             # breaks if a block starts with this and isn't a comment
             elif char == '/' and next_char() in comment_chars:
