@@ -652,7 +652,7 @@ def ParseConfigOption(project, group_block, option_block):
                 if SolveCondition(item.condition, project.macros):
                     config.linker.options.extend([item.key, *item.values])
     
-    elif group_block.key == "post_build":
+    elif group_block.key in ("post_build", "pre_build", "pre_link"):
         
         if group_block.key == "post_build":
             event = config.post_build
