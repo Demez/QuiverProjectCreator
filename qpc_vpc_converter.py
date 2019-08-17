@@ -239,6 +239,8 @@ class ConfigOption:
             if split_values:
                 for value in values:
                     value = value.replace( "$BASE ", "" ).replace( "$BASE", "" )
+                    # other values
+                    value = value.replace("%(AdditionalDependencies)", "")
                     if value != '""':
                         condition = NormalizePlatformConditions(condition)
                         self.value.append( ConfigOptionValue( value, condition ) )
@@ -729,7 +731,9 @@ def ParseConfiguration( vpc_config, qpc_config ):
                 else:
                     option_name = "options"
             else:
-                option_value = ConvertVPCOption( option_block.values )
+                option_value = ConvertBoolToVSCommand(option_block)
+                if not option_value:
+                    option_value = ConvertVPCOption(option_block.values)
 
             if option_value:
                 for qpc_config_group in qpc_config.groups:
@@ -848,10 +852,20 @@ option_name_convert_dict = {
 
     "$outputfile": "output_file",
     "$generateprogramdatabasefile": "debug_file",
-
+    
+    # all just options stuff
     "$additionaloptions": "options",
     "$disablespecificwarnings": "options",
     "$multiprocessorcompilation": "options",
+    "$imagehassafeexceptionhandlers": "options",
+    "generatemanifest": "options",
+    "useunicoderesponsefiles": "options",
+    "enablebrowseinformation": "options",
+    "generatexlmdocumentationfiles": "options",
+    "buffersecuritycheck": "options",
+    "enablec++exceptions": "options",
+    "randomizedbaseaddress": "options",
+    "basicruntimechecks": "options",
 
     # posix stuff:
     "$optimizerlevel": "options",  # idk if this will work, need to test
@@ -885,6 +899,16 @@ option_value_convert_dict = {
     "Compile as C++ Code (/TP)": "cpp",
 
     "TRUE": "true",
+    "True": "true",
+    "False": "false",
+    
+    "v90": "msvc-v90",
+    "v100": "msvc-v100",
+    "v110": "msvc-v110",
+    "v120": "msvc-v120",
+    "v140": "msvc-v140",
+    "v141": "msvc-v141",
+    "v142": "msvc-v142",
 
     # preprocessor defs
     "Use Multi-Byte Character Set": "MBCS",
@@ -1134,6 +1158,24 @@ def ConvertVPCOptionToQPCOption(option_value):
     if option_value:
         try:
             return [command_convert_dict[option_value[0]]]
+        except KeyError:
+            return None
+    else:
+        return None
+    
+    
+vs_bool_convert_dict = {
+    "$imagehassafeexceptionhandlers": {
+        "true": "/SAFESEH",
+        "false": "/SAFESEH:NO",
+    },
+}
+
+
+def ConvertBoolToVSCommand(option_block):
+    if option_block.key and option_block.values:
+        try:
+            return [vs_bool_convert_dict[option_block.key.casefold()][option_block.values[0]]]
         except KeyError:
             return None
     else:
