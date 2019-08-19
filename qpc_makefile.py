@@ -145,6 +145,10 @@ def GetPlatform():
     return p
 
 def GenDefines( toolset ):
+    if toolset:
+        compiler = toolset
+    else:
+        compiler = "gcc"
     return f"""#!/usr/bin/make -f
 
 
@@ -166,7 +170,7 @@ PLATFORM = {GetPlatform()}
 # change the config with CONFIG=[Release,Debug] to make
 CONFIG = Debug
 # edit this in your QPC script configuration/general/toolset-version
-TOOLSET-VERSION = gcc
+TOOLSET-VERSION = {compiler}
 
 
 # COLORS!!!
