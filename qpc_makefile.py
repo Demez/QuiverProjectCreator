@@ -33,6 +33,9 @@ def GenCompileExeGnu( compiler, conf ):
 
 def GenCompileDynGnu( compiler, conf ):
     return f"@{compiler} -shared -fPIC -o $@ $(SOURCES) {GenGnuCFlags(conf)}"
+    
+def GenCompileStatGnu( compiler, conf ):
+    return f"@ar rcs $@ $(OBJECTS)"
 
 def GenProjectTargets( conf ):
     makefile = "\n\n# TARGETS\n\n"
@@ -49,12 +52,19 @@ def GenProjectTargets( conf ):
 
     if conf.general.configuration_type == "application":
         makefile += f"{target_name}: __PREBUILD $(OBJECTS) $(FILES) __PRELINK\n"
-        makefile += f"\t@echo '$(GREEN)Compiling executable\t{target_name}$(NC)'\n"
+        makefile += f"\t@echo '$(GREEN)Compiling executable {target_name}$(NC)'\n"
         makefile += '\t' + '\n\t'.join(GenCompileExeGnu(compiler, conf).split('\n'))
+        
     elif conf.general.configuration_type == "dynamic_library":
         makefile += f"$(addsuffix .so,{target_name}): __PREBUILD $(OBJECTS) $(FILES) __PRELINK\n"
-        makefile += f"\t@echo '$(CYAN)Compiling dynamic library\t{target_name + '.so'}$(NC)'\n"
+        makefile += f"\t@echo '$(CYAN)Compiling dynamic library {target_name + '.so'}$(NC)'\n"
         makefile += '\t' + '\n\t'.join(GenCompileDynGnu(compiler, conf).split('\n'))
+        
+    elif conf.general.configuration_type == "static_library":
+        makefile += f"$(addsuffix .a,{target_name}): __PREBUILD $(OBJECTS) $(FILES) __PRELINK\n"
+        makefile += f"\t@echo '$(CYAN)Compiling static library {target_name}.a$(NC)'\n"
+        makefile += '\t' + '\n\t'.join(GenCompileStatGnu(compiler, conf).split('\n'))
+    
     makefile += "\n\t" + "\n\t".join(conf.post_build.command_line)
 
     return makefile
@@ -66,7 +76,7 @@ def GenDependencyTree(objects, headers, conf):
         pic = "-fPIC"
     for obj in objects.keys():
         makefile += f"\n{obj}: {objects[obj]} {' '.join(cp.GetIncludes(objects[obj]))}\n"
-        makefile += f"\t@echo '$(CYAN)Building Object\t{objects[obj]}$(NC)'\n"
+        makefile += f"\t@echo '$(CYAN)Building Object {objects[obj]}$(NC)'\n"
         makefile += f"\t@$(TOOLSET-VERSION) -c {pic} -o $@ {objects[obj]} {GenGnuCFlags(conf, libs = False)}\n"
 
     for h in headers:
