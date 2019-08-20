@@ -278,6 +278,13 @@ class BuildEvent:
     def __init__(self):
         self.command_line = []
         self.use_in_build = ''
+        
+
+# TODO: maybe do this?
+class SpecificOption:
+    def __init__(self):
+        self.value = ''
+        self.valid_options = []
 
 
 def GetAllPaths(path_list):
@@ -756,7 +763,7 @@ def ReplaceMacrosCondition(split_string, macros):
     return split_string
 
 
-def ParseProject(project_dir, project_filename, base_macros, configurations, platforms):
+def ParseProject(project_dir, project_filename, base_macros, configurations, platforms, project_pass):
     project_path = project_dir + sep + project_filename
     project_name = splitext(project_filename)[0]
     
@@ -780,7 +787,7 @@ def ParseProject(project_dir, project_filename, base_macros, configurations, pla
     #  apparently ReadFile is actually really slow, oof
     
     # you might have to loop through all project types you want to make, aaaa
-    project_pass = 0
+    # project_pass = 0
     for config in configurations:
         for platform in platforms:
             
@@ -798,7 +805,7 @@ def ParseProject(project_dir, project_filename, base_macros, configurations, pla
         end_time = perf_counter()
         print("Finished Parsing Project - Time: " + str(end_time - start_time))
     
-    return project_list
+    return project_list, project_pass
 
 
 # TODO: maybe move to a file called "qpc_hash.py",

@@ -43,7 +43,7 @@ def GetBaseMacros():
         return {
             "$POSIX": "1",
             "$MACOS": "1",
-            "$_BIN_EXT": ".so",
+            "$_BIN_EXT": ".dylib",
             "$_STATICLIB_EXT": ".a",
             "$_IMPLIB_EXT": ".so",
             "$_APP_EXT": "",
@@ -185,6 +185,7 @@ if __name__ == "__main__":
     project_def_list = GetAllProjects()
     print( "" )
     platforms = GetPlatforms()
+    project_pass = 0
 
     if args.time:
         start_time = perf_counter()
@@ -195,13 +196,6 @@ if __name__ == "__main__":
             # only run if the hash check fails or if the user force creates the projects
             if args.force or parser.HashCheck(project_path) or not writer.FindProject(project_path):
 
-                # OPTIMIZATION IDEA that i don't feel like setting up:
-                # every time you call ReadFile(), add the return onto some dictionary,
-                # keys are the absolute path, values are the returns
-                # and then scan that dictionary whenever you reach an include,
-                # and then just grab it from the last to parse again
-                # so you don't slow it down with re-reading it for no damn reason
-
                 project_dir, project_name = os.path.split(project_path)
 
                 # change to the project directory if needed
@@ -210,7 +204,8 @@ if __name__ == "__main__":
 
                 # TODO: maybe make this multi-threaded?
                 #  would speed it up a bit now that you're reading it multiple times
-                project_list = parser.ParseProject(project_dir, project_name, base_macros, configurations, platforms)
+                project_list, project_pass = parser.ParseProject(project_dir, project_name, base_macros,
+                                                                 configurations, platforms, project_pass)
 
                 if args.verbose:
                     print( "Parsed: " + project_list.macros["$PROJECT_NAME"] )
@@ -233,8 +228,9 @@ if __name__ == "__main__":
                 print("Valid: " + project_path + "_hash\n")
 
     if args.time:
-        end_time = perf_counter()
-        print("Finished Parsing Projects - Time: " + str(end_time - start_time))
+        print("Finished Parsing Projects"
+              "\n\tTime: " + str(perf_counter() - start_time) +
+              "\n\tPasses: " + str(project_pass))
 
     if args.master_file:
         # maybe use a hash check here?
