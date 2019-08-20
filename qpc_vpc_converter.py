@@ -165,16 +165,27 @@ class Configuration:
             ConfigOption("options", None, True),
         ]
 
+        pre_build = ConfigGroup("pre_build")
+        pre_build.options = [
+            ConfigOption("command_line", None, True),
+        ]
+
+        pre_link = ConfigGroup("pre_link")
+        pre_link.options = [
+            ConfigOption("command_line", None, True),
+        ]
+
         post_build = ConfigGroup("post_build")
         post_build.options = [
             ConfigOption("command_line", None, True),
-            ConfigOption("use_in_build", None),
         ]
 
         self.groups = [
             general,
             compiler,
             linker,
+            pre_build,
+            pre_link,
             post_build,
         ]
 
@@ -253,7 +264,6 @@ class ConfigOption:
                         self.value.append( ConfigOptionValue( '"' + value + '"', condition ) )
         else:
             value = '"' + ''.join(values) + '"'
-            value = value.replace( "Debug", "$CONFIG" ).replace( "Release", "$CONFIG" )
             value = value.replace("$PLATSUBDIR", "$PLATFORM")
 
             if self.name != "configuration_type":
