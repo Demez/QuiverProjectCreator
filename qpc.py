@@ -17,6 +17,10 @@ if args.time:
 
 def GetBaseMacros():
     # OS Specific Defines
+    arg_macros = {}
+    for macro in args.macros:
+        arg_macros["$" + macro.upper()] = "1"
+    
     if sys.platform == "win32":
         return {
             "$WINDOWS": "1",
@@ -25,6 +29,7 @@ def GetBaseMacros():
             "$_IMPLIB_EXT": ".lib",
             "$_APP_EXT": ".exe",
             # "$_DBG_EXT": ".pdb",
+            **arg_macros,
         }
 
     elif sys.platform.startswith("linux"):
@@ -36,6 +41,7 @@ def GetBaseMacros():
             "$_IMPLIB_EXT": ".so",
             "$_APP_EXT": "",
             # "$_DBG_EXT": ".dbg",
+            **arg_macros,
         }
 
     # TODO: finish setting up MacOS stuff here
