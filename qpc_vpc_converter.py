@@ -150,13 +150,13 @@ class Configuration:
             ConfigOption("preprocessor_definitions", None, True),
             ConfigOption("precompiled_header", None),
             ConfigOption("precompiled_header_file", None),
-            ConfigOption("precompiled_header_output_file", None),
+            ConfigOption("precompiled_header_out_file", None),
             ConfigOption("options", None, True),
         ]
 
         linker = ConfigGroup("linker")
         linker.options = [
-            ConfigOption("output_file", None),
+            ConfigOption("out_file", None),
             ConfigOption("debug_file", None),
             ConfigOption("import_library", None),
             ConfigOption("ignore_import_library", None),
@@ -270,7 +270,7 @@ class ConfigOption:
                 value = value.replace("\\", "/")
 
             # get rid of any file extension and add the quote back onto the end if it changed
-            if self.name in ("output_file", "debug_file", "import_library"):
+            if self.name in ("out_file", "debug_file", "import_library"):
                 # value = os.path.splitext(value)[0] + '"'
                 new_value = os.path.splitext(value)[0]
                 if new_value != value:
@@ -853,14 +853,14 @@ option_name_convert_dict = {
 
     "$create/useprecompiledheader": "precompiled_header",
     "$create/usepchthroughfile": "precompiled_header_file",
-    "$precompiledheaderfile": "precompiled_header_output_file",
-    "$precompiledheaderoutputfile": "precompiled_header_output_file",
+    "$precompiledheaderfile": "precompiled_header_out_file",
+    "$precompiledheaderoutputfile": "precompiled_header_out_file",
 
     "$importlibrary": "import_library",
     "$ignoreimportlibrary": "ignore_import_library",
     "$ignorespecificlibrary": "ignore_libraries",
 
-    "$outputfile": "output_file",
+    "$outputfile": "out_file",
     "$generateprogramdatabasefile": "debug_file",
     
     # all just options stuff

@@ -246,6 +246,7 @@ class General:
     def __init__(self):
         self.out_dir = ''
         self.int_dir = ''
+        self.out_name = ''
         self.configuration_type = ''
         self.language = ''
         self.toolset_version = ''
@@ -259,13 +260,13 @@ class Compiler:
         self.preprocessor_definitions = []
         self.precompiled_header = ''
         self.precompiled_header_file = ''
-        self.precompiled_header_output_file = ''
+        self.precompiled_header_out_file = ''
         self.options = []
 
 
 class Linker:
     def __init__(self):
-        self.output_file = ''
+        self.out_file = ''
         self.debug_file = ''
         self.import_library = ''
         self.ignore_import_library = ''
@@ -578,13 +579,15 @@ def ParseConfigOption(project, group_block, option_block):
     config = project.config
     if group_block.key == "general":
         # single path options
-        if option_block.key in ("out_dir", "int_dir", "toolset_version"):
+        if option_block.key in ("out_dir", "int_dir", "out_name", "toolset_version"):
             if not option_block.values:
                 return
             if option_block.key == "out_dir":
                 config.general.out_dir = normpath(ReplaceMacros(option_block.values[0], project.macros))
             elif option_block.key == "int_dir":
                 config.general.int_dir = normpath(ReplaceMacros(option_block.values[0], project.macros))
+            elif option_block.key == "out_name":
+                config.general.out_name = ReplaceMacros(option_block.values[0], project.macros)
             elif option_block.key == "toolset_version":
                 config.general.toolset_version = option_block.values[0]
         
@@ -618,7 +621,7 @@ def ParseConfigOption(project, group_block, option_block):
     
     elif group_block.key == "linker":
         
-        if option_block.key in ("output_file", "debug_file", "import_library", "ignore_import_library"):
+        if option_block.key in ("out_file", "debug_file", "import_library", "ignore_import_library"):
             if option_block.values:
                 
                 if option_block.key == "ignore_import_library":
@@ -631,8 +634,8 @@ def ParseConfigOption(project, group_block, option_block):
                 # TODO: maybe split the extension here?
                 value = normpath(ReplaceMacros(option_block.values[0], project.macros))
                 
-                if option_block.key == "output_file":
-                    config.linker.output_file = value
+                if option_block.key in {"out_file", "output_file"}:
+                    config.linker.out_file = value
                 elif option_block.key == "debug_file":
                     config.linker.debug_file = value
                 elif option_block.key == "import_library":
@@ -712,8 +715,8 @@ def ParseCompilerOption(project, compiler, option_block):
     elif option_block.key == "precompiled_header_file":
         compiler.precompiled_header_file = ReplaceMacros(option_block.values[0], project.macros)
     
-    elif option_block.key == "precompiled_header_output_file":
-        compiler.precompiled_header_output_file = ReplaceMacros(option_block.values[0], project.macros)
+    elif option_block.key in {"precompiled_header_out_file", "precompiled_header_out_file"}:
+        compiler.precompiled_header_out_file = ReplaceMacros(option_block.values[0], project.macros)
     
     return
 
