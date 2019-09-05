@@ -7,9 +7,10 @@ import os
 import sys
 
 from qpc_base import args
-import qpc_reader as reader
-import qpc_parser as parser
-import qpc_writer as writer
+import qpc_hash
+import qpc_reader
+import qpc_parser
+import qpc_writer
 
 if args.time:
     from time import perf_counter
@@ -168,11 +169,11 @@ def Main():
     if args.verbose:
         print("\nReading: " + args.base_file)
     
-    base_file = reader.ReadFile(args.base_file)
+    base_file = qpc_reader.ReadFile(args.base_file)
     
     all_groups = {}
     all_projects = []
-    configurations = parser.ParseBaseFile(base_file, base_macros, all_projects, all_groups)
+    configurations = qpc_parser.ParseBaseFile(base_file, base_macros, all_projects, all_groups)
     
     # --------------------------------------------------------------------------------------
     
@@ -184,12 +185,14 @@ def Main():
     
     if args.time:
         start_time = perf_counter()
+
+    project_hash_list = {}
     
     for project_def in project_def_list:
         for project_path in project_def.script_list:
             
             # only run if the hash check fails or if the user force creates the projects
-            if args.force or parser.HashCheck(project_path) or not writer.FindProject(project_path):
+            if args.force or not qpc_writer.FindProject(project_path) or not qpc_hash.CheckHash(project_path):
                 
                 project_dir, project_name = os.path.split(project_path)
                 
@@ -199,16 +202,15 @@ def Main():
                 
                 # TODO: maybe make this multi-threaded?
                 #  would speed it up a bit now that you're reading it multiple times
-                project_list, project_pass = parser.ParseProject(project_dir, project_name, base_macros,
-                                                                 configurations, platforms, project_pass)
+                project_list, project_pass = qpc_parser.ParseProject(project_dir, project_name, base_macros,
+                                                                     configurations, platforms, project_pass)
                 
                 if args.verbose:
                     print("Parsed: " + project_list.macros["$PROJECT_NAME"])
                 
-                writer.CreateProject(project_list)
+                qpc_writer.CreateProject(project_list)
                 
-                with open(project_name + "_hash", mode="w", encoding="utf-8") as hash_file:
-                    parser.WriteHashList(hash_file, project_list.hash_dict)
+                qpc_hash.WriteHashFile(project_path, project_list.hash_dict)
                 
                 del project_list
                 print("")
@@ -217,10 +219,10 @@ def Main():
                 if project_dir:
                     os.chdir(args.root_dir)
             
-            else:
-                # TODO: make a function called "GetProjectDependencies", and use that here
-                
-                print("Valid: " + project_path + "_hash\n")
+            # TODO: make a function called "GetProjectDependencies", and use that here
+
+            project_hash_path = qpc_hash.GetHashFilePath(project_path)
+            project_hash_list[project_hash_path] = qpc_hash.MakeHash(project_hash_path)
     
     if args.time:
         print("Finished Parsing Projects"
@@ -228,8 +230,7 @@ def Main():
               "\n\tPasses: " + str(project_pass))
     
     if args.master_file:
-        # maybe use a hash check here?
-        writer.MakeMasterFile(project_def_list, args.master_file, configurations, platforms)
+        qpc_writer.MakeMasterFile(project_def_list, project_hash_list, args.master_file, configurations, platforms)
     
     # would be cool to add a timer here that would be running on another thread
     # if the cmd option "/benchmark" was specified, though that might be used as a conditional

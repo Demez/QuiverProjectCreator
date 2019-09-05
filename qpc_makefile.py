@@ -196,7 +196,7 @@ NC      =\033[0m
 ###########################
 """
 
-def CreateProject( projects ):
+def CreateMakefile(projects):
     print("CREATING MAKEFILE")
     makefile = GenDefines(projects.projects[0].config.general.toolset_version)
 

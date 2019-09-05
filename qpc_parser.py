@@ -4,17 +4,11 @@
 # may need to add a /checkfiles launch option to have this check if a file exists or not
 # it would probably slow it down as well
 
-# import os
-# sep
-# os.path
-from os import sep
-from os.path import *
-
-import hashlib
 import re
-
+import qpc_hash
+import qpc_reader
+from os import sep, path
 from qpc_base import args
-import qpc_reader as reader
 
 if args.time:
     from time import perf_counter
@@ -82,7 +76,7 @@ class ProjectPass:
     
     def AddFile(self, folder_list, file_block):
         for file_path in (file_block.key, *file_block.values):
-            if splitext(file_path)[1] in (".cpp", ".cxx", ".c", ".cc"):
+            if path.splitext(file_path)[1] in (".cpp", ".cxx", ".c", ".cc"):
                 if self.GetSourceFile(file_path):
                     file_block.Warning("File already added")
                 else:
@@ -100,7 +94,7 @@ class ProjectPass:
     def GetAllEditorFolderPaths(self):
         folder_paths = set()
         # TODO: is there a better way to do this?
-        [folder_paths.add(path) for path in self.files.values()]
+        [folder_paths.add(file_path) for file_path in self.files.values()]
         [folder_paths.add(sf.folder) for sf in tuple([*self.source_files.values()])]
         
         full_folder_paths = set()
@@ -173,11 +167,11 @@ class ProjectPass:
     # actually do you even need the extension?
     def FixLibPathAndExt(self, lib_path):
         lib_path = ReplaceMacros(lib_path, self.macros)
-        return splitext(normpath(lib_path))[0] + self.macros["$_STATICLIB_EXT"]
+        return path.splitext(path.normpath(lib_path))[0] + self.macros["$_STATICLIB_EXT"]
     
     def RemoveFile(self, file_block):
         for file_path in file_block.values:
-            if splitext(file_path)[1] in (".cpp", ".cxx", ".c", ".cc"):
+            if path.splitext(file_path)[1] in (".cpp", ".cxx", ".c", ".cc"):
                 if file_path in self.source_files:
                     del self.source_files[file_path]
                 else:
@@ -190,9 +184,9 @@ class ProjectPass:
 
 
 class Project:
-    def __init__(self, name, path, base_macros):
+    def __init__(self, name, project_path, base_macros):
         self.file_name = name  # the actual file name
-        self.project_dir = path  # should use the macro instead tbh, might remove
+        self.project_dir = project_path  # should use the macro instead tbh, might remove
         self.projects = []
         self.hash_dict = {}
         # shared across configs, used as a base for them
@@ -292,7 +286,7 @@ def GetAllPaths(path_list):
     full_folder_paths = set()
     
     for folder_path in set(path_list):
-        current_path = list(split(folder_path)[0].split(sep))
+        current_path = list(path.split(folder_path)[0].split(sep))
         if not current_path:
             continue
         folder_list = [current_path[0]]
@@ -431,12 +425,12 @@ def ParseBaseFile(base_file, macros, project_list, group_dict):
         
         elif project_block.key == "include":
             # "Ah shit, here we go again."
-            path = normpath(ReplaceMacros(project_block.values[0], macros))
+            file_path = path.normpath(ReplaceMacros(project_block.values[0], macros))
             
             if args.verbose:
-                print("Reading: " + path)
+                print("Reading: " + file_path)
             
-            include_file = reader.ReadFile(path)
+            include_file = qpc_reader.ReadFile(file_path)
             
             if args.verbose:
                 print("Parsing... ")
@@ -467,7 +461,7 @@ def ParseProjectGroupItems(project_group, project_list, project_block, macros, f
     return
 
 
-def ParseProjectFile(project_file, project, path, indent):
+def ParseProjectFile(project_file, project, project_path, indent):
     for project_block in project_file:
         if SolveCondition(project_block.condition, project.macros):
             
@@ -488,7 +482,7 @@ def ParseProjectFile(project_file, project, path, indent):
             elif project_block.key == "include":
                 # Ah shit, here we go again.
                 include_path = project_block.values[0]
-                include_file = IncludeFile(include_path, project, path, indent + "    ")
+                include_file = IncludeFile(include_path, project, project_path, indent + "    ")
                 ParseProjectFile(include_file, project, include_path, indent + "    ")
                 if args.verbose:
                     print(indent + "    " + "Finished Parsing")
@@ -498,13 +492,13 @@ def ParseProjectFile(project_file, project, path, indent):
     return
 
 
-def IncludeFile(include_path, project, path, indent):
-    project.hash_list[include_path] = MakeHash(include_path)
-    include_file = reader.ReadFile(include_path)
+def IncludeFile(include_path, project, project_path, indent):
+    project.hash_list[include_path] = qpc_hash.MakeHash(include_path)
+    include_file = qpc_reader.ReadFile(include_path)
     
     if not include_file:
         raise FileNotFoundError(
-            "File does not exist:\n\tScript: {0}\n\tFile: {1}".format(path, include_path))
+            "File does not exist:\n\tScript: {0}\n\tFile: {1}".format(project_path, include_path))
     
     if args.verbose:
         print(indent + "Parsing: " + include_path)
@@ -583,9 +577,9 @@ def ParseConfigOption(project, group_block, option_block):
             if not option_block.values:
                 return
             if option_block.key == "out_dir":
-                config.general.out_dir = normpath(ReplaceMacros(option_block.values[0], project.macros))
+                config.general.out_dir = path.normpath(ReplaceMacros(option_block.values[0], project.macros))
             elif option_block.key == "int_dir":
-                config.general.int_dir = normpath(ReplaceMacros(option_block.values[0], project.macros))
+                config.general.int_dir = path.normpath(ReplaceMacros(option_block.values[0], project.macros))
             elif option_block.key == "out_name":
                 config.general.out_name = ReplaceMacros(option_block.values[0], project.macros)
             elif option_block.key == "toolset_version":
@@ -632,7 +626,7 @@ def ParseConfigOption(project, group_block, option_block):
                     return
                 
                 # TODO: maybe split the extension here?
-                value = normpath(ReplaceMacros(option_block.values[0], project.macros))
+                value = path.normpath(ReplaceMacros(option_block.values[0], project.macros))
                 
                 if option_block.key in {"out_file", "output_file"}:
                     config.linker.out_file = value
@@ -768,16 +762,16 @@ def ReplaceMacrosCondition(split_string, macros):
 
 def ParseProject(project_dir, project_filename, base_macros, configurations, platforms, project_pass):
     project_path = project_dir + sep + project_filename
-    project_name = splitext(project_filename)[0]
+    project_name = path.splitext(project_filename)[0]
     
     if args.verbose:
         print("Reading: " + project_filename)
     
-    project_file = reader.ReadFile(project_filename)
+    project_file = qpc_reader.ReadFile(project_filename)
     
     print("Parsing: " + project_filename)
     
-    project_hash = MakeHash(project_filename)
+    project_hash = qpc_hash.MakeHash(project_filename)
     project_list = Project(project_name, project_dir, base_macros)
     
     project_macros = {**base_macros, "$PROJECT_NAME": project_name}
@@ -809,54 +803,3 @@ def ParseProject(project_dir, project_filename, base_macros, configurations, pla
         print("Finished Parsing Project - Time: " + str(end_time - start_time))
     
     return project_list, project_pass
-
-
-# TODO: maybe move to a file called "qpc_hash.py",
-#  so you can run this from vstudio or something to check hash only?
-# TODO: add hashes for qpc itself here
-def HashCheck(project_path):
-    project_hash_file_path = join(project_path + "_hash")
-    project_dir = split(project_path)[0]
-    
-    # open the hash file if it exists,
-    # run MakeHash on every file there
-    # and check if it matches what MakeHash returned
-    if isfile(project_hash_file_path):
-        with open(project_hash_file_path, mode="r", encoding="utf-8") as hash_file:
-            hash_file = hash_file.read().splitlines()
-        
-        for hash_line in hash_file:
-            hash_line = hash_line.split(" ")
-            if isabs(hash_line[1]) or not project_dir:
-                project_file_path = normpath(hash_line[1])
-            else:
-                project_file_path = normpath(project_dir + sep + hash_line[1])
-            
-            if hash_line[0] != MakeHash(project_file_path):
-                if args.verbose:
-                    print("Invalid: " + hash_line[1])
-                return True
-        
-        return False
-    else:
-        if args.verbose:
-            print("Hash File does not exist")
-        return True
-
-
-# Source: https://bitbucket.org/prologic/tools/src/tip/md5sum
-def MakeHash(filename):
-    md5 = hashlib.md5()
-    try:
-        with open(filename, "rb") as f:
-            for chunk in iter(lambda: f.read(128 * md5.block_size), b""):
-                md5.update(chunk)
-        return md5.hexdigest()
-    except FileNotFoundError:
-        return ""
-
-
-def WriteHashList(tmp_file, hash_list):
-    for project_script_path, hash_value in hash_list.items():
-        tmp_file.write(hash_value + " " + project_script_path + "\n")
-    return
