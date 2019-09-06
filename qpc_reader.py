@@ -12,6 +12,11 @@ class QPCBlock:
         self.items = []
         self.line_num = line_num
         self.file_path = file_path
+
+    def GetAllKeysInItems(self):
+        keys = []
+        [keys.append(value.key) for value in self.items]
+        return keys
     
     def InvalidOption(self, *valid_option_list):
         if not args.hide_warnings:

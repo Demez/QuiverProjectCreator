@@ -221,8 +221,7 @@ def Main():
             
             # TODO: make a function called "GetProjectDependencies", and use that here
 
-            project_hash_path = qpc_hash.GetHashFilePath(project_path)
-            project_hash_list[project_hash_path] = qpc_hash.MakeHash(project_hash_path)
+            project_hash_list[qpc_hash.GetHashFilePath(project_path)] = project_path
     
     if args.time:
         print("Finished Parsing Projects"
