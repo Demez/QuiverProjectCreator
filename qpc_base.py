@@ -93,7 +93,7 @@ def ParseArgs():
     cmd_parser.add_argument('/types', nargs="+", default=(), choices=valid_project_types, help='Project types to generate')
     cmd_parser.add_argument('/add', nargs="+", default=(), help='Add projects or groups to generate')
     cmd_parser.add_argument('/remove', "/rm", default=(), nargs="+", help='Remove projects or groups from generating')
-    cmd_parser.add_argument('/macros', nargs="+", dest="macros", help='Macros to define and set to "1" in projects')
+    cmd_parser.add_argument('/macros', nargs="+", default=(), help='Macros to define and set to "1" in projects')
 
     # TODO: figure out how vpc handles these and recreate it here
     #  might come waaay later since it's very low priority
