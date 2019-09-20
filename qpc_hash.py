@@ -66,7 +66,8 @@ def CheckHash(project_path, file_list=None):
                     return False
                 
             else:
-                block.Unknown()
+                # how would this happen
+                block.Warning("Unknown Key in Hash: ")
 
         print("Valid: " + project_path + GetHashFileExt(project_path) + "\n")
         return True
@@ -102,7 +103,7 @@ def _CheckCommands(project_dir, command_list):
                 return False
         
         else:
-            command_block.Unknown()
+            command_block.Warning("Unknown Key in Hash: ")
     return True
     
     
@@ -163,7 +164,7 @@ def WriteHashFile(project_path, hash_list=None, file_list=None, master_file=Fals
         hash_file.write('\tadd\t\t\t' + ListToString(args.add))
         hash_file.write('\tremove\t\t' + ListToString(args.remove))
         if not master_file:
-            hash_file.write('\t"types\t\t\t' + ListToString(args.types))
+            hash_file.write('\ttypes\t\t\t' + ListToString(args.types))
         hash_file.write('\tmacros\t\t' + ListToString(args.macros))
         hash_file.write("}\n\n")
         
