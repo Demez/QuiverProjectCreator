@@ -12,6 +12,9 @@ from qpc_base import args
 
 if args.time:
     from time import perf_counter
+    
+
+COND_OPERATORS = re.compile('(\\(|\\)|\\|\\||\\&\\&|>=|<=|==|!=|>|<)')
 
 
 class ProjectDefinition:
@@ -23,10 +26,10 @@ class ProjectDefinition:
         self.group_folder_list = folder_list
     
     def AddScript(self, script_path):
-        self.script_list.append(script_path)
+        self.script_list.append(path.normpath(script_path))
     
     def AddScriptList(self, script_list):
-        self.script_list.extend(script_list)
+        [self.script_list.append(path.normpath(script_path)) for script_path in script_list]
 
 
 class ProjectGroup:
@@ -298,6 +301,7 @@ def GetAllPaths(path_list):
     return tuple(full_folder_paths)
 
 
+# should i move this to the lexer?
 def SolveCondition(condition, macros):
     if not condition:
         return True
@@ -308,8 +312,7 @@ def SolveCondition(condition, macros):
         sub_cond_value = SolveCondition(sub_cond_line, macros)
         condition = condition.split('(', 1)[0] + str(sub_cond_value * 1) + condition.split(')', 1)[1]
     
-    operators = re.compile('(\\(|\\)|\\|\\||\\&\\&|>=|<=|==|!=|>|<)')
-    split_string = operators.split(condition)
+    split_string = COND_OPERATORS.split(condition)
     
     condition = ReplaceMacrosCondition(split_string, macros)
     
