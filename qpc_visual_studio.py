@@ -312,9 +312,17 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
         # pre_build, post_build, pre_link
         # PreBuildEvent, PostBuildEvent PreLinkEvent
         
-        et.SubElement(item_def_group, "PreBuildEvent").text = ' '.join(cfg.pre_build.command_line)
-        et.SubElement(item_def_group, "PostBuildEvent").text = ' '.join(cfg.post_build.command_line)
-        et.SubElement(item_def_group, "PreLinkEvent").text = ' '.join(cfg.pre_link.command_line)
+        if cfg.pre_build.command_line:
+            et.SubElement(et.SubElement(item_def_group, "PreBuildEvent"),
+                          "Command").text = ' '.join(cfg.pre_build.command_line)
+
+        if cfg.post_build.command_line:
+            et.SubElement(et.SubElement(item_def_group, "PostBuildEvent"),
+                          "Command").text = ' '.join(cfg.post_build.command_line)
+
+        if cfg.pre_link.command_line:
+            et.SubElement(et.SubElement(item_def_group, "PreLinkEvent"),
+                          "Command").text = ' '.join(cfg.pre_link.command_line)
     return
 
 

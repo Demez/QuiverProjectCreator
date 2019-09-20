@@ -37,7 +37,7 @@ BASE_QPC_HASH_LIST = [
         
 BASE_QPC_HASHES = {}
 for file in BASE_QPC_HASH_LIST:
-    BASE_QPC_HASHES[MakeHash(QPC_DIR + file)] = QPC_DIR + file
+    BASE_QPC_HASHES[QPC_DIR + file] = MakeHash(QPC_DIR + file)
 
 
 def CheckHash(project_path, file_list=None):
@@ -171,8 +171,13 @@ def WriteHashFile(project_path, hash_list=None, file_list=None, master_file=Fals
         # write the hashes
         if hash_list:
             hash_file.write("hashes\n{\n")
+            
+            for project_script_path, hash_value in BASE_QPC_HASHES.items():
+                hash_file.write('\t"' + hash_value + '" "' + project_script_path + '"\n')
+            hash_file.write('\t\n')
             for project_script_path, hash_value in hash_list.items():
                 hash_file.write('\t"' + hash_value + '" "' + project_script_path + '"\n')
+                
             hash_file.write("}\n")
         
         if file_list:
