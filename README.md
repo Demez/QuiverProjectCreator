@@ -1,27 +1,46 @@
-# PyQuiverProjectCreator
-Recreation of Valve's VPC (Valve Project Creator) in Python 3.7
+# Quiver Project Creator
+
+Project Creator based off of Valve's VPC (Valve Project Creator) in Python 3.7
+
+Will support many project types to generate and many platforms
 
 ## Command Line usage:
 
-`+name` Add a group or a project
+`/rootdir` or `/dir` - Change the current working directory of the script
 
-`-name` Remove a group or a project
+`/basefile` - Set the path to the base script to use
 
-`/f` Force Regenerate All Projects
+`/force` or `/f` - Force Regenerate All Projects
 
-`/verbose` Enable verbose console output
+`/verbose` or `/v` - Enable verbose console output
 
-`/hidewarnings` Hide console output of any mistakes found in the project scripts
+`/hidewarnings` or `/hide` - Suppress all warnings
 
-`/showlegacyoptions` Show any Configuration options using the legacy key
+`/masterfile` or `/master` - `"solution name"` - Create a master file to build all projects with (ex. visual studio solution file)
 
-`/name` Enable a conditional to use in projects, which are defined in the $CommandLineConditionals Block
+### Adding and removing projects:
 
-`/mksln "solution name"` Create a solution file to build all projects with
+`/add` - `[projects or groups]` - Add groups or projects
+
+`/remove` or `/rm` - `[projects or groups]` Remove groups or projects
+
+### Setting Macros in the command line:
+
+`/macros` - `[names]` Set macros with these names to 1 to use in projects
 
 ### Project Types Supported:
 
-All of these will set a conditional to use in project scripts by the option name
+Setting a project type is done with adding any valid project type name into the input list here
 
-`/vstudio` - Create Visual Studio Projects
+`/types [types]`
+
+All of these will set a macro to "1" to use in project scripts by the option name
+
+Valid project Types:
+
+`vstudio` - Create Visual Studio Projects
+
+`makefile` - Create Makefiles for every project
+
+`vpc_convert` - Convert all vpc scripts in the root directory to qpc scrtipts
 
