@@ -1,23 +1,153 @@
 # Reads QPC files and returns a list of QPCBlocks
 
 import os
+from re import compile
 from qpc_base import args
 
 
-class QPCBlock:
-    def __init__(self, file_path, line_num, key, values, condition):
-        self.key = key
-        self.values = values
-        self.condition = condition
-        self.items = []
-        self.line_num = line_num
-        self.file_path = file_path
+COND_OPERATORS = compile('(\\(|\\)|\\|\\||\\&\\&|>=|<=|==|!=|>|<)')
 
+
+class QPCBlockBase:
+    def __init__(self, file_path: str = ""):
+        self.file_path = file_path
+        self.items = []
+
+    # temp stuff until i setup the rest for this later
+    def __iter__(self):
+        return self.items.__iter__()
+
+    def __getitem__(self, item):
+        return self.items[item]
+
+    def extend(self, item):
+        self.items.extend(item)
+
+    def append(self, item):
+        self.items.append(item)
+
+    def remove(self, item):
+        self.items.remove(item)
+
+    def index(self, item):
+        self.items.index(item)
+
+    def ToString(self, depth=0, quote_keys=False, quote_values=False, break_multi_value=False, break_on_key=False):
+        final_string = ""
+        for item in self.items:
+            final_string += item.ToString(depth, quote_keys) + "\n"
+        return final_string
+        
+    def AddItem(self, key: str, values: list, condition: str = "", line_num: int = 0):
+        sub_qpc = QPCBlock(self, key, values, condition, file_path=self.file_path, line_num=line_num)
+        self.items.append(sub_qpc)
+        return sub_qpc
+        
+    def AddItemAtIndex(self, index: int, key: str, values: list, condition: str = "", line_num: int = 0):
+        sub_qpc = QPCBlock(self, key, values, condition, file_path=self.file_path, line_num=line_num)
+        self.items.insert(index, sub_qpc)
+        return sub_qpc
+
+    def GetItem(self, item_key):
+        for item in self.items:
+            if item.key == item_key:
+                return item
+        return None
+
+    def GetItemValue(self, item_key):
+        for item in self.items:
+            if item.key == item_key:
+                return item.value
+        return None
+
+    def GetAllItems(self, item_key):
+        items = []
+        for item in self.items:
+            if item.key == item_key:
+                items.append(item)
+        return items
+
+    # probably useless
+    def GetValuesOfAllItems(self, item_key):
+        items = []
+        for item in self.items:
+            if item.key == item_key:
+                items.append(item)
+        return items
+    
     def GetAllKeysInItems(self):
         keys = []
         [keys.append(value.key) for value in self.items]
         return keys
     
+    def GetIndexOfItem(self, qpc_item):
+        try:
+            return self.items.index(qpc_item)
+        except IndexError:
+            return None
+
+
+class QPCBlock(QPCBlockBase):
+    def __init__(self, parent, key, values, condition: str = "", file_path: str = "", line_num: int = 0):
+        super().__init__(file_path)
+        self.parent = parent
+        self.key = key
+        self.values = values
+        self.condition = condition
+        self.line_num = line_num
+
+    def ToString(self, depth=0, quote_keys=False, quote_values=False, break_multi_value=False, break_on_key=False):
+        indent = "{0}".format(depth * '\t')
+        index = self.parent.items.index(self)
+        
+        if quote_keys:
+            string = "{0}\"{1}\"".format(indent, self.key)
+        else:
+            string = indent + self.key
+            
+        if break_on_key:
+            key_indent = 0
+        else:
+            key_indent = len(self.key) - 1
+    
+        if self.values:
+            for value_index, value in enumerate(self.values):
+                if quote_values:
+                    formatted_value = "{0}".format(value.replace("'", "\\'").replace('"', '\\"'))
+                else:
+                    formatted_value = "{0}".format(value.replace("'", "\\'"))
+                    formatted_value = "{0}".format(
+                        formatted_value[0] + formatted_value[1:-1].replace('"', '\\"') + formatted_value[-1])
+                    
+                if quote_values:
+                    string += " \"{0}\"".format(formatted_value)
+                else:
+                    string += " {0}".format(formatted_value)
+                # untested
+                if break_multi_value and value_index < len(self.values):
+                    string += " \\\n{0}{1}".format(indent, " " * key_indent)
+    
+        if self.condition:
+            string += " [" + AddSpacingToCondition(self.condition) + "]"
+    
+        if self.items:
+            if 0 < index < len(self.parent.items):
+                if not self.parent.items[index - 1].items:
+                    string = "\n" + string
+                    
+            string += "\n" + indent + "{\n"
+            for item in self.items:
+                string += item.ToString(depth+1, quote_keys) + "\n"
+            string += indent + "}"
+            
+            if index < len(self.parent.items) - 1:
+                string += "\n"
+    
+        return string
+
+    def GetKeysAndValues(self):
+        return [self.key, *self.values]
+
     def InvalidOption(self, *valid_option_list):
         if not args.hide_warnings:
             print( "WARNING: Invalid Option" )
@@ -52,11 +182,130 @@ class QPCBlock:
                 print("\tValues: " + self.values[0])
             else:
                 print("\tValues:\n\t\t" + '\n\t\t'.join(self.values))
+                
+            
+# maybe make a comment object so when you re-write the file, you don't lose comments
+class Comment:
+    def __init__(self):
+        pass
+
+
+def ReplaceMacrosCondition(split_string, macros):
+    # for macro, macro_value in macros.items():
+    for index, item in enumerate(split_string):
+        if item in macros or item[1:] in macros:
+            if str(item).startswith("!"):
+                split_string[index] = str(int(not macros[item[1:]]))
+            else:
+                split_string[index] = macros[item]
         
+        elif item.startswith("!"):
+            split_string[index] = "1"
         
-def ReadFile(path):
-    lexer = QPCLexer(path)
-    qpc_file = []
+        elif item.startswith("$"):
+            split_string[index] = "0"
+    
+    return split_string
+
+
+def SolveCondition(condition, macros):
+    if not condition:
+        return True
+    
+    # solve any sub conditionals first
+    while "(" in condition:
+        sub_cond_line = (condition.split('(')[1]).split(')')[0]
+        sub_cond_value = SolveCondition(sub_cond_line, macros)
+        condition = condition.split('(', 1)[0] + str(sub_cond_value * 1) + condition.split(')', 1)[1]
+    
+    split_string = COND_OPERATORS.split(condition)
+    
+    condition = ReplaceMacrosCondition(split_string, macros)
+    
+    if len(condition) == 1:
+        try:
+            return int(condition[0])
+        except ValueError:
+            return 1
+    
+    while len(condition) > 1:
+        condition = SolveSingleCondition(condition)
+    
+    return condition[0]
+
+
+def SolveSingleCondition(cond):
+    index = 1
+    result = 0
+    # highest precedence order
+    if "<" in cond:
+        index = cond.index("<")
+        if cond[index - 1] < cond[index + 1]:
+            result = 1
+    
+    elif "<=" in cond:
+        index = cond.index("<=")
+        if cond[index - 1] <= cond[index + 1]:
+            result = 1
+    
+    elif ">=" in cond:
+        index = cond.index(">=")
+        if cond[index - 1] >= cond[index + 1]:
+            result = 1
+    
+    elif ">" in cond:
+        index = cond.index(">")
+        if cond[index - 1] > cond[index + 1]:
+            result = 1
+    
+    # next in order of precedence, check equality
+    # you can compare stings with these 2
+    elif "==" in cond:
+        index = cond.index("==")
+        if str(cond[index - 1]) == str(cond[index + 1]):
+            result = 1
+    
+    elif "!=" in cond:
+        index = cond.index("!=")
+        if str(cond[index - 1]) != str(cond[index + 1]):
+            result = 1
+    
+    # and then, check for any &&'s
+    elif "&&" in cond:
+        index = cond.index("&&")
+        if int(cond[index - 1]) > 0 and int(cond[index + 1]) > 0:
+            result = 1
+    
+    # and finally, check for any ||'s
+    elif "||" in cond:
+        index = cond.index("||")
+        if int(cond[index - 1]) > 0 or int(cond[index + 1]) > 0:
+            result = 1
+    
+    cond[index] = result
+    del cond[index + 1]
+    del cond[index - 1]
+    
+    return cond
+
+
+def AddSpacingToCondition(cond):
+    cond = cond.strip(" ")
+    
+    if ">=" not in cond:
+        cond = cond.replace(">", " > ")
+    if "<=" not in cond:
+        cond = cond.replace("<", " < ")
+    
+    for operator in {"<=", ">=", "==", "||", "&&"}:
+        cond = cond.replace(operator, ' ' + operator + ' ')
+    
+    return cond
+    
+        
+def ReadFile(path, keep_quotes=False):
+    lexer = QPCLexer(path, keep_quotes)
+    qpc_file = QPCBlockBase(path)
     path = os.getcwd() + os.sep + path
 
     while lexer.chari < lexer.file_len:
@@ -67,14 +316,12 @@ def ReadFile(path):
         
         values = lexer.NextValueList()
         condition = lexer.NextCondition()
-        
-        block = QPCBlock(path, line_num, key, values, condition)
+
+        block = qpc_file.AddItem(key, values, condition, line_num)
         
         if lexer.NextSymbol() == "{":
             CreateSubBlock(lexer, block, path)
             pass
-        
-        qpc_file.append(block)
     
     return qpc_file
 
@@ -92,9 +339,7 @@ def CreateSubBlock(lexer, block, path):
         values = lexer.NextValueList()
         condition = lexer.NextCondition()
 
-        sub_block = QPCBlock(path, line_num, key, values, condition)
-
-        block.items.append(sub_block)
+        sub_block = block.AddItem(key, values, condition, line_num)
     
         next_symbol = lexer.NextSymbol()
         if next_symbol == "{":
@@ -104,20 +349,22 @@ def CreateSubBlock(lexer, block, path):
         
     
 class QPCLexer:
-    def __init__(self, path):
+    def __init__(self, path, keep_quotes=False):
         self.chari = 0
         self.linei = 1
         self.path = path
+        self.keep_quotes = keep_quotes
         
         with open(path, mode="r", encoding="utf-8") as file:
             self.file = file.read()
         self.file_len = len(self.file) - 1
         
-        # maybe using this would be faster?
-        self.keep_from = 0
-        
-        self.escape_chars = {'\'', '"', '\\'}
-        self.comment_chars = {'/', '*'}
+        self.chars_escape = {'\'', '"', '\\'}
+        self.chars_comment = {'/', '*'}
+        self.chars_item = {'{', '}'}
+        self.chars_cond = {'[', ']'}
+        self.chars_space = {' ', '\t'}
+        self.chars_quote = {'"', '\''}
         
     def NextValueList(self):
         values = []
@@ -125,10 +372,10 @@ class QPCLexer:
         while self.chari < self.file_len:
             char = self.file[self.chari]
 
-            if char in {'{', '}'}:
+            if char in self.chars_item:
                 break
                 
-            if char in {' ', '\t'}:
+            if char in self.chars_space:
                 if current_value:
                     if current_value != '\\':
                         values.append(current_value)
@@ -138,10 +385,11 @@ class QPCLexer:
     
             if char in {'"', '\''}:
                 values.append(self.ReadQuote(char))
+                current_value = ""
                 continue
     
             # skip escape
-            if char == '\\' and self.NextChar() in self.escape_chars:
+            if char == '\\' and self.NextChar() in self.chars_escape:
                 self.chari += 2
                 current_value += self.file[self.chari]
                 # char = self.file[self.chari]
@@ -156,11 +404,11 @@ class QPCLexer:
                 else:
                     self.linei += 1
 
-            elif char == '/' and self.NextChar() in self.comment_chars:
+            elif char == '/' and self.NextChar() in self.chars_comment:
                 self.SkipComment()
     
             else:
-                if self.file[self.chari] in {'[', ']'}:
+                if self.file[self.chari] in self.chars_cond:
                     break
                 if current_value == '\\':
                     current_value = ''
@@ -184,22 +432,22 @@ class QPCLexer:
         while self.chari < self.file_len:
             char = self.file[self.chari]
             
-            if char in {'{', '}'}:
+            if char in self.chars_item:
                 line_num = self.linei
                 break
 
-            elif char in {' ', '\t'}:
+            elif char in self.chars_space:
                 if string:
                     line_num = self.linei
                     break
 
-            elif char in {'"', '\''}:
+            elif char in self.chars_quote:
                 string = self.ReadQuote(char)
                 line_num = self.linei
                 break
             
             # skip escape
-            elif char == '\\' and self.NextChar() in self.escape_chars:
+            elif char == '\\' and self.NextChar() in self.chars_escape:
                 self.chari += 2
                 string += self.file[self.chari]
                 # char = self.file[self.chari]
@@ -214,7 +462,7 @@ class QPCLexer:
                 if char == '\n':
                     self.linei += 1
                 
-            elif char == '/' and self.NextChar() in self.comment_chars:
+            elif char == '/' and self.NextChar() in self.chars_comment:
                 self.SkipComment()
                 
             else:
@@ -225,26 +473,24 @@ class QPCLexer:
         return string, line_num
 
     def NextSymbol(self):
-        symbol_list = {'{', '}'}
-        
         while self.chari < self.file_len:
             char = self.file[self.chari]
 
-            if char in symbol_list:
+            if char in self.chars_item:
                 self.chari += 1
                 return char
             
             # skip escape
-            elif char == '\\' and self.NextChar() in self.escape_chars:
+            elif char == '\\' and self.NextChar() in self.chars_escape:
                 self.chari += 2
             
-            elif char == '/' and self.NextChar() in self.comment_chars:
+            elif char == '/' and self.NextChar() in self.chars_comment:
                 self.SkipComment()
                 
             elif char == '\n':
                 self.linei += 1
                 
-            elif char not in {' ', '\t'}:
+            elif char not in self.chars_space:
                 break
 
             self.chari += 1
@@ -256,7 +502,7 @@ class QPCLexer:
         while self.chari < self.file_len:
             char = self.file[self.chari]
         
-            if char in {'{', '}'}:
+            if char in self.chars_item:
                 break
         
             elif char == '[':
@@ -276,7 +522,7 @@ class QPCLexer:
                 self.chari += 1
                 break
         
-            elif char == '/' and self.NextChar() in self.comment_chars:
+            elif char == '/' and self.NextChar() in self.chars_comment:
                 self.SkipComment()
         
             else:
@@ -311,16 +557,21 @@ class QPCLexer:
                 self.chari += 1
 
     def ReadQuote(self, qchar):
-        quote = ''
+        if self.keep_quotes:
+            quote = qchar
+        else:
+            quote = ''
     
         while self.chari < self.file_len:
             self.chari += 1
             char = self.file[self.chari]
         
-            if char == '\\' and self.NextChar() in self.escape_chars:
+            if char == '\\' and self.NextChar() in self.chars_escape:
                 quote += self.NextChar()
                 self.chari += 1
             elif char == qchar:
+                if self.keep_quotes:
+                    quote += char
                 break
             else:
                 quote += char

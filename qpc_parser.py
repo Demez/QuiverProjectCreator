@@ -6,15 +6,12 @@
 
 import re
 import qpc_hash
-import qpc_reader
+from qpc_reader import SolveCondition, ReadFile
 from os import sep, path
 from qpc_base import args
 
 if args.time:
     from time import perf_counter
-    
-
-COND_OPERATORS = re.compile('(\\(|\\)|\\|\\||\\&\\&|>=|<=|==|!=|>|<)')
 
 
 class ProjectDefinition:
@@ -83,12 +80,14 @@ class ProjectPass:
                 if self.GetSourceFile(file_path):
                     file_block.Warning("File already added")
                 else:
+                    CheckFileExists(file_path)
                     self.source_files[file_path] = SourceFile(folder_list)
                     continue
             else:
                 if self.GetFileFolder(file_path):
                     file_block.Warning("File already added")
                 else:
+                    CheckFileExists(file_path)
                     self.files[file_path] = sep.join(folder_list)
                     continue
     
@@ -234,9 +233,9 @@ class Configuration:
         self.general = General()
         self.compiler = Compiler()
         self.linker = Linker()
-        self.pre_build = BuildEvent()
-        self.pre_link = BuildEvent()
-        self.post_build = BuildEvent()
+        self.pre_build = []
+        self.pre_link = []
+        self.post_build = []
 
 
 class General:
@@ -263,7 +262,7 @@ class Compiler:
 
 class Linker:
     def __init__(self):
-        self.out_file = ''
+        self.output_file = ''
         self.debug_file = ''
         self.import_library = ''
         self.ignore_import_library = ''
@@ -271,18 +270,18 @@ class Linker:
         self.ignore_libraries = []
         self.options = []
 
-
-class BuildEvent:
-    def __init__(self):
-        self.command_line = []
-        self.use_in_build = ''
-        
-
+       
 # TODO: maybe do this?
 class SpecificOption:
     def __init__(self):
         self.value = ''
         self.valid_options = []
+        
+        
+def CheckFileExists(file_path):
+    if args.check_files:
+        if not path.isfile(file_path):
+            raise FileNotFoundError("File does not exist: " + file_path)
 
 
 def GetAllPaths(path_list):
@@ -299,88 +298,6 @@ def GetAllPaths(path_list):
         full_folder_paths.update(folder_list)
     
     return tuple(full_folder_paths)
-
-
-# should i move this to the lexer?
-def SolveCondition(condition, macros):
-    if not condition:
-        return True
-    
-    # solve any sub conditionals first
-    while "(" in condition:
-        sub_cond_line = (condition.split('(')[1]).split(')')[0]
-        sub_cond_value = SolveCondition(sub_cond_line, macros)
-        condition = condition.split('(', 1)[0] + str(sub_cond_value * 1) + condition.split(')', 1)[1]
-    
-    split_string = COND_OPERATORS.split(condition)
-    
-    condition = ReplaceMacrosCondition(split_string, macros)
-    
-    if len(condition) == 1:
-        try:
-            return int(condition[0])
-        except ValueError:
-            return 1
-    
-    while len(condition) > 1:
-        condition = SolveSingleCondition(condition)
-    
-    return condition[0]
-
-
-def SolveSingleCondition(cond):
-    index = 1
-    result = 0
-    # highest precedence order
-    if "<" in cond:
-        index = cond.index("<")
-        if cond[index - 1] < cond[index + 1]:
-            result = 1
-    
-    elif "<=" in cond:
-        index = cond.index("<=")
-        if cond[index - 1] <= cond[index + 1]:
-            result = 1
-    
-    elif ">=" in cond:
-        index = cond.index(">=")
-        if cond[index - 1] >= cond[index + 1]:
-            result = 1
-    
-    elif ">" in cond:
-        index = cond.index(">")
-        if cond[index - 1] > cond[index + 1]:
-            result = 1
-    
-    # next in order of precedence, check equality
-    # you can compare stings with these 2
-    elif "==" in cond:
-        index = cond.index("==")
-        if str(cond[index - 1]) == str(cond[index + 1]):
-            result = 1
-    
-    elif "!=" in cond:
-        index = cond.index("!=")
-        if str(cond[index - 1]) != str(cond[index + 1]):
-            result = 1
-    
-    # and then, check for any &&'s
-    elif "&&" in cond:
-        index = cond.index("&&")
-        if int(cond[index - 1]) > 0 and int(cond[index + 1]) > 0:
-            result = 1
-    
-    # and finally, check for any ||'s
-    elif "||" in cond:
-        index = cond.index("||")
-        if int(cond[index - 1]) > 0 or int(cond[index + 1]) > 0:
-            result = 1
-    
-    cond[index] = result
-    del cond[index + 1]
-    del cond[index - 1]
-    
-    return cond
 
 
 def ParseBaseFile(base_file, macros, project_list, group_dict):
@@ -433,7 +350,7 @@ def ParseBaseFile(base_file, macros, project_list, group_dict):
             if args.verbose:
                 print("Reading: " + file_path)
             
-            include_file = qpc_reader.ReadFile(file_path)
+            include_file = ReadFile(file_path)
             
             if args.verbose:
                 print("Parsing... ")
@@ -497,7 +414,7 @@ def ParseProjectFile(project_file, project, project_path, indent):
 
 def IncludeFile(include_path, project, project_path, indent):
     project.hash_list[include_path] = qpc_hash.MakeHash(include_path)
-    include_file = qpc_reader.ReadFile(include_path)
+    include_file = ReadFile(include_path)
     
     if not include_file:
         raise FileNotFoundError(
@@ -618,7 +535,7 @@ def ParseConfigOption(project, group_block, option_block):
     
     elif group_block.key == "linker":
         
-        if option_block.key in ("out_file", "debug_file", "import_library", "ignore_import_library"):
+        if option_block.key in ("output_file", "debug_file", "import_library", "ignore_import_library"):
             if option_block.values:
                 
                 if option_block.key == "ignore_import_library":
@@ -631,8 +548,8 @@ def ParseConfigOption(project, group_block, option_block):
                 # TODO: maybe split the extension here?
                 value = path.normpath(ReplaceMacros(option_block.values[0], project.macros))
                 
-                if option_block.key in {"out_file", "output_file"}:
-                    config.linker.out_file = value
+                if option_block.key in {"output_file", "output_file"}:
+                    config.linker.output_file = value
                 elif option_block.key == "debug_file":
                     config.linker.debug_file = value
                 elif option_block.key == "import_library":
@@ -660,32 +577,18 @@ def ParseConfigOption(project, group_block, option_block):
                     config.linker.options.extend([item.key, *item.values])
     
     elif group_block.key in ("post_build", "pre_build", "pre_link"):
+        value = ReplaceMacros(' '.join(option_block.values), project.macros)
+        if value:
+            value = value.replace("\\n", "\n")
         
-        if group_block.key == "post_build":
-            event = config.post_build
-        
-        elif group_block.key == "pre_build":
-            event = config.pre_build
-        
-        elif group_block.key == "pre_link":
-            event = config.pre_link
-        
-        else:
-            raise Exception("how tf did you get here, "
-                            "should only get here with post_build, pre_build, and pre_link")
-        
-        if option_block.key == "command_line":
-            value = ReplaceMacros(' '.join(option_block.values), project.macros)
-            if value:
-                value = value.replace("\\n", "\n")
-                event.command_line.append(value)
-        
-        elif option_block.key == "use_in_build":
-            if option_block.values:
-                if option_block.values[0] in ("true", "false"):
-                    event.use_in_build = option_block.values[0]
-                else:
-                    option_block.InvalidOption("true", "false")
+            if group_block.key == "post_build":
+                config.post_build.append(value)
+            
+            elif group_block.key == "pre_build":
+                config.pre_build.append(value)
+            
+            elif group_block.key == "pre_link":
+                config.pre_link.append(value)
     
     else:
         group_block.Error("Unknown Configuration Group: ")
@@ -744,25 +647,6 @@ def ReplaceExactMacros(split_string, macros):
     return split_string
 
 
-# used in solving conditions
-def ReplaceMacrosCondition(split_string, macros):
-    # for macro, macro_value in macros.items():
-    for index, item in enumerate(split_string):
-        if item in macros or item[1:] in macros:
-            if str(item).startswith("!"):
-                split_string[index] = str(int(not macros[item[1:]]))
-            else:
-                split_string[index] = macros[item]
-        
-        elif item.startswith("!"):
-            split_string[index] = "1"
-        
-        elif item.startswith("$"):
-            split_string[index] = "0"
-    
-    return split_string
-
-
 def ParseProject(project_dir, project_filename, base_macros, configurations, platforms, project_pass):
     project_path = project_dir + sep + project_filename
     project_name = path.splitext(project_filename)[0]
@@ -770,7 +654,7 @@ def ParseProject(project_dir, project_filename, base_macros, configurations, pla
     if args.verbose:
         print("Reading: " + project_filename)
     
-    project_file = qpc_reader.ReadFile(project_filename)
+    project_file = ReadFile(project_filename)
     
     print("Parsing: " + project_filename)
     

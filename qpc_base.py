@@ -1,7 +1,8 @@
 
-import sys
+# import sys
 import os
 import argparse
+import shutil
 
 
 def FindItemsWithStartingChar( search_list, item ):
@@ -68,6 +69,13 @@ def GetAllDictValues( d ):
 def CreateDirectory(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
+    
+
+def CopyFile(src_file, out_file):
+    if os.path.isfile(src_file):
+        out_dir = os.path.split(out_file)[0]
+        CreateDirectory(out_dir)
+        shutil.copyfile(src_file, out_file)
 
 
 # this is here so i can check arguments globally across files
@@ -81,6 +89,8 @@ def ParseArgs():
                             help='Set the root directory of the script')
     cmd_parser.add_argument('/basefile', default=os.getcwd() + "/_qpc_scripts/_default.qpc_base",
                             dest="base_file", help='Set the root directory of the script')
+    cmd_parser.add_argument('/outdir', default=os.getcwd() + "/folder_fix",
+                            dest="out_dir", help='Output directory of qpc scripts with edited folder paths')
 
     cmd_parser.add_argument('/time', '/t', action='store_true', help='Print the time taken to parse')
     cmd_parser.add_argument('/verbose', '/v', action='store_true', help='Enable verbose console output')
@@ -88,7 +98,7 @@ def ParseArgs():
     cmd_parser.add_argument('/hidewarnings', '/hide', dest="hide_warnings", action='store_true',
                             help="Suppress all warnings")
     cmd_parser.add_argument('/checkfiles', '/check', dest="check_files", action='store_true',
-                            help="Check if any file that's added actually exists (DOESN'T WORK ATM)")
+                            help="Check if any file that's added actually exists")
 
     cmd_parser.add_argument('/types', nargs="+", default=(), choices=valid_project_types, help='Project types to generate')
     cmd_parser.add_argument('/add', nargs="+", default=(), help='Add projects or groups to generate')
@@ -115,6 +125,11 @@ if os.path.isabs(args.root_dir):
     args.root_dir = os.path.normpath(args.root_dir)
 else:
     args.root_dir = os.path.normpath(os.getcwd() + os.sep + args.root_dir)
+
+if os.path.isabs(args.out_dir):
+    args.out_dir = os.path.normpath(args.out_dir)
+else:
+    args.out_dir = os.path.normpath(os.getcwd() + os.sep + args.out_dir)
 
 
 

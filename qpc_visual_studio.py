@@ -272,8 +272,8 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
         et.SubElement(link_lib, "AdditionalDependencies").text = ';'.join(cfg.linker.libraries) + \
                                                                  ";%(AdditionalDependencies)"
 
-        if cfg.linker.out_file:
-            output_file = os.path.splitext(cfg.linker.out_file)[0]
+        if cfg.linker.output_file:
+            output_file = os.path.splitext(cfg.linker.output_file)[0]
             if cfg.general.configuration_type == "dynamic_library":
                 et.SubElement(link_lib, "OutputFile").text = output_file + project.macros["$_BIN_EXT"]
             elif cfg.general.configuration_type == "static_library":
@@ -312,17 +312,14 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
         # pre_build, post_build, pre_link
         # PreBuildEvent, PostBuildEvent PreLinkEvent
         
-        if cfg.pre_build.command_line:
-            et.SubElement(et.SubElement(item_def_group, "PreBuildEvent"),
-                          "Command").text = ' '.join(cfg.pre_build.command_line)
+        if cfg.pre_build:
+            et.SubElement(et.SubElement(item_def_group, "PreBuildEvent"), "Command").text = ' '.join(cfg.pre_build)
 
-        if cfg.post_build.command_line:
-            et.SubElement(et.SubElement(item_def_group, "PostBuildEvent"),
-                          "Command").text = ' '.join(cfg.post_build.command_line)
+        if cfg.post_build:
+            et.SubElement(et.SubElement(item_def_group, "PostBuildEvent"), "Command").text = ' '.join(cfg.post_build)
 
-        if cfg.pre_link.command_line:
-            et.SubElement(et.SubElement(item_def_group, "PreLinkEvent"),
-                          "Command").text = ' '.join(cfg.pre_link.command_line)
+        if cfg.pre_link:
+            et.SubElement(et.SubElement(item_def_group, "PreLinkEvent"), "Command").text = ' '.join(cfg.pre_link)
     return
 
 
