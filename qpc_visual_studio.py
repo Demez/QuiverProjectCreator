@@ -1,6 +1,7 @@
 import uuid
 import os
 import sys
+import qpc_hash
 import qpc_base as base
 import xml.etree.ElementTree as et
 from xml.dom import minidom
@@ -11,20 +12,27 @@ def MakeUUID():
 
 
 def CreateProject(project_list):
+    out_dir = ""
+    if base.args.project_dir:
+        try:
+            out_dir = project_list.projects[0].macros["$PROJECT_DIR"]
+        except KeyError:
+            pass
+        
     print("Creating: " + project_list.file_name + ".vcxproj")
     project_list = FixPlatformNames(project_list)
     vcxproject, include_list, res_list, none_list = CreateVCXProj(project_list)
     
     # this is a little slow due to AddFormattingToXML()
-    WriteProject(project_list, vcxproject)
+    WriteProject(project_list, out_dir, vcxproject)
     
     # would this be too much printing for the normal output? idk
     print("Creating: " + project_list.file_name + ".vcxproj.filters")
     vcxproject_filters = CreateVCXProjFilters(project_list, include_list, res_list, none_list)
-    WriteProject(project_list, vcxproject_filters, True)
+    WriteProject(project_list, out_dir, vcxproject_filters, True)
     
     RevertPlatformNameChanges(project_list)
-    return
+    return out_dir
 
 
 def CreateVCXProj(project_list):
@@ -505,11 +513,14 @@ def Create_ItemGroupFilters(proj_filters, files_dict, filter_name):
 # --------------------------------------------------------------------------------------------------
 
 
-def WriteProject(project_list, xml_file, filters=False):
-    file_path = os.path.splitext(project_list.file_name)[0] + ".vcxproj"
+def WriteProject(project_list, out_dir, xml_file, filters=False):
+    file_path = out_dir + "/" + os.path.splitext(project_list.file_name)[0] + ".vcxproj"
     
     if filters:
         file_path += ".filters"
+        
+    # directory = os.path.split(file_path)
+    base.CreateDirectory(out_dir)
     
     with open(file_path, "w", encoding="utf-8") as project_file:
         project_file.write(AddFormattingToXML(xml_file))
@@ -524,13 +535,17 @@ def AddFormattingToXML(elem):
 # sln keys:
 # https://www.codeproject.com/Reference/720512/List-of-Visual-Studio-Project-Type-GUIDs
 
-def MakeSolutionFile(project_def_list, solution_path, configurations, platforms):
+def MakeSolutionFile(project_def_list, project_list, solution_path, configurations, platforms):
     cpp_uuid = "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}"
     filter_uuid = "{2150E333-8FDC-42A3-9474-1A3956D46DE8}"
     
     solution_path += ".sln"
     
     print("Creating Solution File: " + solution_path + "\n")
+    
+    out_dir_dict = {}
+    for hash_path, qpc_path in project_list.items():
+        out_dir_dict[qpc_path] = qpc_hash.GetOutDir(hash_path)
     
     with open(solution_path, "w", encoding="utf-8") as solution_file:
         
@@ -546,7 +561,16 @@ def MakeSolutionFile(project_def_list, solution_path, configurations, platforms)
                     project_folder_uuid[folder] = MakeUUID()
             
             for script_path in project_def.script_list:
-                vcxproj_path = os.path.splitext(script_path)[0] + ".vcxproj"
+                try:
+                    out_dir = out_dir_dict[script_path]
+                except KeyError:
+                    print("Project script is not in project_list? wtf")
+                    continue
+                vcxproj_path = out_dir + "/" + os.path.splitext(os.path.basename(script_path))[0] + ".vcxproj"
+                
+                if not os.path.isfile(vcxproj_path):
+                    print("Project does not exist: " + vcxproj_path)
+                    continue
                 
                 tree = et.parse(vcxproj_path)
                 vcxproj = tree.getroot()

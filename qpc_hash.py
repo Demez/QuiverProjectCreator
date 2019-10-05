@@ -77,6 +77,20 @@ def CheckHash(project_path, file_list=None):
         return False
     
     
+def GetOutDir(project_hash_file_path):
+    if path.isfile(project_hash_file_path):
+        hash_file = qpc_reader.ReadFile(project_hash_file_path)
+        
+        if not hash_file:
+            return ""
+
+        commands_block = hash_file.GetItem("commands")
+        
+        working_dir = commands_block.GetItemValues("working_dir")[0]
+        out_dir = commands_block.GetItemValues("out_dir")[0]
+        return path.normpath(working_dir + "/" + out_dir)
+    
+    
 def _CheckCommands(project_dir, command_list):
     for command_block in command_list:
         if command_block.key == "working_dir":
@@ -85,6 +99,9 @@ def _CheckCommands(project_dir, command_list):
                 directory += sep + project_dir
             if directory != path.normpath(command_block.values[0]):
                 return False
+        
+        elif command_block.key == "out_dir":
+            pass
         
         elif command_block.key == "add":
             if sorted(args.add) != sorted(command_block.values):
@@ -151,7 +168,7 @@ def GetHashFileExt(project_path):
         return ".qpc_hash"
 
 
-def WriteHashFile(project_path, hash_list=None, file_list=None, master_file=False):
+def WriteHashFile(project_path, out_dir="", hash_list=None, file_list=None, master_file=False):
     def ListToString(arg_list):
         if arg_list:
             return '"' + '" "'.join(arg_list) + '"\n'
@@ -161,10 +178,11 @@ def WriteHashFile(project_path, hash_list=None, file_list=None, master_file=Fals
         # write the commands
         hash_file.write("commands\n{\n")
         hash_file.write('\tworking_dir\t"' + getcwd().replace('\\', '/') + '"\n')
+        hash_file.write('\tout_dir\t\t"' + out_dir.replace('\\', '/') + '"\n')
         hash_file.write('\tadd\t\t\t' + ListToString(args.add))
         hash_file.write('\tremove\t\t' + ListToString(args.remove))
         if not master_file:
-            hash_file.write('\ttypes\t\t\t' + ListToString(args.types))
+            hash_file.write('\ttypes\t\t' + ListToString(args.types))
         hash_file.write('\tmacros\t\t' + ListToString(args.macros))
         hash_file.write("}\n\n")
         

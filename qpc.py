@@ -187,6 +187,7 @@ def Main():
         start_time = perf_counter()
 
     project_hash_list = {}
+    project_out_dirs = {}
     
     for project_def in project_def_list:
         for project_path in project_def.script_list:
@@ -208,9 +209,9 @@ def Main():
                 if args.verbose:
                     print("Parsed: " + project_list.macros["$PROJECT_NAME"])
                 
-                qpc_writer.CreateProject(project_list)
+                out_dir = qpc_writer.CreateProject(project_list)
                 
-                qpc_hash.WriteHashFile(project_path, project_list.hash_dict)
+                qpc_hash.WriteHashFile(project_path, out_dir, project_list.hash_dict)
                 
                 del project_list
                 print("")
