@@ -300,8 +300,10 @@ def GetAllPaths(path_list):
     return tuple(full_folder_paths)
 
 
+# TODO: bug discovered with this,
+#  if i include the groups before the projects, it won't add any projects
 def ParseBaseFile(base_file, macros, project_list, group_dict):
-    configurations = []
+    configurations = set()
     for project_block in base_file:
         
         if not SolveCondition(project_block.condition, macros):
@@ -339,9 +341,7 @@ def ParseBaseFile(base_file, macros, project_list, group_dict):
             macros["$" + project_block.values[0].upper()] = ReplaceMacros(project_block.values[1], macros)
         
         elif project_block.key == "configurations":
-            for item in project_block.items:
-                if SolveCondition(item.condition, macros):
-                    configurations.append(item.key)
+            configurations.update(project_block.GetItemKeyAndValuesThatPassCondition(macros))
         
         elif project_block.key == "include":
             # "Ah shit, here we go again."
@@ -360,7 +360,7 @@ def ParseBaseFile(base_file, macros, project_list, group_dict):
         else:
             project_block.Warning("Unknown Key: ")
     
-    return configurations
+    return list(configurations)
 
 
 def ParseProjectGroupItems(project_group, project_list, project_block, macros, folder_list=None):
@@ -601,9 +601,9 @@ def ParseCompilerOption(project, compiler, option_block):
         for item in option_block.items:
             if SolveCondition(item.condition, project.macros):
                 if option_block.key == "preprocessor_definitions":
-                    compiler.preprocessor_definitions.extend([item.key, *item.values])
+                    compiler.preprocessor_definitions.extend(ReplaceMacrosInList(project.macros, *item.GetKeyValues()))
                 elif option_block.key == "options":
-                    compiler.options.extend([item.key, *item.values])
+                    compiler.options.extend(item.GetKeyValues())
     
     elif option_block.key == "precompiled_header":
         if option_block.values:
