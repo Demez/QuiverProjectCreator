@@ -3,6 +3,13 @@
 import os
 import argparse
 import shutil
+import enum
+
+
+class ConfigurationTypes(enum.Enum):
+    static_library = "static_library"
+    dynamic_library = "dynamic_library"
+    application = "application"
 
 
 def FindItemsWithStartingChar( search_list, item ):
@@ -67,8 +74,14 @@ def GetAllDictValues( d ):
 
 
 def CreateDirectory(directory):
-    if not os.path.exists(directory):
+    try:
         os.makedirs(directory)
+        if args.verbose:
+            print("Created Directory: " + directory)
+    except FileExistsError:
+        pass
+    except FileNotFoundError:
+        pass
     
 
 def CopyFile(src_file, out_file):
@@ -89,8 +102,12 @@ def ParseArgs():
                             help='Set the root directory of the script')
     cmd_parser.add_argument('/basefile', default=os.getcwd() + "/_qpc_scripts/_default.qpc_base",
                             dest="base_file", help='Set the root directory of the script')
-    cmd_parser.add_argument('/outdir', default=os.getcwd() + "/folder_fix",
-                            dest="out_dir", help='Output directory of qpc scripts with edited folder paths')
+    cmd_parser.add_argument('/outdir', default="", dest="out_dir",
+                            help='Output directory of qpc scripts with edited folder paths')
+    
+    # TODO: maybe change this command to make it a little better and not a hardcoded macro
+    cmd_parser.add_argument('/project_dir', action='store_true',
+                            help='Output project files based on PROJECT_DIR macro, relative to master_file dir')
 
     cmd_parser.add_argument('/time', '/t', action='store_true', help='Print the time taken to parse')
     cmd_parser.add_argument('/verbose', '/v', action='store_true', help='Enable verbose console output')
