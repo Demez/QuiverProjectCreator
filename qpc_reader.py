@@ -54,10 +54,10 @@ class QPCBlockBase:
                 return item
         return None
 
-    def GetItemValue(self, item_key):
+    def GetItemValues(self, item_key):
         for item in self.items:
             if item.key == item_key:
-                return item.value
+                return item.values
         return None
 
     def GetAllItems(self, item_key):
@@ -65,6 +65,36 @@ class QPCBlockBase:
         for item in self.items:
             if item.key == item_key:
                 items.append(item)
+        return items
+
+    # TODO: shorten these 4 function names?
+    def GetItemsThatPassCondition(self, macros: list):
+        items = []
+        for item in self.items:
+            if SolveCondition(item.condition, macros):
+                items.append(item)
+        return items
+    
+    def GetItemKeysThatPassCondition(self, macros: list):
+        items = []
+        for item in self.items:
+            if SolveCondition(item.condition, macros):
+                items.append(item.key)
+        return items
+    
+    def GetItemValuesThatPassCondition(self, macros: list):
+        items = []
+        for item in self.items:
+            if SolveCondition(item.condition, macros):
+                items.extend(item.values)
+        return items
+    
+    # way too long
+    def GetItemKeyAndValuesThatPassCondition(self, macros: list):
+        items = []
+        for item in self.items:
+            if SolveCondition(item.condition, macros):
+                items.extend([item.key, *item.values])
         return items
 
     # probably useless
@@ -145,7 +175,7 @@ class QPCBlock(QPCBlockBase):
     
         return string
 
-    def GetKeysAndValues(self):
+    def GetKeyValues(self):
         return [self.key, *self.values]
 
     def InvalidOption(self, *valid_option_list):
@@ -240,22 +270,22 @@ def SolveSingleCondition(cond):
     # highest precedence order
     if "<" in cond:
         index = cond.index("<")
-        if cond[index - 1] < cond[index + 1]:
+        if int(cond[index - 1]) < int(cond[index + 1]):
             result = 1
     
     elif "<=" in cond:
         index = cond.index("<=")
-        if cond[index - 1] <= cond[index + 1]:
+        if int(cond[index - 1]) <= int(cond[index + 1]):
             result = 1
     
     elif ">=" in cond:
         index = cond.index(">=")
-        if cond[index - 1] >= cond[index + 1]:
+        if int(cond[index - 1]) >= int(cond[index + 1]):
             result = 1
     
     elif ">" in cond:
         index = cond.index(">")
-        if cond[index - 1] > cond[index + 1]:
+        if int(cond[index - 1]) > int(cond[index + 1]):
             result = 1
     
     # next in order of precedence, check equality
@@ -406,6 +436,7 @@ class QPCLexer:
 
             elif char == '/' and self.NextChar() in self.chars_comment:
                 self.SkipComment()
+                self.chari -= 1  # shut
     
             else:
                 if self.file[self.chari] in self.chars_cond:
