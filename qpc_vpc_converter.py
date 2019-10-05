@@ -396,7 +396,7 @@ def ConvertVGC(vgc_dir, vgc_filename, vgc_project):
                     qpc_base_file[-1] += ' "' + '" "'.join(project_block.values) + '"'
                 
                 if key == "$project" and len(project_block.items) == 1:
-                    qpc_base_file[-1] += ' "' + project_block.items[0].key.replace("\\", "/") + '"'
+                    qpc_base_file[-1] += ' "' + project_block.items[0].key.replace("\\", "/").replace(".vpc", ".qpc") + '"'''
                     WriteCondition(project_block.items[0].condition, qpc_base_file)
                     qpc_base_file.append("")
                     project_block.items.remove(project_block.items[0])
@@ -413,7 +413,8 @@ def ConvertVGC(vgc_dir, vgc_filename, vgc_project):
                     values[index] = ConvertMacroCasing(value.replace("vpc_scripts", "_qpc_scripts"))
 
                 if key == "$include":
-                    qpc_base_file.append('include "' + project_block.values[0].replace("\\", "/") + '"')
+                    qpc_base_file.append(
+                        'include "' + project_block.values[0].replace("\\", "/").replace("vgc", "qpc_base") + '"')
                 else:
                     qpc_base_file.append('macro "' + project_block.values[0].replace("\\", "/") + '"')
 
@@ -424,6 +425,17 @@ def ConvertVGC(vgc_dir, vgc_filename, vgc_project):
             pass
         else:
             project_block.Warning("Unknown Key:")
+            
+    # add configurations block
+    qpc_base_file.extend(
+        ["",
+         "configurations",
+         "{",
+         "\t\"Debug\"",
+         "\t\"Release\"",
+         "}"
+         ]
+    )
     
     WriteProject(vgc_dir, vgc_filename, qpc_base_file, True)
     
@@ -439,16 +451,14 @@ def ConvertSubVGCBlock(depth, block_items, qpc_base_file):
             for item in sub_block.items:
                 ConvertSubVGCBlock(depth+1, item, qpc_base_file)
         else:
-            key = ConvertMacroCasing('"' + sub_block.key.replace("\\", "/") + '"')
+            key = ConvertMacroCasing('"' + sub_block.key.replace("\\", "/").replace(".vpc", ".qpc") + '"')
             qpc_base_file.append(space + key)
             WriteCondition(sub_block.condition, qpc_base_file)
     return
 
 
-# def WriteProjectBlocks( directory, filename, project_blocks, base_file=False ):
 def WriteProject(directory, filename, project_lines, base_file=False):
-    # directory = directory.replace("vpc_scripts", "base")
-    directory = "D:/projects/source/clover/qpc_scripts"
+    directory = directory.replace("vpc_scripts", "_qpc_scripts")
     base.CreateDirectory(directory)
     
     abs_path = os.path.normpath(directory + os.sep + filename + ".qpc")
@@ -499,9 +509,9 @@ class Configuration:
         ]
         
         self.groups = {
-            "general": general,
-            "compiler": compiler,
-            "linker": linker,
+            "general": general.ToDict(),
+            "compiler": compiler.ToDict(),
+            "linker": linker.ToDict(),
         }
         
         self.options = {
@@ -530,8 +540,14 @@ class ConfigGroup:
     def __init__(self, name):
         self.name = name
         self.options = []
-
-
+        
+    def ToDict(self):
+        option_dict = {}
+        for option in self.options:
+            option_dict[option.name] = option
+        return option_dict
+        
+        
 class ConfigOption:
     def __init__(self, name, is_list=False):
         self.name = name
@@ -541,13 +557,6 @@ class ConfigOption:
     
     def SetValue(self, values, condition, split_values):
         if self.is_list:
-            
-            # add the command line manually, can't be merged automatically
-            if self.name == "command_line":
-                if not self.value:
-                    self.value.append(ConfigOptionValue('"echo set the command_line option manually"', None))
-                return
-            
             if split_values:
                 for string in split_values:
                     values = ' '.join(values).split(string)
@@ -801,9 +810,6 @@ def AddCondition(base_cond, add_cond, add_operator):
 
 
 def RemoveCondition(cond, value_to_remove):
-    # TODO: if the value is in here more than once, it could mess this up
-    # this might work
-    # if value_to_remove in cond:
     while value_to_remove in cond:
         cond = cond.split(value_to_remove, 1)
         
@@ -960,36 +966,40 @@ def WriteFile(file_block, qpc_project, indent):
 
 
 def AddLibrariesToConfiguration(libraries_block_list, config):
-    config_group = config.groups["linker"]
+    config_option = config.groups["linker"]["libraries"]
     library_paths = []
     
-    for config_option in config_group.options:
-        if config_option.name != "libraries":
-            continue
+    # adds a gap in-between already added libraries and these
+    # if config_option.value:
+    #     config_option.AddValue("", None)
+    
+    for library in libraries_block_list:
+        lib_name = ' '.join(library.values).replace("\\", "/")
+        lib_name = '"' + os.path.splitext(lib_name)[0] + '"'
         
-        # adds a gap in-between already added libraries and these
-        # if config_option.value:
-        #     config_option.AddValue("", None)
+        path_dict = {
+            "$SRC_DIR/lib/common": "$LIBCOMMON",
+            "$SRCDIR/lib/common": "$LIBCOMMON",
+            "lib/common": "$LIBCOMMON",
+            "$SRC_DIR/lib/public": "$LIBPUBLIC",
+            "$SRCDIR/lib/public": "$LIBPUBLIC",
+            "lib/public": "$LIBPUBLIC",
+        }
         
-        for library in libraries_block_list:
-            lib_name = ' '.join(library.values).replace("\\", "/")
-            lib_name = '"' + os.path.splitext(lib_name)[0] + '"'
-            
-            if library.key.startswith("-"):
-                config_option.AddValue("- " + lib_name, library.condition)
-            else:
-                config_option.AddValue(lib_name, library.condition)
-        break
+        for path, macro in path_dict.items():
+            if path in lib_name:
+                lib_name = macro.join(lib_name.split(path))
+                break
+        
+        if library.key.startswith("-"):
+            config_option.AddValue("- " + lib_name, library.condition)
+        else:
+            config_option.AddValue(lib_name, library.condition)
     
     # might be a bad idea
     if library_paths:
-        for config_option in config_group.options:
-            if config_option.name != "library_directories":
-                continue
-            
-            for lib_path in library_paths:
-                config_option.AddValue('"' + os.path.splitext(lib_path)[0] + '"', None)
-            break
+        for lib_path in library_paths:
+            config.groups["general"]["library_directories"].AddValue('"' + os.path.splitext(lib_path)[0] + '"', None)
     return
 
 
@@ -1059,10 +1069,9 @@ def ParseConfigOption(condition, option_block, qpc_option, option_value):
         
         # don't split this into a list
         qpc_option.SetValue(option_value, condition, False)
-    elif option_block.key.casefold() in ("$gcc_extracompilerflags",
-                                         "$gcc_extralinkerflags", "$optimizerlevel"):
-        # only split by commas (i think?)
-        qpc_option.SetValue(option_value, condition, [','])
+        
+    elif option_block.key.casefold() in ("$gcc_extracompilerflags", "$gcc_extralinkerflags", "$optimizerlevel"):
+        qpc_option.SetValue(option_value, condition, [','])  # only split by commas (i think?)
     else:
         qpc_option.SetValue(option_value, condition, [',', ';', ' '])
     return
@@ -1112,36 +1121,40 @@ def ParseConfiguration(vpc_config, qpc_config):
             if option_value:
                 if config_group_name in qpc_config.options:
                     ParseConfigOption(config_cond, option_block, qpc_config.options[config_group_name], option_value)
-                else:
-                    for qpc_config_group in qpc_config.groups.values():
-                        for qpc_option in qpc_config_group.options:
-                            if qpc_option.name == option_name:
-                                condition = NormalizePlatformConditions(option_block.condition)
-    
-                                # if the group has a condition, add that onto every value here
-                                if config_group and config_group.condition:
-                                    if condition:
-                                        # TODO: test this, never ran into this yet, so im hoping this works
-                                        group_condition = NormalizePlatformConditions(config_group.condition)
-            
-                                        if condition != group_condition:
-                                            condition = NormalizePlatformConditions(
-                                                option_block.condition + "&&" + group_condition)
-                                    else:
-                                        condition = NormalizePlatformConditions(config_group.condition)
+                elif config_group_name in qpc_config.groups:
+                    try:
+                        qpc_option = qpc_config.groups[config_group_name][option_name]
+                    except KeyError:
+                        print("unknown config option")
+                        continue
+                            
+                    condition = NormalizePlatformConditions(option_block.condition)
 
-                                # if this option is in a specific config, add a config condition to it
-                                if config_cond:
-                                    condition = AddCondition(condition, config_cond, "&&")
-                                        
-                                ParseConfigOption(condition, option_block, qpc_option, option_value)
+                    # if the group has a condition, add that onto every value here
+                    if config_group and config_group.condition:
+                        if condition:
+                            # TODO: test this, never ran into this yet, so im hoping this works
+                            group_condition = NormalizePlatformConditions(config_group.condition)
+
+                            if condition != group_condition:
+                                condition = NormalizePlatformConditions(
+                                    option_block.condition + "&&" + group_condition)
+                        else:
+                            condition = NormalizePlatformConditions(config_group.condition)
+
+                    # if this option is in a specific config, add a config condition to it
+                    if config_cond:
+                        condition = AddCondition(condition, config_cond, "&&")
+                        
+                    ParseConfigOption(condition, option_block, qpc_option, option_value)
+                else:
+                    print("unknown config group/option")
     
     return
 
 
 def ConvertConfigGroupName(group_name):
     group_name = group_name.casefold()
-    
     if group_name == "$general":
         return "general"
     elif group_name == "$compiler":
@@ -1207,114 +1220,11 @@ def ConvertBoolToVSCommand(option_block):
         return None
     
     
-def WriteConfigGroup(current_group):
-    if "}" in current_group[-1]:
-        current_group[-1] += "\n"
-    
-    if option.is_list:
-        if "}" not in current_group[-1] and "{" not in current_group[-1]:
-            current_group[-1] += "\n"
-    pass
-    
-    
-def WriteConfigOptionUhhhhhhh(indent, config_lines, current_group, option):
-    if option.value:
-        # what about conditions for groups if every option has that condition?
-        # maybe sort that out in another function before running this one
-        if len(config_lines) > 0 and "}" in config_lines[-1] and not config_lines[-1].endswith("\n"):
-            config_lines[-1] += "\n"
-        
-        if "}" in current_group[-1]:
-            current_group[-1] += "\n"
-        
-        if option.is_list:
-            if "}" not in current_group[-1] and "{" not in current_group[-1]:
-                current_group[-1] += "\n"
-            
-            # current_group.append(indent + "\t\t" + option.name + "\n" + indent + "\t\t{")
-            
-            current_option = [indent + "\t\t" + option.name]
-            # + "\n" + indent + "\t\t{"]
-            
-            option_lines = []
-            cond_values = {}
-            for value_obj in option.value:
-                base.CreateNewDictValue(cond_values, value_obj.condition, "list")
-                cond_values[value_obj.condition].append(value_obj.value)
-                # option_lines.append(indent + "\t\t\t" + value_obj.value + '')
-                # WriteCondition( value_obj.condition, option_lines )
-            
-            # write any value with the same condition on the same line
-            for condition, value_list in cond_values.items():
-                if condition:
-                    # TODO: what if the line gets too long?
-                    #  need to add a check for that and break if needed
-                    option_lines.append(indent + "\t\t\t")
-                    
-                    # can't have multiple "keys" on the same line
-                    # so only add it once, and strip it from the rest of the values
-                    if value_list[0].startswith("- \""):
-                        option_lines[-1] += value_list[0]
-                        del value_list[0]
-                        for value in value_list:
-                            if value.startswith("- \""):
-                                option_lines[-1] += " " + value[2:]
-                            else:
-                                WriteCondition(condition, option_lines)
-                                option_lines.append(indent + "\t\t\t" + value)
-                    
-                    # TODO: change this to just check how long it is and if it should break or not
-                    elif option.name == "command_line":
-                        option_lines[-1] += value_list[0]
-                        del value_list[0]
-                        for value in value_list:
-                            if value != '""':
-                                if len(value) > 50 or (len(option_lines[-1]) > 50 and len(value) < 10):
-                                    option_lines[-1] += "\t\\"
-                                    option_lines.append(indent + "\t\t\t" + value)
-                                else:
-                                    option_lines[-1] += " " + value
-                    else:
-                        option_lines[-1] += " ".join(value_list)
-                    
-                    # would be cool if i could get the conditionals indented the same amount
-                    WriteCondition(condition, option_lines)
-            
-            if None in cond_values:
-                # TODO: add a check for how long all the values are in one line,
-                #  if it's short, then just write it all in one line
-                #  otherwise, write each on its own line
-                # also writing it after every conditional is better imo
-                for value in cond_values[None]:
-                    option_lines.append(indent + "\t\t\t" + value)
-            
-            current_option.append(indent + "\t\t{")
-            current_option += option_lines
-            current_option.append(indent + "\t\t}")
-            current_group += current_option
-        else:
-            # TODO: BUG: can't have multiple of these with different conditions
-            # this is a workaround that will probably never change
-            
-            option_lines = []
-            for value_obj in option.value:
-                option_lines.append(indent + "\t\t" + option.name + " " + value_obj.value + '')
-                WriteCondition(value_obj.condition, option_lines)
-            current_group += option_lines
-            
-            # current_group.append(indent + "\t\t" + option.name + " " + option.value + '')
-            # WriteCondition(option.condition, current_group)
-    
-    
-def WriteConfigOption(indent, config_lines, option):
+def WriteConfigOption(indent, option):
     current_option = []
     if option.value:
         if option.is_list:
-            # current_group.append(indent + "\t\t" + option.name + "\n" + indent + "\t\t{")
-            
             current_option = [indent + "\t" + option.name]
-            # + "\n" + indent + "\t\t{"]
-            
             option_lines = []
             cond_values = {}
             for value_obj in option.value:
@@ -1389,11 +1299,11 @@ def WriteConfiguration(config, indent, qpc_project_list):
                     (is_list and "{" not in current_group[-1]):
                 current_group.append(indent + "\t\t")
     
-    for config_group in config.groups.values():
-        current_group = [indent + "\t" + config_group.name, indent + "\t{"]
+    for config_group, config_option_dict in config.groups.items():
+        current_group = [indent + "\t" + config_group, indent + "\t{"]
         
-        for option in config_group.options:
-            option_lines = WriteConfigOption(indent + "\t", config_lines, option)
+        for option in config_option_dict.values():
+            option_lines = WriteConfigOption(indent + "\t", option)
             if option_lines:
                 AddSpaceGroup(option.is_list)
                 current_group.extend(option_lines)
@@ -1405,7 +1315,7 @@ def WriteConfiguration(config, indent, qpc_project_list):
             
     for config_option in config.options.values():
         # current_option = [indent + "\t" + config_option.name, indent + "\t{"]
-        option_lines = WriteConfigOption(indent, config_lines, config_option)
+        option_lines = WriteConfigOption(indent, config_option)
         if option_lines:
             AddSpace()
             config_lines.extend(option_lines)
