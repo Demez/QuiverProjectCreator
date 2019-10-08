@@ -514,7 +514,9 @@ def Create_ItemGroupFilters(proj_filters, files_dict, filter_name):
 
 
 def WriteProject(project_list, out_dir, xml_file, filters=False):
-    file_path = out_dir + "/" + os.path.splitext(project_list.file_name)[0] + ".vcxproj"
+    if out_dir and not out_dir.endswith("/"):
+        out_dir += "/"
+    file_path = out_dir + os.path.splitext(project_list.file_name)[0] + ".vcxproj"
     
     if filters:
         file_path += ".filters"
