@@ -179,10 +179,11 @@ def WriteHashFile(project_path, out_dir="", hash_list=None, file_list=None, mast
         hash_file.write("commands\n{\n")
         hash_file.write('\tworking_dir\t"' + getcwd().replace('\\', '/') + '"\n')
         hash_file.write('\tout_dir\t\t"' + out_dir.replace('\\', '/') + '"\n')
-        hash_file.write('\tadd\t\t\t' + ListToString(args.add))
-        hash_file.write('\tremove\t\t' + ListToString(args.remove))
         if not master_file:
             hash_file.write('\ttypes\t\t' + ListToString(args.types))
+        else:
+            hash_file.write('\tadd\t\t\t' + ListToString(args.add))
+            hash_file.write('\tremove\t\t' + ListToString(args.remove))
         hash_file.write('\tmacros\t\t' + ListToString(args.macros))
         hash_file.write("}\n\n")
         
