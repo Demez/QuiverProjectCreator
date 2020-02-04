@@ -65,7 +65,7 @@ class Project:
 
         self.hash_list = {}
 
-        self.macros = { "$PROJECTDIR" : path, "$PROJECTNAME" : name }
+        self.macros = {"$PROJECTDIR": path, "$PROJECTNAME": name}
         for key, value in macros.items():
             self.macros[ key ] = value
 
@@ -75,47 +75,37 @@ class Project:
         for key, value in conditionals.items():
             self.conditionals[ key ] = value
 
-    def AddMacro( self, values, required = False ):
-        key_name = "$" + values[0].upper()
+    def AddMacro(self, macro_name: str, macro_value: str = "", required: bool = False) -> None:
+        key_name = "$" + macro_name.upper()
 
-        try:
-            value = values[1]
-        except IndexError:
-            value = ''
-
-        if required and value == '':
+        # if required and not macro_value:
+        if required:
+            # if macro_value and key_name not in self.macros:
             if key_name not in self.macros:
-                self.macros_required[ key_name ] = value
+                self.macros[key_name] = macro_value
         else:
             # remove it from the required list if it's in it?
-            if key_name in self.macros_required:
-                del self.macros_required[ key_name ]
-            if key_name not in self.macros:
-                self.macros[ key_name ] = value
+            # if key_name in self.macros_required:
+            #     del self.macros_required[key_name]
+            self.macros[key_name] = macro_value
 
         self.ReplaceAnyUndefinedMacros()
-        self.AddConditional( values )
+        self.AddConditional(macro_name, macro_value)
 
-        return
-
-    def ReplaceAnyUndefinedMacros( self ):
+    def ReplaceAnyUndefinedMacros(self):
         # this could probably be sped up 
         # TODO: add scanning of files and certain config settings
         for macro, value in self.macros.items():
             self.macros[ macro ] = ReplaceMacros( value, self.macros, self.macros_required )
 
-    def AddConditional( self, values ):
-
-        if len(values) < 2:
-            return
-
-        try:
-            self.conditionals[ "$" + values[0].upper() ] = int(values[1])
-        except ValueError:
-            pass
+    def AddConditional(self, cond_name: str, cond_value=None) -> None:
+        if cond_value is not None:
+            try:
+                self.conditionals[ "$" + cond_name.upper() ] = int(cond_value)
+            except ValueError:
+                pass
         
     def AddFile( self, folder_list, file_list ):
-
         for file_path in file_list:
             if self.GetFileObject( file_path ):
                 if not base.FindCommand( "/hidewarnings" ):
@@ -124,39 +114,30 @@ class Project:
             self.files.append( ProjectFile( file_path, folder_list, self.config ) )
 
     def GetAllFileFolderDepthLists( self ):
-
         folder_lists = []
         for file_obj in self.files:
             if file_obj.folder_depth_list not in folder_lists and file_obj.folder_depth_list != []:
                 folder_lists.append( file_obj.folder_depth_list )
-
         return folder_lists
 
     def GetAllFileFolderPaths( self ):
-
         folder_paths = []
         for file_obj in self.files:
             if file_obj.folder_path not in folder_paths and file_obj.folder_path != '':
                 folder_paths.append( file_obj.folder_path )
-
         return folder_paths
 
     def GetFileObjectsInFolder( self, folder_list ):
-
         file_obj_list = []
         for file_obj in self.files:
             if file_obj.folder_depth_list == folder_list:
                 file_obj_list.append( file_obj )
-
         return file_obj_list
 
     def GetFileObject( self, file_path ):
-
         for file_obj in self.files:
             if file_obj.path == file_path:
                 return file_obj
-
-        return False
 
     # TODO: i probably need to add more stuff here for the prefix and ext macros
     # also add a check file option, since sometimes i may use "$DynamicFile" for a lib
@@ -183,13 +164,9 @@ class Project:
         self.libraries.remove(lib_path)
         self.dependencies.remove(lib_path)
 
-    def GetLibPath(self, lib_path, implib = False ):
+    def GetLibPath(self, lib_path: str, implib: bool = False):
         lib_path = os.path.normpath(lib_path)
-
-        if implib:
-            lib_ext = self.macros["$_IMPLIB_EXT"]
-        else:
-            lib_ext = self.macros["$_STATICLIB_EXT"]
+        lib_ext = self.macros["$_IMPLIB_EXT"] if implib else self.macros["$_STATICLIB_EXT"]
 
         # remove this ugly ass hack valve did later
         # may have to check if the file exists in this folder before adding it (vmpi)
@@ -640,16 +617,13 @@ def ParseProjectFile(project_file, project, definitions, depth = 0):
                 ParseProjectBlock( project_block, project, definitions )
 
             elif key == "$conditional":
-                project.AddConditional( project_block.values )
+                project.AddConditional(*project_block.values)
 
             elif key == "$macro":
-                project.AddMacro( project_block.values )
+                project.AddMacro(*project_block.values)
 
-            elif key == "$macrorequired":
-                project.AddMacro( project_block.values, True )
-            
-            elif key == "$macrorequiredallowempty":
-                project.AddMacro( project_block.values, True )
+            elif key in {"$macrorequired", "$macrorequiredallowempty"}:
+                project.AddMacro(*project_block.values, required=True)
 
             elif key == "$include":
                 # Ah shit, here we go again.
