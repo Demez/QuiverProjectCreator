@@ -46,7 +46,7 @@ Setting a project type is done with adding any valid project type name into the 
 -t  --types [types]      Project types to generate
 ```
 
-This will loop through each options and set a macro to "1" to use in projects
+This will loop through each option and set a macro to "1" to use in projects
 
 Valid Project Types:
 
