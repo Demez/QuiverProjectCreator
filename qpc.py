@@ -188,7 +188,8 @@ def Main():
 
     project_hash_list = {}
     project_out_dirs = {}
-    
+    project_dependencies = {}
+
     for project_def in project_def_list:
         for project_path in project_def.script_list:
             
@@ -210,8 +211,20 @@ def Main():
                     print("Parsed: " + project_list.macros["$PROJECT_NAME"])
                 
                 out_dir = qpc_writer.CreateProject(project_list)
-                
-                qpc_hash.WriteHashFile(project_path, out_dir, project_list.hash_dict)
+
+                # TODO: move dependencies out of the loop
+                #  qpc's project looping just seems really awful to me
+                #  though i don't know how i would do it better,
+                #  besides having a small part that is parsed once before looping
+                project_dependency_list = set()
+                for project in project_list.projects:
+                    project_dependency_list.update(project.dependencies)
+                # i know this is bad but i want the types to be consistent
+                project_dependency_list = tuple(project_dependency_list)
+                    
+                qpc_hash.WriteHashFile(project_path, out_dir, project_list.hash_dict,
+                                       dependencies=project_dependency_list)
+                project_dependencies[project_path] = project_dependency_list
                 
                 del project_list
                 print("")
@@ -221,6 +234,8 @@ def Main():
                     os.chdir(args.root_dir)
             
             # TODO: make a function called "GetProjectDependencies", and use that here
+            else:
+                project_dependencies[project_path] = tuple(qpc_hash.GetProjectDependencies(project_path))
 
             project_hash_list[qpc_hash.GetHashFilePath(project_path)] = project_path
     
@@ -230,7 +245,8 @@ def Main():
               "\n\tPasses: " + str(project_pass))
     
     if args.master_file:
-        qpc_writer.MakeMasterFile(project_def_list, project_hash_list, args.master_file, configurations, platforms)
+        qpc_writer.MakeMasterFile(project_def_list, project_hash_list, args.master_file,
+                                  configurations, platforms, project_dependencies)
     
     # would be cool to add a timer here that would be running on another thread
     # if the cmd option "/benchmark" was specified, though that might be used as a conditional

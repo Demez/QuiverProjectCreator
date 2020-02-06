@@ -1,8 +1,9 @@
 # Reads QPC files and returns a list of QPCBlocks
 
 import os
+from pathlib import Path
 from re import compile
-from qpc_base import args
+from qpc_base import args, FixPathSeparator
 
 
 COND_OPERATORS = compile('(\\(|\\)|\\|\\||\\&\\&|>=|<=|==|!=|>|<)')
@@ -178,6 +179,9 @@ class QPCBlock(QPCBlockBase):
     def GetKeyValues(self):
         return [self.key, *self.values]
 
+    def SolveCondition(self, macros: dict) -> int:
+        return SolveCondition(self.condition, macros)
+
     def InvalidOption(self, *valid_option_list):
         if not args.hide_warnings:
             print( "WARNING: Invalid Option" )
@@ -327,13 +331,14 @@ def AddSpacingToCondition(cond):
     if "<=" not in cond:
         cond = cond.replace("<", " < ")
     
-    for operator in {"<=", ">=", "==", "||", "&&"}:
+    for operator in ("<=", ">=", "==", "||", "&&"):
         cond = cond.replace(operator, ' ' + operator + ' ')
     
     return cond
     
         
 def ReadFile(path, keep_quotes=False):
+    path = FixPathSeparator(path)
     lexer = QPCLexer(path, keep_quotes)
     qpc_file = QPCBlockBase(path)
     path = os.getcwd() + os.sep + path
@@ -384,7 +389,7 @@ class QPCLexer:
         self.linei = 1
         self.path = path
         self.keep_quotes = keep_quotes
-        
+
         with open(path, mode="r", encoding="utf-8") as file:
             self.file = file.read()
         self.file_len = len(self.file) - 1

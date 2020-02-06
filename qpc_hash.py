@@ -21,7 +21,7 @@ def MakeHash(filename):
         return ""
 
 
-BASE_QPC_HASH_LIST = [
+BASE_QPC_HASH_LIST = (
     "qpc.py",
     "qpc_base.py",
     "qpc_c_parser.py",
@@ -32,7 +32,7 @@ BASE_QPC_HASH_LIST = [
     "qpc_visual_studio.py",
     "qpc_vpc_converter.py",
     "qpc_writer.py",
-]
+)
         
         
 BASE_QPC_HASHES = {}
@@ -40,7 +40,9 @@ for file in BASE_QPC_HASH_LIST:
     BASE_QPC_HASHES[QPC_DIR + file] = MakeHash(QPC_DIR + file)
 
 
-def CheckHash(project_path, file_list=None):
+# could make these functions into a class as a namespace
+# probably a class, to store hashes of files we've checked before
+def CheckHash(project_path: str, file_list=None):
     project_hash_file_path = GetHashFilePath(project_path)
     project_dir = path.split(project_path)[0]
     
@@ -58,6 +60,9 @@ def CheckHash(project_path, file_list=None):
             elif block.key == "hashes":
                 if not _CheckFileHash(project_dir, block.items):
                     return False
+
+            elif block.key == "dependencies":
+                pass
                 
             elif block.key == "files":
                 if not file_list:
@@ -91,7 +96,7 @@ def GetOutDir(project_hash_file_path):
         return path.normpath(working_dir + "/" + out_dir)
     
     
-def _CheckCommands(project_dir, command_list):
+def _CheckCommands(project_dir: str, command_list) -> bool:
     for command_block in command_list:
         if command_block.key == "working_dir":
             directory = getcwd()
@@ -136,6 +141,20 @@ def _CheckFileHash(project_dir, hash_list):
                 print("Invalid: " + hash_block.values[0])
             return False
     return True
+
+
+def _CheckDependencies(project_dir, dependency_list):
+    for dep_block in dependency_list:
+        if path.isabs(dep_block.values[0]) or not project_dir:
+            project_file_path = path.normpath(dep_block.values[0])
+        else:
+            project_file_path = path.normpath(project_dir + sep + dep_block.values[0])
+
+        if dep_block.key != MakeHash(project_file_path):
+            if args.verbose:
+                print("Invalid: " + dep_block.values[0])
+            return False
+    return True
     
     
 def _CheckFiles(project_dir, hash_file_list, file_list):
@@ -168,7 +187,28 @@ def GetHashFileExt(project_path):
         return ".qpc_hash"
 
 
-def WriteHashFile(project_path, out_dir="", hash_list=None, file_list=None, master_file=False):
+def GetProjectDependencies(project_path: str) -> list:
+    project_hash_file_path = GetHashFilePath(project_path)
+    dep_list = []
+
+    if path.isfile(project_hash_file_path):
+        hash_file = qpc_reader.ReadFile(project_hash_file_path)
+
+        if not hash_file:
+            return dep_list
+
+        for block in hash_file:
+            if block.key == "dependencies":
+                for dep_block in block.items:
+                    # maybe get dependencies of that file as well? recursion?
+                    dep_list.append(dep_block.key)
+                    dep_list.extend(dep_block.values)
+                break
+    return dep_list
+
+
+def WriteHashFile(project_path, out_dir="", hash_list=None, file_list=None,
+                  master_file=False, dependencies: tuple = None):
     def ListToString(arg_list):
         if arg_list:
             return '"' + '" "'.join(arg_list) + '"\n'
@@ -203,6 +243,12 @@ def WriteHashFile(project_path, out_dir="", hash_list=None, file_list=None, mast
             hash_file.write("files\n{\n")
             for script_hash_path, script_path in file_list.items():
                 hash_file.write('\t"{0}"\t"{1}"\n'.format(script_path, script_hash_path))
+            hash_file.write("}\n")
+
+        if dependencies:
+            hash_file.write("dependencies\n{\n")
+            for script_path in dependencies:
+                hash_file.write('\t"{0}"\n'.format(script_path))
             hash_file.write("}\n")
     return
 

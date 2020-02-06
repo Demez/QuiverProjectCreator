@@ -114,13 +114,13 @@ OPTION_VALUE_CONVERT_DICT = {
     "Yes": "true",
     "No": "false",
     
-    "v90": "msvc-v90",
-    "v100": "msvc-v100",
-    "v110": "msvc-v110",
-    "v120": "msvc-v120",
-    "v140": "msvc-v140",
-    "v141": "msvc-v141",
-    "v142": "msvc-v142",
+    "v90": "msvc_v90",
+    "v100": "msvc_v100",
+    "v110": "msvc_v110",
+    "v120": "msvc_v120",
+    "v140": "msvc_v140",
+    "v141": "msvc_v141",
+    "v142": "msvc_v142",
     
     # preprocessor defs
     "Use Multi-Byte Character Set": "MBCS",

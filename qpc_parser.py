@@ -8,25 +8,34 @@ import re
 import qpc_hash
 from qpc_reader import SolveCondition, ReadFile
 from os import sep, path
-from qpc_base import args
+from qpc_base import args, ConfigurationTypes, Platforms, Compilers, Languages
 
 if args.time:
     from time import perf_counter
 
 
+# IDEA: be able to reference values from the configuration, like a macro
+# so lets say you set output directory in the configuration,
+# and you don't want to make that a macro just to use that somewhere else.
+# so, you do something like this instead: @config.general.out_dir
+# this would use the value of out_dir in the configuration
+# if it's invalid, just return None, or an empty string
+
+
 class ProjectDefinition:
-    def __init__(self, project_name, *folder_list):
+    def __init__(self, project_name: str, *folder_list):
         self.name = project_name
         self.script_list = []
+        self.groups = []
         
         # this is just so it stops changing this outside of the function
         self.group_folder_list = folder_list
     
-    def AddScript(self, script_path):
+    def AddScript(self, script_path: str) -> None:
         self.script_list.append(path.normpath(script_path))
     
-    def AddScriptList(self, script_list):
-        [self.script_list.append(path.normpath(script_path)) for script_path in script_list]
+    def AddScriptList(self, script_list) -> None:
+        [self.AddScript(script_path) for script_path in script_list]
 
 
 class ProjectGroup:
@@ -45,7 +54,7 @@ class ProjectPass:
         self.config = Configuration()
         self.source_files = {}
         self.files = {}
-        self.dependencies = {}  # store project script paths here, "name": "path"
+        self.dependencies = []
         
         self.hash_list = {}
         self.macros = {**macros, "$" + config.upper(): "1", "$" + platform.upper(): "1"}
@@ -53,28 +62,28 @@ class ProjectPass:
         self.config_name = config
         self.platform = platform
     
-    def AddMacro(self, values):
-        key_name = "$" + values[0].upper()
+    def AddMacro(self, macro_name: str, macro_value: str = "") -> None:
+        key_name = "$" + macro_name.upper()
         
-        try:
-            value = values[1]
-        except IndexError:
+        if macro_value:
+            self.macros[key_name] = macro_value
+        else:
             if key_name not in self.macros:
                 self.macros[key_name] = ''
-            return
-        
-        self.macros[key_name] = value
-        
+
         self.ReplaceAnyUndefinedMacros()
-        return
     
     def ReplaceAnyUndefinedMacros(self):
         # this could probably be sped up
         # TODO: add scanning of files and certain config settings
         for macro, value in self.macros.items():
             self.macros[macro] = ReplaceMacros(value, self.macros)
+
+    def AddFileWildcard(self, folder_list, file_block) -> None:
+        # use glob to search
+        pass
     
-    def AddFile(self, folder_list, file_block):
+    def AddFile(self, folder_list, file_block) -> None:
         for file_path in (file_block.key, *file_block.values):
             if path.splitext(file_path)[1] in (".cpp", ".cxx", ".c", ".cc"):
                 if self.GetSourceFile(file_path):
@@ -90,14 +99,20 @@ class ProjectPass:
                     CheckFileExists(file_path)
                     self.files[file_path] = sep.join(folder_list)
                     continue
+
+    def AddDependency(self, qpc_path: str) -> None:
+        self.dependencies.append(qpc_path)
+
+    def AddDependencies(self, *qpc_paths) -> None:
+        self.dependencies.extend(qpc_paths)
     
     # Gets every single folder in the project, splitting each one as well
     # this function is awful
-    def GetAllEditorFolderPaths(self):
+    def GetAllEditorFolderPaths(self) -> set:
         folder_paths = set()
         # TODO: is there a better way to do this?
         [folder_paths.add(file_path) for file_path in self.files.values()]
-        [folder_paths.add(sf.folder) for sf in tuple([*self.source_files.values()])]
+        [folder_paths.add(sf.folder) for sf in self.source_files.values()]
         
         full_folder_paths = set()
         # split every single folder because visual studio bad
@@ -111,14 +126,14 @@ class ProjectPass:
                 folder_list.append(folder_list[-1] + sep + folder)
             full_folder_paths.update(folder_list)
         
-        return tuple(full_folder_paths)
+        return full_folder_paths
     
-    def GetAllFolderPaths(self):
-        folder_paths = set(GetAllPaths(self.files))
-        folder_paths.update(GetAllPaths(tuple([*self.source_files])))
-        return tuple(folder_paths)
+    def GetAllFolderPaths(self) -> set:
+        folder_paths = GetAllPaths(self.files)
+        folder_paths.update(GetAllPaths(self.source_files))
+        return folder_paths
     
-    def GetFilesInFolder(self, folder_path):
+    def GetFilesInFolder(self, folder_path) -> list:
         file_list = []
         
         # maybe change to startswith, so you can get stuff in nested folders as well?
@@ -193,6 +208,7 @@ class Project:
         self.hash_dict = {}
         # shared across configs, used as a base for them
         self.macros = {**base_macros, "$PROJECT_NAME": name}
+        # self.global_config = GlobalConfig()
     
     def AddParsedProject(self, project):
         self.hash_dict.update({**project.hash_list})
@@ -205,17 +221,20 @@ class Project:
         
         self.projects.append(project)
     
-    def GetAllEditorFolderPaths(self):
+    def GetAllEditorFolderPaths(self) -> set:
         folder_paths = set()
         for project in self.projects:
             folder_paths.update(project.GetAllEditorFolderPaths())
-        return tuple(folder_paths)
+        return folder_paths
     
-    def GetAllFolderPaths(self):
+    def GetAllFolderPaths(self) -> set:
         folder_paths = set()
         for project in self.projects:
             folder_paths.update(project.GetAllFolderPaths())
-        return tuple(folder_paths)
+        return folder_paths
+
+    def GetProjectName(self) -> str:
+        return self.macros["$PROJECT_NAME"]
 
 
 class SourceFile:
@@ -251,6 +270,57 @@ class General:
         self.options = []
 
 
+class GlobalConfig:
+    def __init__(self):
+        self.configuration_type = ConfigurationTypes.STATIC_LIB
+        self.language = Languages.CPP
+        self.toolset_version = Compilers.MSVC_142 if \
+            args.platform in {Platforms.WIN32, Platforms.WIN64} else Compilers.GCC_9
+
+    # these convert to Enum
+    def SetType(self, option: str) -> None:
+        if option in {"static_library", "static_lib"}:
+            self.configuration_type = ConfigurationTypes.STATIC_LIB
+        elif option in {"dynamic_library", "dynamic_lib"}:
+            self.configuration_type = ConfigurationTypes.DYNAMIC_LIB
+        elif option in {"shared_library", "shared_lib"}:
+            self.configuration_type = ConfigurationTypes.SHARED_LIB
+        elif option in {"application", "executable"}:  # TODO: rename all application stuff to executable?
+            self.configuration_type = ConfigurationTypes.APPLICATION
+
+    def SetLanguage(self, option: str) -> None:
+        if option == "cpp":
+            self.language = Languages.CPP
+        elif option == "c":
+            self.language = Languages.C
+
+    def SetToolsetVersion(self, option: str) -> None:
+        if option == "msvc_142":  # TODO: change msvc-X options to msvc_X
+            self.toolset_version = Compilers.MSVC_142
+        elif option == "msvc_141":
+            self.toolset_version = Compilers.MSVC_141
+        elif option == "msvc_140":
+            self.toolset_version = Compilers.MSVC_140
+        elif option == "msvc_120":
+            self.toolset_version = Compilers.MSVC_120
+        elif option == "msvc_100":
+            self.toolset_version = Compilers.MSVC_100
+
+        elif option == "clang_9":
+            self.toolset_version = Compilers.CLANG_9
+        elif option == "clang_8":
+            self.toolset_version = Compilers.CLANG_8
+
+        elif option == "gcc_9":
+            self.toolset_version = Compilers.GCC_9
+        elif option == "gcc_8":
+            self.toolset_version = Compilers.GCC_8
+        elif option == "gcc_7":
+            self.toolset_version = Compilers.GCC_7
+        elif option == "gcc_6":
+            self.toolset_version = Compilers.GCC_6
+
+
 class Compiler:
     def __init__(self):
         self.preprocessor_definitions = []
@@ -258,6 +328,10 @@ class Compiler:
         self.precompiled_header_file = ''
         self.precompiled_header_out_file = ''
         self.options = []
+
+    def SetPrecompiledHeader(self, option: str) -> None:
+        # convert to Enum
+        pass
 
 
 class Linker:
@@ -269,6 +343,9 @@ class Linker:
         self.libraries = []
         self.ignore_libraries = []
         self.options = []
+
+    def SetIgnoreImportLibrary(self, option: str) -> None:
+        pass
 
        
 # TODO: maybe do this?
@@ -288,6 +365,7 @@ def GetAllPaths(path_list):
     full_folder_paths = set()
     
     for folder_path in set(path_list):
+        # uhhhhhh
         current_path = list(path.split(folder_path)[0].split(sep))
         if not current_path:
             continue
@@ -297,7 +375,7 @@ def GetAllPaths(path_list):
             folder_list.append(folder_list[-1] + sep + folder)
         full_folder_paths.update(folder_list)
     
-    return tuple(full_folder_paths)
+    return full_folder_paths
 
 
 # TODO: bug discovered with this,
@@ -360,7 +438,7 @@ def ParseBaseFile(base_file, macros, project_list, group_dict):
         else:
             project_block.Warning("Unknown Key: ")
     
-    return list(configurations)
+    return configurations
 
 
 def ParseProjectGroupItems(project_group, project_list, project_block, macros, folder_list=None):
@@ -388,7 +466,7 @@ def ParseProjectFile(project_file, project, project_path, indent):
             project_block.values = ReplaceMacrosInList(project.macros, *project_block.values)
             
             if project_block.key == "macro":
-                project.AddMacro(project_block.values)
+                project.AddMacro(*project_block.values)
             
             elif project_block.key == "configuration":
                 ParseConfigBlock(project_block, project)
@@ -397,7 +475,7 @@ def ParseProjectFile(project_file, project, project_path, indent):
                 ParseFilesBlock(project_block, project, [])
             
             elif project_block.key == "dependencies":
-                project_block.Warning("Project Dependencies are not setup yet")
+                [project.AddDependencies(block.key, *block.values) for block in project_block.items]
             
             elif project_block.key == "include":
                 # Ah shit, here we go again.
@@ -503,6 +581,7 @@ def ParseConfigOption(project, group_block, option_block):
             elif option_block.key == "out_name":
                 config.general.out_name = ReplaceMacros(option_block.values[0], project.macros)
             elif option_block.key == "toolset_version":
+                # self.config.SetToolsetVersion(option_block.values[0])
                 config.general.toolset_version = option_block.values[0]
         
         # multiple path options
@@ -515,7 +594,10 @@ def ParseConfigOption(project, group_block, option_block):
                     elif option_block.key == "library_directories":
                         config.general.library_directories.extend(value_list)
         
-        elif option_block.key == "configuration_type":
+        elif option_block.key in {"configuration_type", "type"}:
+            # if option_block.values:
+            #     # function will convert the option set to the enum
+            #     self.config.SetConfiguration(option_block.values[0})
             if option_block.values:
                 if option_block.values[0] in ("static_library", "dynamic_library", "application"):
                     config.general.configuration_type = option_block.values[0]
@@ -524,6 +606,8 @@ def ParseConfigOption(project, group_block, option_block):
         
         elif option_block.key == "language":
             if option_block.values:
+                # function will convert the option set to the enum
+                # self.config.SetLanguage(option_block.values[0})
                 if option_block.values[0] in ("c", "cpp"):
                     config.general.language = option_block.values[0]
                 else:
@@ -534,11 +618,10 @@ def ParseConfigOption(project, group_block, option_block):
         ParseCompilerOption(project, config.compiler, option_block)
     
     elif group_block.key == "linker":
-        
         if option_block.key in ("output_file", "debug_file", "import_library", "ignore_import_library"):
             if option_block.values:
-                
                 if option_block.key == "ignore_import_library":
+                    # self.config.SetIgnoreImportLibrary(option_block.values[0])
                     if option_block.values[0] in ("true", "false"):
                         config.linker.ignore_import_library = option_block.values[0]
                     else:
@@ -579,6 +662,7 @@ def ParseConfigOption(project, group_block, option_block):
     elif group_block.key in ("post_build", "pre_build", "pre_link"):
         value = ReplaceMacros(' '.join(option_block.values), project.macros)
         if value:
+            # TODO: improve this, what if \\n is used in the file? it would just become \ and then new line, awful
             value = value.replace("\\n", "\n")
         
             if group_block.key == "post_build":
@@ -607,6 +691,7 @@ def ParseCompilerOption(project, compiler, option_block):
     
     elif option_block.key == "precompiled_header":
         if option_block.values:
+            # self.config.SetPrecompiledHeader(option_block.values[0])
             if option_block.values[0] in ("none", "create", "use"):
                 compiler.precompiled_header = option_block.values[0]
             else:
@@ -619,6 +704,11 @@ def ParseCompilerOption(project, compiler, option_block):
         compiler.precompiled_header_out_file = ReplaceMacros(option_block.values[0], project.macros)
     
     return
+
+
+# configuration options unaffected by config and platform macros, run before it goes through each config/platform
+def ParseGlobalConfigOptions() -> None:
+    pass
 
 
 def ReplaceMacrosInList(macros, *value_list):
