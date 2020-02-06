@@ -4,43 +4,56 @@ Project Creator based off of Valve's VPC (Valve Project Creator) in Python 3.7
 
 Will support many project types to generate and many platforms
 
+## Command Line Values:
+ - all caps on a word like `NAME` is a single string
+ - a value with `[]` around it like `[NAMES]` is a list, for multiple values
+
 ## Command Line usage:
 
-`/rootdir` or `/dir` - Change the current working directory of the script
+```
+-d  --rootdir DIR       Change the current working directory of the script
 
-`/basefile` - Set the path to the base script to use
+-b  --basefile FILE     Set the path to the base script to use
 
-`/force` or `/f` - Force Regenerate All Projects
+-f  --force             Force Regenerate All Projects
 
-`/verbose` or `/v` - Enable verbose console output
+-v  --verbose           Enable verbose console output
 
-`/hidewarnings` or `/hide` - Suppress all warnings
+-w  --hidewarnings      Suppress all warnings
 
-`/masterfile` or `/master` - `"solution name"` - Create a master file to build all projects with (ex. visual studio solution file)
+-mf --masterfile NAME   Create a master file to build all projects with (ex. visual studio solution)
+```
 
 ### Adding and removing projects:
 
-`/add` - `[projects or groups]` - Add groups or projects
+```
+-a  --add [projects/groups]       Add groups or projects
 
-`/remove` or `/rm` - `[projects or groups]` Remove groups or projects
+-r  --remove [projects/groups]    Don't use these projects or groups
+```
 
 ### Setting Macros in the command line:
 
-`/macros` - `[names]` Set macros with these names to 1 to use in projects
+```
+-m  --macros [names]     Set macros with these names to 1 to use in projects
+```
 
 ### Project Types Supported:
 
 Setting a project type is done with adding any valid project type name into the input list here
 
-`/types [types]`
+```
+-t  --types [types]      Project types to generate
+```
 
-All of these will set a macro to "1" to use in project scripts by the option name
+This will loop through each options and set a macro to "1" to use in projects
 
-Valid project Types:
+Valid Project Types:
 
-`vstudio` - Create Visual Studio Projects
+```
+vstudio       Create Visual Studio Projects
 
-`makefile` - Create Makefiles for every project
+makefile      Create Makefiles for every project
 
-`vpc_convert` - Convert all vpc scripts in the root directory to qpc scrtipts
-
+vpc_convert   Convert all vpc scripts in the root directory to qpc scripts, different from all the others
+```
