@@ -1,11 +1,11 @@
 import hashlib
 import qpc_reader
-from qpc_base import args, CreateDirectory
+from qpc_base import args, CreateDirectory, PosixPath
 from os import path, sep, getcwd
 
 
-QPC_DIR = path.dirname(path.realpath(__file__)) + sep
-QPC_HASH_DIR = QPC_DIR + "hashes" + sep
+QPC_DIR = PosixPath(path.dirname(path.realpath(__file__))) + "/"
+QPC_HASH_DIR = QPC_DIR + "hashes/"
 CreateDirectory(QPC_HASH_DIR)
 
 
@@ -19,6 +19,10 @@ def MakeHash(filename):
         return md5.hexdigest()
     except FileNotFoundError:
         return ""
+    
+    
+def MakeHashFromString(string: str):
+    return hashlib.md5(string.encode()).hexdigest()
 
 
 BASE_QPC_HASH_LIST = (
@@ -63,6 +67,10 @@ def CheckHash(project_path: str, file_list=None):
 
             elif block.key == "dependencies":
                 pass
+
+            elif block.key == "project_dependencies":
+                if not _CheckMasterFileDependencies(project_dir, block.items):
+                    return False
                 
             elif block.key == "files":
                 if not file_list:
@@ -143,16 +151,22 @@ def _CheckFileHash(project_dir, hash_list):
     return True
 
 
-def _CheckDependencies(project_dir, dependency_list):
-    for dep_block in dependency_list:
-        if path.isabs(dep_block.values[0]) or not project_dir:
-            project_file_path = path.normpath(dep_block.values[0])
+def _CheckMasterFileDependencies(project_dir, dependency_list):
+    for script_path in dependency_list:
+        if path.isabs(script_path.key) or not project_dir:
+            project_file_path = path.normpath(script_path.key)
         else:
-            project_file_path = path.normpath(project_dir + sep + dep_block.values[0])
+            project_file_path = path.normpath(project_dir + sep + script_path.key)
 
-        if dep_block.key != MakeHash(project_file_path):
+        dependency_tuple = GetProjectDependencies(project_file_path)
+        if not dependency_tuple:
+            return True
+        
+        project_dep_list = list(dependency_tuple)
+        project_dep_list.sort()
+        if script_path.values[0] != MakeHashFromString(' '.join(project_dep_list)):
             if args.verbose:
-                print("Invalid: " + dep_block.values[0])
+                print("Invalid: " + script_path.values[0])
             return False
     return True
     
@@ -172,11 +186,11 @@ def _CheckFiles(project_dir, hash_file_list, file_list):
     
     
 def GetHashFilePath(project_path):
-    return path.normpath(QPC_HASH_DIR + GetHashFileName(project_path))
+    return PosixPath(path.normpath(QPC_HASH_DIR + GetHashFileName(project_path)))
     
     
 def GetHashFileName(project_path):
-    hash_name = project_path.replace(sep, ".")
+    hash_name = project_path.replace("/", ".")
     return hash_name + GetHashFileExt(hash_name)
 
     
@@ -207,8 +221,9 @@ def GetProjectDependencies(project_path: str) -> list:
     return dep_list
 
 
-def WriteHashFile(project_path, out_dir="", hash_list=None, file_list=None,
-                  master_file=False, dependencies: tuple = None):
+# TODO: change this to use QPC's ToString function in the lexer, this was made before that (i think)
+def WriteHashFile(project_path: str, out_dir: str = "", hash_list=None, file_list=None,
+                  master_file: bool = False, dependencies: dict = None) -> None:
     def ListToString(arg_list):
         if arg_list:
             return '"' + '" "'.join(arg_list) + '"\n'
@@ -216,16 +231,15 @@ def WriteHashFile(project_path, out_dir="", hash_list=None, file_list=None,
     
     with open(GetHashFilePath(project_path), mode="w", encoding="utf-8") as hash_file:
         # write the commands
-        hash_file.write("commands\n{\n")
-        hash_file.write('\tworking_dir\t"' + getcwd().replace('\\', '/') + '"\n')
-        hash_file.write('\tout_dir\t\t"' + out_dir.replace('\\', '/') + '"\n')
+        hash_file.write("commands\n{\n"
+                        '\tworking_dir\t"' + getcwd().replace('\\', '/') + '"\n'
+                        '\tout_dir\t\t"' + out_dir.replace('\\', '/') + '"\n')
         if not master_file:
             hash_file.write('\ttypes\t\t' + ListToString(args.types))
         else:
-            hash_file.write('\tadd\t\t\t' + ListToString(args.add))
-            hash_file.write('\tremove\t\t' + ListToString(args.remove))
-        hash_file.write('\tmacros\t\t' + ListToString(args.macros))
-        hash_file.write("}\n\n")
+            hash_file.write('\tadd\t\t\t' + ListToString(args.add) +
+                            '\tremove\t\t' + ListToString(args.remove))
+        hash_file.write('\tmacros\t\t' + ListToString(args.macros) + "}\n\n")
         
         # write the hashes
         if hash_list:
@@ -245,10 +259,19 @@ def WriteHashFile(project_path, out_dir="", hash_list=None, file_list=None,
                 hash_file.write('\t"{0}"\t"{1}"\n'.format(script_path, script_hash_path))
             hash_file.write("}\n")
 
-        if dependencies:
-            hash_file.write("dependencies\n{\n")
+        if dependencies and not master_file:
+            hash_file.write("\ndependencies\n{\n")
             for script_path in dependencies:
                 hash_file.write('\t"{0}"\n'.format(script_path))
+            hash_file.write("}\n")
+
+        elif dependencies and master_file:
+            hash_file.write("\nproject_dependencies\n{\n")
+            for project, dependency_tuple in dependencies.items():
+                dependency_list = list(dependency_tuple)
+                dependency_list.sort()
+                dependency_hash = MakeHashFromString(' '.join(dependency_list))
+                hash_file.write('\t"{0}"\t"{1}"\n'.format(PosixPath(project), dependency_hash))
             hash_file.write("}\n")
     return
 

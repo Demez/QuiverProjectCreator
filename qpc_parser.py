@@ -8,7 +8,7 @@ import re
 import qpc_hash
 from qpc_reader import SolveCondition, ReadFile
 from os import sep, path
-from qpc_base import args, ConfigurationTypes, Platforms, Compilers, Languages
+from qpc_base import args, ConfigurationTypes, Platforms, Compilers, Languages, PosixPath
 
 if args.time:
     from time import perf_counter
@@ -32,7 +32,7 @@ class ProjectDefinition:
         self.group_folder_list = folder_list
     
     def AddScript(self, script_path: str) -> None:
-        self.script_list.append(path.normpath(script_path))
+        self.script_list.append(PosixPath(script_path))
     
     def AddScriptList(self, script_list) -> None:
         [self.AddScript(script_path) for script_path in script_list]
@@ -104,7 +104,10 @@ class ProjectPass:
         self.dependencies.append(qpc_path)
 
     def AddDependencies(self, *qpc_paths) -> None:
-        self.dependencies.extend(qpc_paths)
+        [self.dependencies.append(PosixPath(qpc_path)) for qpc_path in qpc_paths if qpc_path not in self.dependencies]
+    
+    def RemoveDependencies(self, *qpc_paths) -> None:
+        [self.dependencies.remove(dep) for dep in qpc_paths if dep in self.dependencies]
     
     # Gets every single folder in the project, splitting each one as well
     # this function is awful
@@ -475,7 +478,11 @@ def ParseProjectFile(project_file, project, project_path, indent):
                 ParseFilesBlock(project_block, project, [])
             
             elif project_block.key == "dependencies":
-                [project.AddDependencies(block.key, *block.values) for block in project_block.items]
+                for block in project_block.items:
+                    if block.key == "-":
+                        project.RemoveDependencies(*block.values)
+                    else:
+                        project.AddDependencies(block.key, *block.values)
             
             elif project_block.key == "include":
                 # Ah shit, here we go again.

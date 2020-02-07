@@ -51,12 +51,17 @@ class OutputTypes(Enum):
     MAKEFILE = auto()
 
 
-# os.path is not doing this on linux for me, fun
+# os.path.normpath is not doing this on linux for me, fun
 def FixPathSeparator(string: str) -> str:
     if os.name == "nt":
         return string  # .replace("/", "\\")
     else:
         return string.replace("\\", "/")
+
+
+# just use this for everything probably, works just fine on windows
+def PosixPath(string: str) -> str:
+    return string.replace("\\", "/")
 
 
 def FindItemsWithStartingChar(search_list, item):
@@ -145,6 +150,9 @@ def CopyFile(src_file, out_file):
         shutil.copyfile(src_file, out_file)
 
 
+DEFAULT_BASEFILE = os.getcwd() + "/_qpc_scripts/_default.qpc_base"
+
+
 # this is here so i can check arguments globally across files
 def ParseArgs():
     valid_project_types = ("vstudio", "makefile", "vpc_convert")
@@ -154,8 +162,8 @@ def ParseArgs():
     # maybe change to path? meh
     cmd_parser.add_argument("--rootdir", "-d", default=os.getcwd(), dest="root_dir",
                             help="Set the root directory of the script")
-    cmd_parser.add_argument("--basefile", "-b", default=os.getcwd() + "/_qpc_scripts/_default.qpc_base",
-                            dest="base_file", help="Set the root directory of the script")
+    cmd_parser.add_argument("--basefile", "-b", default=DEFAULT_BASEFILE, dest="base_file",
+                            help="Set the root directory of the script")
     cmd_parser.add_argument("--outdir", "-o", default="", dest="out_dir",
                             help="Output directory of qpc scripts with edited folder paths")
     
@@ -166,11 +174,11 @@ def ParseArgs():
     cmd_parser.add_argument("--time", action="store_true", help="Print the time taken to parse")
     cmd_parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose console output")
     cmd_parser.add_argument("--force", "-f", action="store_true", help="Force recreate all projects")
-    cmd_parser.add_argument("--hidewarnings", "-w", dest="hide_warnings", action="store_true",
-                            help="Suppress all warnings")
-    cmd_parser.add_argument("--checkfiles", "-c", dest="check_files", action="store_true",
-                            help="Check if any added file exists")
-
+    cmd_parser.add_argument("--force_master", "-fm", action="store_true", help="Force recreate master file")
+    cmd_parser.add_argument("--hidewarnings", "-w", dest="hide_warnings", action="store_true", help="Suppress all warnings")
+    cmd_parser.add_argument("--checkfiles", "-c", dest="check_files", action="store_true", help="Check if any added file exists")
+    
+    # cmd_parser.add_argument("--platforms", "-p", nargs="+", help="Select plaforms to generate for instead of default")
     cmd_parser.add_argument("--types", "-t", nargs="+", default=(), choices=valid_project_types, help="Project types to generate")
     cmd_parser.add_argument("--add", "-a", nargs="+", default=(), help="Add projects or groups to generate")
     cmd_parser.add_argument("--remove", "-r", default=(), nargs="+", help="Remove projects or groups from generating")
@@ -178,8 +186,8 @@ def ParseArgs():
 
     # TODO: figure out how vpc handles these and recreate it here
     #  might come waaay later since it"s very low priority
-    # cmd_parser.add_argument("--add_tree",, nargs="+", help="Add a project and all projects that depend on it")
-    # cmd_parser.add_argument("--add_depend", nargs="+", help="Add a project and all projects that it depends on")
+    # cmd_parser.add_argument("-at", "--add_tree", nargs="+", help="Add a project and all projects that depend on it")
+    # cmd_parser.add_argument("-ad", "--add_depend", nargs="+", help="Add a project and all projects that it depends on")
     # Use /h spew final target build set only (no .vcproj created). - what?
 
     cmd_parser.add_argument("--masterfile", "-mf", dest="master_file",

@@ -21,7 +21,6 @@ def CreateProject(project_list):
             pass
         
     print("Creating: " + project_list.file_name + ".vcxproj")
-    project_list = FixPlatformNames(project_list)
     vcxproject, include_list, res_list, none_list = CreateVCXProj(project_list)
     
     # this is a little slow due to AddFormattingToXML()
@@ -32,15 +31,25 @@ def CreateProject(project_list):
     vcxproject_filters = CreateVCXProjFilters(project_list, include_list, res_list, none_list)
     WriteProject(project_list, out_dir, vcxproject_filters, True)
     
-    RevertPlatformNameChanges(project_list)
     return out_dir
 
 
-def MakeConfPlatCondition(config: str, platform: Enum):
+def MakeConfPlatCondition(config: str, platform: str) -> str:
+    return f"'$(Configuration)|$(Platform)'=='{config}|{GetPlatform(platform)}'"
+
+
+def GetPlatformRefactor(platform: Enum) -> str:
     if platform == Platforms.WIN32:
-        return f"'$(Configuration)|$(Platform)'=='{config}|Win32'"
+        return "Win32"
     elif platform == Platforms.WIN64:
-        return f"'$(Configuration)|$(Platform)'=='{config}|x64'"
+        return "x64"
+
+
+def GetPlatform(platform: str) -> str:
+    if platform.lower() == "win32":
+        return "Win32"
+    elif platform.lower() == "win64":
+        return "x64"
 
 
 def CreateVCXProj(project_list):
@@ -85,8 +94,7 @@ def CreateVCXProj(project_list):
     
     # TODO: merge everything together, for now, just add a condition on each one lmao
     for project in project_list.projects:
-        condition = "'$(Configuration)|$(Platform)'=='" + project.config_name + "|" + project.platform + "'"
-        # condition = MakeConfPlatCondition(project.config_name, project.platform)
+        condition = MakeConfPlatCondition(project.config_name, project.platform)
 
         # maybe do the same below for this?
         CreateSourceFileItemGroup(project.source_files, vcxproj, condition)
@@ -112,29 +120,13 @@ def CreateVCXProj(project_list):
     return vcxproj, full_include_list, full_res_list, full_none_list
 
 
-# this would change it in the platform itself, but maybe at the end we can change it back
-def FixPlatformNames(project_list):
-    for project in project_list.projects:
-        if project.platform == "win64":
-            project.platform = "x64"
-    return project_list
-
-
-# since we change it directly, we have to change it back for any other project we are generating for
-def RevertPlatformNameChanges(project_list):
-    for project in project_list.projects:
-        if project.platform == "x64":
-            project.platform = "win64"
-    return project_list
-
-
 def SetupProjectConfigurations(vcxproj, project_list):
     item_group = et.SubElement(vcxproj, "ItemGroup")
     item_group.set("Label", "ProjectConfigurations")
     
     for project in project_list.projects:
         project_configuration = et.SubElement(item_group, "ProjectConfiguration")
-        project_configuration.set("Include", project.config_name + "|" + project.platform)
+        project_configuration.set("Include", project.config_name + "|" + GetPlatform(project.platform))
         
         configuration = et.SubElement(project_configuration, "Configuration")
         configuration.text = project.config_name
@@ -161,8 +153,7 @@ def SetupGlobals(vcxproj, project_list):
 def SetupPropertyGroupConfigurations(vcxproj, project_list):
     for project in project_list.projects:
         property_group = et.SubElement(vcxproj, "PropertyGroup")
-        property_group.set("Condition", "'$(Configuration)|$(Platform)'=='" +
-                           project.config_name + "|" + project.platform + "'")
+        property_group.set("Condition", MakeConfPlatCondition(project.config_name, project.platform))
         property_group.set("Label", "Configuration")
         
         config = project.config
@@ -178,17 +169,17 @@ def SetupPropertyGroupConfigurations(vcxproj, project_list):
         
         toolset = et.SubElement(property_group, "PlatformToolset")
         
-        if config.general.toolset_version == "msvc-v142":
+        if config.general.toolset_version == "msvc_142":
             toolset.text = "v142"
-        elif config.general.toolset_version == "msvc-v141":
+        elif config.general.toolset_version == "msvc_141":
             toolset.text = "v141"
-        elif config.general.toolset_version == "msvc-v140":
+        elif config.general.toolset_version == "msvc_140":
             toolset.text = "v140"
-        elif config.general.toolset_version == "msvc-v120":
+        elif config.general.toolset_version == "msvc_120":
             toolset.text = "v120"
-        elif config.general.toolset_version == "msvc-v110":
+        elif config.general.toolset_version == "msvc_110":
             toolset.text = "v110"
-        elif config.general.toolset_version == "msvc-v100":
+        elif config.general.toolset_version == "msvc_100":
             toolset.text = "v100"
         else:
             toolset.text = "v142"
@@ -228,7 +219,7 @@ def SetupGeneralProperties(vcxproj, project_list):
     et.SubElement(property_group, "_ProjectFileVersion").text = "10.0.30319.1"
     
     for project in project_list.projects:
-        condition = "'$(Configuration)|$(Platform)'=='" + project.config_name + "|" + project.platform + "'"
+        condition = MakeConfPlatCondition(project.config_name, project.platform)
         config = project.config
         
         property_group = et.SubElement(vcxproj, "PropertyGroup")
@@ -270,7 +261,7 @@ def SetupGeneralProperties(vcxproj, project_list):
 
 def SetupItemDefinitionGroups(vcxproj, project_list):
     for project in project_list.projects:
-        condition = "'$(Configuration)|$(Platform)'=='" + project.config_name + "|" + project.platform + "'"
+        condition = MakeConfPlatCondition(project.config_name, project.platform)
         cfg = project.config
         
         item_def_group = et.SubElement(vcxproj, "ItemDefinitionGroup")
@@ -342,7 +333,8 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
     return
 
 
-# TODO: this creates an empty element if we add a source file with no options in it
+# TODO: this needs to have some default visual studio settings,
+#  because visual studio can't fucking pick default settings when none is set for them in the vcxproj
 def AddCompilerOptions(compiler_elem, compiler, general=None):
     added_option = False
     
@@ -368,6 +360,12 @@ def AddCompilerOptions(compiler_elem, compiler, general=None):
     if general and general.language:
         added_option = True
         et.SubElement(compiler_elem, "CompileAs").text = {"c": "CompileAsC", "cpp": "CompileAsCpp"}[general.language]
+        
+    # these are needed, because for some reason visual studio use shit stuff for default settings
+    if general:  # basically if not file
+        added_option = True
+        basic_runtime_checks = et.SubElement(compiler_elem, "BasicRuntimeChecks")
+        basic_runtime_checks.text = "Default"
     
     if compiler.options:
         added_option = True
@@ -385,7 +383,14 @@ def AddCompilerOptions(compiler_elem, compiler, general=None):
             else:
                 option_key, option_value = CommandToCompilerOption(option)
                 if option_key and option_value:
-                    et.SubElement(compiler_elem, option_key).text = option_value
+                    
+                    if general:
+                        if option_key == "BasicRuntimeChecks":
+                            basic_runtime_checks.text = option_value
+                        else:
+                            et.SubElement(compiler_elem, option_key).text = option_value
+                    else:
+                        et.SubElement(compiler_elem, option_key).text = option_value
                     remaining_options.remove(option)
                 else:
                     index += 1
@@ -404,8 +409,6 @@ def AddCompilerOptions(compiler_elem, compiler, general=None):
     # "StringPooling"
     # "MinimalRebuild"
     # "ExceptionHandling"
-    # "BasicRuntimeChecks"
-    # "RuntimeLibrary"
     # "BufferSecurityCheck"
     # "FunctionLevelLinking"
     # "EnableEnhancedInstructionSet"
@@ -433,6 +436,18 @@ COMPILER_OPTIONS = {
         "/W0": "TurnOffAllWarnings",
         "/W1": "Level1", "/W2": "Level2", "/W3": "Level3", "/W4": "Level4",
         "/Wall": "EnableAllWarnings",
+    },
+    "RuntimeLibrary": {
+        "/MT": "MultiThreaded",
+        "/MTd": "MultiThreadedDebug",
+        "/MD": "MultiThreadedDLL",
+        "/MDd": "MultiThreadedDebugDLL",
+    },
+    "DebugInformationFormat": {
+        "/Zi": "ProgramDatabase",
+        "/ZI": "EditAndContinue",
+        "/Z7": "OldStyle",
+        # "/": "None",
     },
     "Optimization":                 {"/Od": "Disabled", "/O1": "MinSpace", "/O2": "MaxSpeed", "/Ox": "Full"},
     "MultiProcessorCompilation":    {"/MP": "true"},
@@ -625,7 +640,7 @@ def MakeSolutionFile(project_def_list, project_list, solution_path,
                 # TODO: add dependencies to the project class and then use that here
                 #  and have a GetDependencies() function for if the hash check passes
                 # write any project dependencies
-                project_uuid_deps = GetProjectDependencies(project_dependencies[script_path])
+                project_uuid_deps = GetProjectDependencies(project_list, project_dependencies[script_path])
                 SLN_WriteSection(solution_file, "ProjectDependencies", project_uuid_deps, True, True)
                 
                 solution_file.write("EndProject\n")
@@ -642,9 +657,7 @@ def MakeSolutionFile(project_def_list, project_list, solution_path,
         config_plat_list = []
         for config in configurations:
             for plat in platforms:
-                if plat == "win64":
-                    plat = "x64"
-                config_plat_list.append(config + "|" + plat)
+                config_plat_list.append(config + "|" + GetPlatform(plat))
         
         # SolutionConfigurationPlatforms
         sln_config_plat = {}
@@ -772,22 +785,24 @@ def SLN_WriteSection(solution_file, section_name, key_value_dict, is_post=False,
 # should change this to look every vcxproj file and
 # check if the output file in Lib fits what the project needs
 # first check if the config type is a StaticLibrary, then check OutputFile in Lib
-def GetProjectDependencies(project_dependency_paths: list) -> dict:
+def GetProjectDependencies(project_dict: dict, project_dependency_paths: list) -> dict:
+    project_list = set(project_dict.values())
     project_dependencies = {}
     for dependency_path in project_dependency_paths:
-        vcxproj_path = os.path.splitext(dependency_path)[0] + ".vcxproj"
-        if os.path.isabs(vcxproj_path):
-            vcxproj_abspath = os.path.normpath(vcxproj_path)
-        else:
-            vcxproj_abspath = os.path.normpath(args.root_dir + os.sep + vcxproj_path)
-
-        try:
-            vcxproj = et.parse(vcxproj_abspath).getroot()
-            project_name, project_uuid = GetNameAndUUIDFromProject(vcxproj)
+        if dependency_path in project_list:
+            vcxproj_path = os.path.splitext(dependency_path)[0] + ".vcxproj"
+            if os.path.isabs(vcxproj_path):
+                vcxproj_abspath = os.path.normpath(vcxproj_path)
+            else:
+                vcxproj_abspath = os.path.normpath(args.root_dir + os.sep + vcxproj_path)
     
-            # very cool vstudio
-            project_dependencies[project_uuid] = project_uuid
-        except FileNotFoundError as F:
-            print(str(F))
+            try:
+                vcxproj = et.parse(vcxproj_abspath).getroot()
+                project_name, project_uuid = GetNameAndUUIDFromProject(vcxproj)
+        
+                # very cool vstudio
+                project_dependencies[project_uuid] = project_uuid
+            except FileNotFoundError as F:
+                print(str(F))
 
     return project_dependencies

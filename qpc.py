@@ -6,7 +6,7 @@
 import os
 import sys
 
-from qpc_base import args
+from qpc_base import args, PosixPath
 import qpc_hash
 import qpc_reader
 import qpc_parser
@@ -219,6 +219,12 @@ def Main():
                 project_dependency_list = set()
                 for project in project_list.projects:
                     project_dependency_list.update(project.dependencies)
+                    
+                # can't have it depend on itself
+                posix_proj_path = PosixPath(project_path)
+                if posix_proj_path in project_dependency_list:
+                    project_dependency_list.remove(posix_proj_path)
+
                 # i know this is bad but i want the types to be consistent
                 project_dependency_list = tuple(project_dependency_list)
                     
