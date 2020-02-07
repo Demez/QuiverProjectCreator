@@ -17,7 +17,7 @@ Will support many project types to generate and many platforms
 
 -f  --force             Force Regenerate All Projects
 
--fm --force_master 		Force Regenerate Master File
+-fm --force_master 		   Force Regenerate Master File
 
 -v  --verbose           Enable verbose console output
 
