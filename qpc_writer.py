@@ -26,7 +26,7 @@ def CreateProject(project_list):
 def MakeMasterFile(project_def_list, project_list, master_file_name,
                    configurations: list, platforms: list, project_dependencies: dict):
     if "vstudio" in args.types:
-        if args.force_masterfile or not FindMasterFile(master_file_name) or \
+        if args.force_master or not FindMasterFile(master_file_name) or \
                 not qpc_hash.CheckHash(master_file_name + ".sln", project_list):
             
             qpc_visual_studio.MakeSolutionFile(project_def_list, project_list, master_file_name,
@@ -37,7 +37,7 @@ def MakeMasterFile(project_def_list, project_list, master_file_name,
     
     if "makefile" in args.types:
         pass
-        # if args.force_masterfile or not qpc_hash.CheckHash(master_file_name + ".makefile"):
+        # if args.force_master or not qpc_hash.CheckHash(master_file_name + ".makefile"):
         #     qpc_makefile.MakeMasterMakefile(project_def_list, master_file_name, configurations, platforms)
         #     qpc_hash.WriteHashFile(master_file_name + ".makefile", file_list=project_list, master_file=True)
 
