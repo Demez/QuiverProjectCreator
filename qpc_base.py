@@ -152,7 +152,7 @@ def CopyFile(src_file, out_file):
         shutil.copyfile(src_file, out_file)
 
 
-DEFAULT_BASEFILE = os.getcwd() + "/_qpc_scripts/_default.qpc_base"
+DEFAULT_BASEFILE = "_qpc_scripts/_default.qpc_base"
 
 
 # this is here so i can check arguments globally across files
@@ -205,8 +205,11 @@ args = arg_parser.parse_args()
 args.root_dir = os.path.normpath(args.root_dir) if os.path.isabs(args.root_dir) else \
     os.path.normpath(os.getcwd() + os.sep + args.root_dir)
 
+# args.base_file = os.path.normpath(args.base_file) if os.path.isabs(args.base_file) else \
+#     os.path.normpath(args.root_dir + os.sep + args.base_file)
+
 args.out_dir = os.path.normpath(args.out_dir) if os.path.isabs(args.out_dir) else \
-    os.path.normpath(os.getcwd() + os.sep + args.out_dir)
+    os.path.normpath(args.root_dir + os.sep + args.out_dir)
 
 
 # convert stuff in args to the enum value
