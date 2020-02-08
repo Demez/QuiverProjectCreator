@@ -173,7 +173,7 @@ def Main():
     
     all_groups = {}
     all_projects = []
-    configurations = qpc_parser.ParseBaseFile(base_file, base_macros, all_projects, all_groups)
+    configurations, dependency_dict = qpc_parser.ParseBaseFile(base_file, base_macros, all_projects, all_groups)
     
     # --------------------------------------------------------------------------------------
     
@@ -204,8 +204,8 @@ def Main():
                 
                 # TODO: maybe make this multi-threaded?
                 #  would speed it up a bit now that you're reading it multiple times
-                project_list, project_pass = qpc_parser.ParseProject(project_dir, project_name, base_macros,
-                                                                     configurations, platforms, project_pass)
+                project_list, project_pass = qpc_parser.ParseProject(
+                    project_dir, project_name, base_macros, configurations, platforms, project_pass, dependency_dict)
                 
                 if args.verbose:
                     print("Parsed: " + project_list.macros["$PROJECT_NAME"])

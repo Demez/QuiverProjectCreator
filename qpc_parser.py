@@ -50,7 +50,8 @@ class ProjectGroup:
 
 
 class ProjectPass:
-    def __init__(self, macros, config, platform):
+    def __init__(self, project, macros, config, platform):
+        self.project = project
         self.config = Configuration()
         self.source_files = {}
         self.files = {}
@@ -99,15 +100,35 @@ class ProjectPass:
                     CheckFileExists(file_path)
                     self.files[file_path] = sep.join(folder_list)
                     continue
+                    
+    @staticmethod
+    def _AddDependencyExt(qpc_path: str) -> str:
+        if not qpc_path.endswith(".qpc"):
+            qpc_path = path.splitext(qpc_path)[0] + ".qpc"
+        return qpc_path
+    
+    def ConvertDependencyPath(self, key: str) -> str:
+        if key in self.project.dependency_dict:
+            return self.project.dependency_dict[key]
+        return key
 
     def AddDependency(self, qpc_path: str) -> None:
-        self.dependencies.append(qpc_path)
+        new_qpc_path = self.ConvertDependencyPath(qpc_path)
+        qpc_path = new_qpc_path if new_qpc_path else PosixPath(self._AddDependencyExt(qpc_path))
+        if qpc_path not in self.dependencies:
+            self.dependencies.append(qpc_path)
+
+    def RemoveDependency(self, qpc_path: str) -> None:
+        new_qpc_path = self.ConvertDependencyPath(qpc_path)
+        qpc_path = new_qpc_path if new_qpc_path else PosixPath(self._AddDependencyExt(qpc_path))
+        if qpc_path in self.dependencies:
+            self.dependencies.remove(qpc_path)
 
     def AddDependencies(self, *qpc_paths) -> None:
-        [self.dependencies.append(PosixPath(qpc_path)) for qpc_path in qpc_paths if qpc_path not in self.dependencies]
+        [self.AddDependency(qpc_path) for qpc_path in qpc_paths]
     
     def RemoveDependencies(self, *qpc_paths) -> None:
-        [self.dependencies.remove(dep) for dep in qpc_paths if dep in self.dependencies]
+        [self.RemoveDependency(qpc_path) for qpc_path in qpc_paths]
     
     # Gets every single folder in the project, splitting each one as well
     # this function is awful
@@ -204,13 +225,14 @@ class ProjectPass:
 
 
 class Project:
-    def __init__(self, name, project_path, base_macros):
+    def __init__(self, name: str, project_path: str, base_macros, dependency_dict: dict):
         self.file_name = name  # the actual file name
         self.project_dir = project_path  # should use the macro instead tbh, might remove
         self.projects = []
         self.hash_dict = {}
+        self.dependency_dict = dependency_dict
         # shared across configs, used as a base for them
-        self.macros = {**base_macros, "$PROJECT_NAME": name}
+        self.macros = {**base_macros, "$PROJECT_NAME": name, "$SCRIPT_NAME": name}
         # self.global_config = GlobalConfig()
     
     def AddParsedProject(self, project):
@@ -405,8 +427,9 @@ def GetAllPaths(path_list):
 
 # TODO: bug discovered with this,
 #  if i include the groups before the projects, it won't add any projects
-def ParseBaseFile(base_file, macros, project_list, group_dict):
+def ParseBaseFile(base_file, macros, project_list, group_dict) -> tuple:
     configurations = set()
+    dependency_dict = {}
     for project_block in base_file:
         
         if not SolveCondition(project_block.condition, macros):
@@ -446,6 +469,12 @@ def ParseBaseFile(base_file, macros, project_list, group_dict):
         elif project_block.key == "configurations":
             configurations.update(project_block.GetItemKeyAndValuesThatPassCondition(macros))
         
+        elif project_block.key == "dependency_paths":
+            for dependency in project_block.items:
+                if SolveCondition(dependency.condition, macros):
+                    if dependency.values:
+                        dependency_dict[dependency.key] = dependency.values[0]
+        
         elif project_block.key == "include":
             # "Ah shit, here we go again."
             file_path = path.normpath(ReplaceMacros(project_block.values[0], macros))
@@ -463,7 +492,7 @@ def ParseBaseFile(base_file, macros, project_list, group_dict):
         else:
             project_block.Warning("Unknown Key: ")
     
-    return configurations
+    return configurations, dependency_dict
 
 
 def ParseProjectGroupItems(project_group, project_list, project_block, macros, folder_list=None):
@@ -787,7 +816,8 @@ def ReplaceExactMacros(split_string, macros):
     return split_string
 
 
-def ParseProject(project_dir, project_filename, base_macros, configurations, platforms, project_pass):
+def ParseProject(project_dir, project_filename, base_macros, configurations,
+                 platforms, project_pass, dependency_dict: dict) -> tuple:
     project_path = project_dir + sep + project_filename
     project_name = path.splitext(project_filename)[0]
     
@@ -799,9 +829,9 @@ def ParseProject(project_dir, project_filename, base_macros, configurations, pla
     print("Parsing: " + project_filename)
     
     project_hash = qpc_hash.MakeHash(project_filename)
-    project_list = Project(project_name, project_dir, base_macros)
+    project_list = Project(project_name, project_dir, base_macros, dependency_dict)
     
-    project_macros = {**base_macros, "$PROJECT_NAME": project_name}
+    # project_macros = {**base_macros, "$PROJECT_NAME": project_name}
     
     if args.time:
         start_time = perf_counter()
@@ -820,7 +850,7 @@ def ParseProject(project_dir, project_filename, base_macros, configurations, pla
                 print("Pass {0}: {1} - {2}".format(
                     str(project_pass), config, platform))
             
-            project = ProjectPass(project_macros, config, platform)
+            project = ProjectPass(project_list, project_list.macros, config, platform)
             project.hash_list[project_filename] = project_hash
             ParseProjectFile(project_file, project, project_path, "")
             project_list.AddParsedProject(project)
