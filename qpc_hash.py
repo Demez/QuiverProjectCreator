@@ -153,18 +153,23 @@ def _CheckFileHash(project_dir, hash_list):
     return True
 
 
-def _CheckMasterFileDependencies(project_dir, dependency_list):
+def _CheckMasterFileDependencies(project_dir: str, dependency_list: list) -> bool:
     for script_path in dependency_list:
         if path.isabs(script_path.key) or not project_dir:
             project_file_path = path.normpath(script_path.key)
         else:
             project_file_path = path.normpath(project_dir + sep + script_path.key)
 
-        dependency_tuple = GetProjectDependencies(project_file_path)
-        if not dependency_tuple:
-            return True
+        project_dep_list = GetProjectDependencies(project_file_path)
+        if not project_dep_list:
+            if script_path.values:
+                # all dependencies were removed from it, and we think it has some still, rebuild
+                return False
+            continue
+        elif not script_path.values and project_dep_list:
+            # project has dependencies now, and we think it doesn't, rebuild
+            return False
         
-        project_dep_list = list(dependency_tuple)
         project_dep_list.sort()
         if script_path.values[0] != MakeHashFromString(' '.join(project_dep_list)):
             if args.verbose:
@@ -192,7 +197,7 @@ def GetHashFilePath(project_path):
     
     
 def GetHashFileName(project_path):
-    hash_name = project_path.replace("/", ".")
+    hash_name = project_path.replace("\\", ".").replace("/", ".")
     return hash_name + GetHashFileExt(hash_name)
 
     
