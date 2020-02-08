@@ -3,7 +3,8 @@ import os
 import sys
 import qpc_hash
 import xml.etree.ElementTree as et
-from qpc_base import args, CreateDirectory, CreateNewDictValue, ConfigurationTypes, Platforms, Compilers, Languages
+from qpc_base import args, CreateDirectory, CreateNewDictValue, ConfigurationTypes, \
+    Platforms, Compilers, Languages, PosixPath
 from xml.dom import minidom
 from enum import Enum
 
@@ -12,13 +13,20 @@ def MakeUUID():
     return f"{{{uuid.uuid4()}}}".upper()
 
 
-def CreateProject(project_list):
+def GetOutDir(project_list) -> str:
     out_dir = ""
     if args.project_dir:
         try:
-            out_dir = project_list.projects[0].macros["$PROJECT_DIR"]
+            out_dir = PosixPath(project_list.projects[0].macros["$PROJECT_DIR"])
+            # if not out_dir.endswith("/"):
+            #    out_dir += "/"
         except KeyError:
             pass
+    return out_dir
+
+
+def CreateProject(project_list):
+    out_dir = GetOutDir(project_list)
         
     print("Creating: " + project_list.file_name + ".vcxproj")
     vcxproject, include_list, res_list, none_list = CreateVCXProj(project_list)
@@ -132,22 +140,15 @@ def SetupProjectConfigurations(vcxproj, project_list):
         configuration.text = project.config_name
         
         elem_platform = et.SubElement(project_configuration, "Platform")
-        elem_platform.text = project.platform
-    
-    return
+        elem_platform.text = GetPlatform(project.platform)
 
 
 def SetupGlobals(vcxproj, project_list):
     property_group = et.SubElement(vcxproj, "PropertyGroup")
     property_group.set("Label", "Globals")
     
-    project_name = et.SubElement(property_group, "ProjectName")
-    project_name.text = project_list.macros["$PROJECT_NAME"]
-    
-    project_guid = et.SubElement(property_group, "ProjectGuid")
-    project_guid.text = MakeUUID()
-    
-    return
+    et.SubElement(property_group, "ProjectName").text = project_list.GetProjectName()
+    et.SubElement(property_group, "ProjectGuid").text = MakeUUID()
 
 
 def SetupPropertyGroupConfigurations(vcxproj, project_list):
@@ -198,8 +199,6 @@ def SetupPropertyGroupConfigurations(vcxproj, project_list):
         
         # "TargetName",
         # "WholeProgramOptimization",
-    
-    return
 
 
 def SetupPropertySheets(vcxproj):
@@ -210,8 +209,6 @@ def SetupPropertySheets(vcxproj):
     elem_import.set("Project", "$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props")
     elem_import.set("Condition", "exists('$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props')")
     elem_import.set("Label", "LocalAppDataPlatform")
-    
-    return
 
 
 def SetupGeneralProperties(vcxproj, project_list):
@@ -235,7 +232,7 @@ def SetupGeneralProperties(vcxproj, project_list):
         if config.general.out_name:
             target_name.text = config.general.out_name
         else:
-            target_name.text = project_list.macros["$PROJECT_NAME"]
+            target_name.text = project_list.GetProjectName()
         
         target_ext = et.SubElement(property_group, "TargetExt")
         
@@ -249,14 +246,18 @@ def SetupGeneralProperties(vcxproj, project_list):
             target_ext.text = project_list.macros["$_BIN_EXT"]
         
         include_paths = et.SubElement(property_group, "IncludePath")
-        include_paths.text = ';'.join(config.general.include_directories) + ";$(IncludePath)"
+        include_paths.text = ';'.join(config.general.include_directories)
+        
+        if config.general.default_include_directories:
+            include_paths.text += ";$(IncludePath)"
         
         library_paths = et.SubElement(property_group, "LibraryPath")
-        library_paths.text = ';'.join(config.general.library_directories) + ";$(LibraryPath)"
+        library_paths.text = ';'.join(config.general.library_directories)
+        
+        if config.general.default_library_directories:
+            library_paths.text += ";$(LibraryPath)"
 
         # also why does WholeProgramOptimization go here and in ClCompile
-    
-    return
 
 
 def SetupItemDefinitionGroups(vcxproj, project_list):
@@ -330,7 +331,6 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
 
         if cfg.pre_link:
             et.SubElement(et.SubElement(item_def_group, "PreLinkEvent"), "Command").text = ' '.join(cfg.pre_link)
-    return
 
 
 # TODO: this needs to have some default visual studio settings,
@@ -353,9 +353,9 @@ def AddCompilerOptions(compiler_elem, compiler, general=None):
         added_option = True
         et.SubElement(compiler_elem, "PrecompiledHeaderFile").text = compiler.precompiled_header_file
     
-    if compiler.precompiled_header_out_file:
+    if compiler.precompiled_header_output_file:
         added_option = True
-        et.SubElement(compiler_elem, "PrecompiledHeaderOutputFile").text = compiler.precompiled_header_out_file
+        et.SubElement(compiler_elem, "PrecompiledHeaderOutputFile").text = compiler.precompiled_header_output_file
     
     if general and general.language:
         added_option = True
@@ -535,7 +535,6 @@ def Create_FolderFilters(proj_filters, project_list):
             elem_folder.set("Include", folder)
             unique_identifier = et.SubElement(elem_folder, "UniqueIdentifier")
             unique_identifier.text = MakeUUID()
-    return
 
 
 def Create_SourceFileItemGroupFilters(proj_filters, files_dict, filter_name):
@@ -546,8 +545,6 @@ def Create_SourceFileItemGroupFilters(proj_filters, files_dict, filter_name):
         if source_file.folder:
             folder = et.SubElement(elem_file, "Filter")
             folder.text = source_file.folder
-    
-    return
 
 
 def Create_ItemGroupFilters(proj_filters, files_dict, filter_name):
@@ -558,8 +555,6 @@ def Create_ItemGroupFilters(proj_filters, files_dict, filter_name):
         if folder_path:
             folder = et.SubElement(elem_file, "Filter")
             folder.text = folder_path
-    
-    return
 
 
 # --------------------------------------------------------------------------------------------------
@@ -710,8 +705,6 @@ def MakeSolutionFile(project_def_list, project_list, solution_path,
         SLN_WriteSection(solution_file, "NestedProjects", global_folder_uuid_dict, False)
         
         solution_file.write("EndGlobal\n")
-    
-    return
 
 
 def WriteTopOfSolution(solution_file):
@@ -723,8 +716,6 @@ def WriteTopOfSolution(solution_file):
     
     solution_file.write("VisualStudioVersion = 16.0.28917.181\n")
     solution_file.write("MinimumVisualStudioVersion = 10.0.40219.1\n")
-    
-    return
 
 
 # get stuff we need from the vcxproj file, might even need more later for dependencies, oof
@@ -762,7 +753,6 @@ def GetNameAndUUIDFromProject(vcxproj):
 def SLN_WriteProjectLine(solution_file, project_name, vcxproj_path, cpp_uuid, vcxproj_uuid):
     solution_file.write(
         'Project("{0}") = "{1}", "{2}", "{3}"\n'.format(cpp_uuid, project_name, vcxproj_path, vcxproj_uuid))
-    return
 
 
 def SLN_WriteSection(solution_file, section_name, key_value_dict, is_post=False, is_project_section=False):

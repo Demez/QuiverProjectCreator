@@ -61,6 +61,8 @@ def FixPathSeparator(string: str) -> str:
 
 # just use this for everything probably, works just fine on windows
 def PosixPath(string: str) -> str:
+    # FUCK_YOU = string.replace("\\", "/")
+    # return FUCK_YOU
     return string.replace("\\", "/")
 
 

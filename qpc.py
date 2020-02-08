@@ -251,6 +251,7 @@ def Main():
               "\n\tPasses: " + str(project_pass))
     
     if args.master_file:
+        # TODO: this won't rebuild the master file if the project groups "includes" are changed
         qpc_writer.MakeMasterFile(project_def_list, project_hash_list, args.master_file,
                                   configurations, platforms, project_dependencies)
     

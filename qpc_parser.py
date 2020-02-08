@@ -6,7 +6,7 @@
 
 import re
 import qpc_hash
-from qpc_reader import SolveCondition, ReadFile
+from qpc_reader import SolveCondition, ReadFile, QPCBlock
 from os import sep, path
 from qpc_base import args, ConfigurationTypes, Platforms, Compilers, Languages, PosixPath
 
@@ -268,9 +268,31 @@ class General:
         self.configuration_type = ''
         self.language = ''
         self.toolset_version = ''
+        self.default_include_directories = True
+        self.default_library_directories = True
         self.include_directories = []
         self.library_directories = []
         self.options = []
+        
+    def SetDefaultIncludeDirectories(self, option_block: QPCBlock) -> None:
+        value = option_block.values[0]
+        if value in ("true", "false"):
+            self.default_include_directories = StringToBool(value)
+        else:
+            option_block.InvalidOption("true", "false")
+        
+    def SetDefaultLibraryDirectories(self, option_block: QPCBlock) -> None:
+        value = option_block.values[0]
+        if value in ("true", "false"):
+            self.default_library_directories = StringToBool(value)
+        else:
+            option_block.InvalidOption("true", "false")
+
+
+def StringToBool(value: str) -> bool:
+    if value == "true":
+        return True
+    return False
 
 
 class GlobalConfig:
@@ -329,7 +351,7 @@ class Compiler:
         self.preprocessor_definitions = []
         self.precompiled_header = ''
         self.precompiled_header_file = ''
-        self.precompiled_header_out_file = ''
+        self.precompiled_header_output_file = ''
         self.options = []
 
     def SetPrecompiledHeader(self, option: str) -> None:
@@ -590,7 +612,14 @@ def ParseConfigOption(project, group_block, option_block):
             elif option_block.key == "toolset_version":
                 # self.config.SetToolsetVersion(option_block.values[0])
                 config.general.toolset_version = option_block.values[0]
-        
+
+        elif option_block.key in ("default_include_directories", "default_library_directories"):
+            if option_block.values:
+                if option_block.key == "default_include_directories":
+                    config.general.SetDefaultIncludeDirectories(option_block)
+                else:
+                    config.general.SetDefaultLibraryDirectories(option_block)
+            
         # multiple path options
         elif option_block.key in ("include_directories", "library_directories"):
             for item in option_block.items:
@@ -619,6 +648,14 @@ def ParseConfigOption(project, group_block, option_block):
                     config.general.language = option_block.values[0]
                 else:
                     option_block.InvalidOption("c", "cpp")
+        
+        elif option_block.key == "options":
+            for item in option_block.items:
+                if SolveCondition(item.condition, project.macros):
+                    config.general.options.extend([item.key, *item.values])
+
+        else:
+            option_block.Error("Unknown General Option: ")
     
     elif group_block.key == "compiler":
         # TODO: maybe do the same for the rest? only moving this to it's own function for source files
@@ -665,6 +702,9 @@ def ParseConfigOption(project, group_block, option_block):
             for item in option_block.items:
                 if SolveCondition(item.condition, project.macros):
                     config.linker.options.extend([item.key, *item.values])
+
+        else:
+            option_block.Error("Unknown Linker Option: ")
     
     elif group_block.key in ("post_build", "pre_build", "pre_link"):
         value = ReplaceMacros(' '.join(option_block.values), project.macros)
@@ -707,8 +747,11 @@ def ParseCompilerOption(project, compiler, option_block):
     elif option_block.key == "precompiled_header_file":
         compiler.precompiled_header_file = ReplaceMacros(option_block.values[0], project.macros)
     
-    elif option_block.key in {"precompiled_header_out_file", "precompiled_header_out_file"}:
-        compiler.precompiled_header_out_file = ReplaceMacros(option_block.values[0], project.macros)
+    elif option_block.key in {"precompiled_header_output_file"}:
+        compiler.precompiled_header_output_file = ReplaceMacros(option_block.values[0], project.macros)
+        
+    else:
+        option_block.Error("Unknown Compiler Option: ")
     
     return
 

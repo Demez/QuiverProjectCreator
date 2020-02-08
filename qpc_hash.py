@@ -109,8 +109,10 @@ def _CheckCommands(project_dir: str, command_list) -> bool:
         if command_block.key == "working_dir":
             directory = getcwd()
             if project_dir:
-                directory += sep + project_dir
-            if directory != path.normpath(command_block.values[0]):
+                directory += "/" + project_dir
+            # something just breaks here i use PosixPath in the if statement
+            directory = PosixPath(directory)
+            if directory != PosixPath(command_block.values[0]):
                 return False
         
         elif command_block.key == "out_dir":
@@ -174,9 +176,9 @@ def _CheckMasterFileDependencies(project_dir, dependency_list):
 def _CheckFiles(project_dir, hash_file_list, file_list):
     for hash_block in hash_file_list:
         if path.isabs(hash_block.values[0]) or not project_dir:
-            project_file_path = path.normpath(hash_block.values[0])
+            project_file_path = PosixPath(path.normpath(hash_block.values[0]))
         else:
-            project_file_path = path.normpath(project_dir + sep + hash_block.values[0])
+            project_file_path = PosixPath(path.normpath(project_dir + "/" + hash_block.values[0]))
             
         if project_file_path not in file_list:
             if args.verbose:
