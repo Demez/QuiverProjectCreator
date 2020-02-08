@@ -156,13 +156,13 @@ def _CheckFileHash(project_dir, hash_list):
 def _CheckMasterFileDependencies(project_dir: str, dependency_list: list) -> bool:
     for script_path in dependency_list:
         if path.isabs(script_path.key) or not project_dir:
-            project_file_path = path.normpath(script_path.key)
+            project_file_path = PosixPath(path.normpath(script_path.key))
         else:
-            project_file_path = path.normpath(project_dir + sep + script_path.key)
+            project_file_path = PosixPath(path.normpath(project_dir + sep + script_path.key))
 
         project_dep_list = GetProjectDependencies(project_file_path)
         if not project_dep_list:
-            if script_path.values:
+            if script_path.values:  # and not script_path.values[0] == "":
                 # all dependencies were removed from it, and we think it has some still, rebuild
                 return False
             continue
@@ -277,8 +277,11 @@ def WriteHashFile(project_path: str, out_dir: str = "", hash_list=None, file_lis
             for project, dependency_tuple in dependencies.items():
                 dependency_list = list(dependency_tuple)
                 dependency_list.sort()
-                dependency_hash = MakeHashFromString(' '.join(dependency_list))
-                hash_file.write('\t"{0}"\t"{1}"\n'.format(PosixPath(project), dependency_hash))
+                if dependency_list:
+                    dependency_hash = MakeHashFromString(' '.join(dependency_list))
+                    hash_file.write('\t"{0}"\t"{1}"\n'.format(PosixPath(project), dependency_hash))
+                else:
+                    hash_file.write('\t"{0}"\n'.format(PosixPath(project)))
             hash_file.write("}\n")
     return
 
