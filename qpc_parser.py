@@ -736,7 +736,9 @@ def ParseConfigOption(project, group_block, option_block):
             option_block.Error("Unknown Linker Option: ")
     
     elif group_block.key in ("post_build", "pre_build", "pre_link"):
-        value = ReplaceMacros(' '.join(option_block.values), project.macros)
+        value = ReplaceMacros(option_block.key, project.macros)
+        if option_block.values:
+            value = ReplaceMacros(value + " " + " ".join(*option_block.values), project.macros)
         if value:
             # TODO: improve this, what if \\n is used in the file? it would just become \ and then new line, awful
             value = value.replace("\\n", "\n")
