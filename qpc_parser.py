@@ -387,6 +387,7 @@ class Linker:
         self.debug_file = ''
         self.import_library = ''
         self.ignore_import_library = ''
+        self.entry_point = ''
         self.libraries = []
         self.ignore_libraries = []
         self.options = []
@@ -691,7 +692,7 @@ def ParseConfigOption(project, group_block, option_block):
         ParseCompilerOption(project, config.compiler, option_block)
     
     elif group_block.key == "linker":
-        if option_block.key in ("output_file", "debug_file", "import_library", "ignore_import_library"):
+        if option_block.key in {"output_file", "debug_file", "import_library", "ignore_import_library", "entry_point"}:
             if option_block.values:
                 if option_block.key == "ignore_import_library":
                     # self.config.SetIgnoreImportLibrary(option_block.values[0])
@@ -704,12 +705,14 @@ def ParseConfigOption(project, group_block, option_block):
                 # TODO: maybe split the extension here?
                 value = path.normpath(ReplaceMacros(option_block.values[0], project.macros))
                 
-                if option_block.key in {"output_file", "output_file"}:
+                if option_block.key == "output_file":
                     config.linker.output_file = value
                 elif option_block.key == "debug_file":
                     config.linker.debug_file = value
                 elif option_block.key == "import_library":
                     config.linker.import_library = value
+                elif option_block.key == "entry_point":
+                    config.linker.entry_point = value
         
         elif option_block.key in ("libraries", "ignore_libraries"):
             

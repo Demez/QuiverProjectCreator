@@ -299,6 +299,9 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
             et.SubElement(link_lib, "ImportLibrary").text = os.path.splitext(cfg.linker.import_library)[0] + \
                                                             project.macros["$_IMPLIB_EXT"]
         
+        if cfg.linker.entry_point:
+            et.SubElement(link_lib, "EntryPointSymbol").text = cfg.linker.entry_point
+        
         # what does "IgnoreAllDefaultLibraries" do differently than this? is it a boolean? idk
         et.SubElement(link_lib, "IgnoreSpecificDefaultLibraries").text = ';'.join(cfg.linker.ignore_libraries) + \
                                                                          ";%(IgnoreSpecificDefaultLibraries)"
