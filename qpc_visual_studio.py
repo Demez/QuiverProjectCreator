@@ -185,17 +185,20 @@ def SetupPropertyGroupConfigurations(vcxproj, project_list):
         else:
             toolset.text = "v142"
         
-        character_set_text = ''
-        if "_MBCS" in config.compiler.preprocessor_definitions:
-            character_set_text = "Unicode"
-            config.compiler.preprocessor_definitions.remove("_MBCS")
-        elif "MBCS" in config.compiler.preprocessor_definitions:
-            character_set_text = "MultiByte"
-            config.compiler.preprocessor_definitions.remove("MBCS")
-        
-        if character_set_text:
-            character_set = et.SubElement(property_group, "CharacterSet")
-            character_set.text = character_set_text
+        defs = config.compiler.preprocessor_definitions
+        if "MBCS" in defs or "_MBCS" in defs:
+            et.SubElement(property_group, "CharacterSet").text = "MultiByte"
+            if "MBCS" in defs:
+                defs.remove("MBCS")
+            if "_MBCS" in defs:
+                defs.remove("_MBCS")
+                
+        elif "UNICODE" in defs or "_UNICODE" in defs:
+            et.SubElement(property_group, "CharacterSet").text = "Unicode"
+            if "UNICODE" in defs:
+                defs.remove("UNICODE")
+            if "_UNICODE" in defs:
+                defs.remove("_UNICODE")
         
         # "TargetName",
         # "WholeProgramOptimization",
