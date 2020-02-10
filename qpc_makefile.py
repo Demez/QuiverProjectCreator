@@ -31,7 +31,10 @@ def GenGnuCFlags(conf, libs=True, defs=True, includes=True):
 
 # TODO: add a non-gnu flag option (/ instead of --, etc)
 def GenCompileExeGnu(compiler, conf):
-    return f"@{compiler} -o $@ $(SOURCES) {GenGnuCFlags(conf)}"
+    entry = ""
+    if not conf.linker.entry_point == "":
+        entry = "-Wl,--entry={conf.linker.entry_point}"
+    return f"@{compiler} -o $@ $(SOURCES) {entry} {GenGnuCFlags(conf)}"
 
 
 def GenCompileDynGnu(compiler, conf):
@@ -196,7 +199,9 @@ TOOLSET-VERSION = {compiler}
 
 # COLORS!!!
 
-
+# i realize now that this will dump binary shit into the makefile.
+# i apologize in advance for anyone who decides to edit it by hand
+# and who's editor refuses to open it
 RED     =\033[0;31m
 CYAN    =\033[0;36m
 GREEN   =\033[0;32m
