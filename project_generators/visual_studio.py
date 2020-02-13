@@ -2,22 +2,198 @@ import uuid
 import os
 import sys
 import qpc_hash
-import xml.etree.ElementTree as et
-from qpc_base import args, CreateDirectory, CreateNewDictValue, ConfigurationTypes, \
-    Platforms, Compilers, Languages, PosixPath
-from xml.dom import minidom
+import lxml.etree as et
+from time import perf_counter
+from qpc_args import args
+from qpc_base import BaseProjectGenerator, add_dict_value, Platform, posix_path, PLATFORM_DICT
+from qpc_project import Compiler, PrecompiledHeader, ConfigType, Language, Project, ProjectPass
+from qpc_parser import BaseInfo
 from enum import Enum
 
 
-def MakeUUID():
+class VisualStudioGenerator(BaseProjectGenerator):
+    def __init__(self):
+        super().__init__("Visual Studio")
+        self._add_platform(Platform.WIN32)
+        self._add_platform(Platform.WIN64)
+        self.cpp_uuid = "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}"
+        self.filter_uuid = "{2150E333-8FDC-42A3-9474-1A3956D46DE8}"
+
+    def create_project(self, project_list):
+        out_dir = get_out_dir(project_list)
+
+        if args.time:
+            start_time = perf_counter()
+        else:
+            print("Creating: " + project_list.file_name + ".vcxproj")
+        vcxproject, include_list, res_list, none_list = create_vcxproj(project_list)
+
+        # this is a little slow due to AddFormattingToXML()
+        write_project(project_list, out_dir, vcxproject)
+        if args.time:
+            print(str(round(perf_counter() - start_time, 4)) + " - Created: " + project_list.file_name + ".vcxproj")
+        
+        # would this be too much printing for the normal output? idk
+
+        if args.time:
+            start_time = perf_counter()
+        else:
+            print("Creating: " + project_list.file_name + ".vcxproj.filters")
+        vcxproject_filters = create_vcxproj_filters(project_list, include_list, res_list, none_list)
+        write_project(project_list, out_dir, vcxproject_filters, True)
+
+        if args.time:
+            print(str(round(perf_counter() - start_time, 4)) + " - Created: " + project_list.file_name + ".vcxproj.filters")
+        
+        return out_dir
+    
+    def does_project_exist(self, project_out_dir: str) -> bool:
+        # base_path = self._get_base_path(project_out_dir)
+        split_ext_path = os.path.splitext(project_out_dir)[0]
+        return os.path.isfile(split_ext_path + ".vcxproj") and os.path.isfile(split_ext_path + ".vcxproj.filters")
+    
+    def create_master_file(self, info: BaseInfo, master_file_path: str):
+        master_file_path += ".sln"
+    
+        print("Creating Solution File: " + master_file_path + "\n")
+    
+        # slow?
+        out_dir_dict = {}
+        for hash_path, qpc_path in info.project_hashes.items():
+            out_dir_dict[qpc_path] = qpc_hash.get_out_dir(hash_path)
+    
+        with open(master_file_path, "w", encoding="utf-8") as solution_file:
+            write_solution_header(solution_file)
+        
+            project_uuid_dict = {}
+            project_folder_uuid = {}
+        
+            for project_def in info.project_definitions:
+            
+                for folder in project_def.group_folder_list:
+                    if folder not in project_folder_uuid:
+                        project_folder_uuid[folder] = make_uuid()
+            
+                for script_path in project_def.script_list:
+                    try:
+                        out_dir = out_dir_dict[script_path]
+                    except KeyError:
+                        print("Project script is not in project_list? wtf")
+                        continue
+                    if out_dir is None:
+                        print()
+                    vcxproj_path = out_dir + "/" + os.path.splitext(os.path.basename(script_path))[0] + ".vcxproj"
+                
+                    if not os.path.isfile(vcxproj_path):
+                        print("Project does not exist: " + vcxproj_path)
+                        continue
+                
+                    tree = et.parse(vcxproj_path)
+                    vcxproj = tree.getroot()
+                
+                    project_name, project_uuid = get_name_and_uuid(vcxproj)
+                
+                    # shut
+                    add_dict_value(project_uuid_dict, project_def.name, list)
+                    project_uuid_dict[project_def.name].append(project_uuid)
+                
+                    sln_write_project_line(solution_file, project_name, vcxproj_path, self.cpp_uuid, project_uuid)
+                
+                    # TODO: add dependencies to the project class and then use that here
+                    #  and have a GetDependencies() function for if the hash check passes
+                    # write any project dependencies
+                    uuid_deps = get_project_dependencies(info.project_hashes, info.project_dependencies[script_path])
+                    sln_write_section(solution_file, "ProjectDependencies", uuid_deps, True, True)
+                
+                    solution_file.write("EndProject\n")
+        
+            # Write the folders as base_settings because vstudio dumb
+            # might have to make this a project def, idk
+            for folder_name, folder_uuid in project_folder_uuid.items():
+                sln_write_project_line(solution_file, folder_name, folder_name, self.filter_uuid, folder_uuid)
+                solution_file.write("EndProject\n")
+        
+            # Write the global stuff
+            solution_file.write("Global\n")
+        
+            # config_plat_list = []
+            # for config in info.configurations:
+            #     for plat in args.platforms:
+            #         config_plat_list.append(config + "|" + convert_platform(plat))
+            
+            config_plat_list = [config + "|" + convert_platform(plat)
+                                for plat in PLATFORM_DICT[info.platform]
+                                for config in info.configurations]
+        
+            # SolutionConfigurationPlatforms
+            sln_config_plat = {}
+            for config_plat in config_plat_list:
+                sln_config_plat[config_plat] = config_plat
+        
+            sln_write_section(solution_file, "SolutionConfigurationPlatforms", sln_config_plat, False)
+        
+            # ProjectConfigurationPlatforms
+            proj_config_plat = {}
+            for project_uuid_list in project_uuid_dict.values():
+                for project_uuid in project_uuid_list:
+                    for config_plat in config_plat_list:
+                        proj_config_plat[project_uuid + "." + config_plat + ".ActiveCfg"] = config_plat
+                        # TODO: maybe get some setting for a default project somehow, i think the default is set here
+                        proj_config_plat[project_uuid + "." + config_plat + ".Build.0"] = config_plat
+        
+            sln_write_section(solution_file, "ProjectConfigurationPlatforms", proj_config_plat, True)
+        
+            # write the project folders
+            global_folder_uuid_dict = {}
+            for project_def in info.project_definitions:
+                if project_def.name not in project_uuid_dict:
+                    continue
+            
+                # projects
+                for folder_index, project_folder in enumerate(project_def.group_folder_list):
+                    if project_def.group_folder_list[-(folder_index + 1)] in project_folder_uuid:
+                        folder_uuid = project_folder_uuid[project_folder]
+                        for project_uuid in project_uuid_dict[project_def.name]:
+                            global_folder_uuid_dict[project_uuid] = folder_uuid
+            
+                # sub folders, i have no clue how this works anymore and im not touching it unless i have to
+                if len(project_def.group_folder_list) > 1:
+                    folder_index = -1
+                    while folder_index < len(project_def.group_folder_list):
+                        project_sub_folder = project_def.group_folder_list[folder_index]
+                        try:
+                            project_folder = project_def.group_folder_list[folder_index - 1]
+                        except IndexError:
+                            break
+                    
+                        if project_sub_folder in project_folder_uuid:
+                            sub_folder_uuid = project_folder_uuid[project_sub_folder]
+                            folder_uuid = project_folder_uuid[project_folder]
+                            if sub_folder_uuid not in global_folder_uuid_dict:
+                                global_folder_uuid_dict[sub_folder_uuid] = folder_uuid
+                            folder_index -= 1
+        
+            sln_write_section(solution_file, "NestedProjects", global_folder_uuid_dict, False)
+        
+            solution_file.write("EndGlobal\n")
+
+
+def convert_platform(platform: Enum) -> str:
+    if platform == Platform.WIN32:
+        return "Win32"
+    elif platform == Platform.WIN64:
+        return "x64"
+
+
+def make_uuid():
     return f"{{{uuid.uuid4()}}}".upper()
 
 
-def GetOutDir(project_list) -> str:
-    out_dir = ""
+def get_out_dir(project) -> str:
+    out_dir = os.path.split(project.project_path)[0]
     if args.project_dir:
         try:
-            out_dir = PosixPath(project_list.projects[0].macros["$PROJECT_DIR"])
+            out_dir = posix_path(project.projects[0].macros["$PROJECT_DIR"])
             # if not out_dir.endswith("/"):
             #    out_dir += "/"
         except KeyError:
@@ -25,42 +201,11 @@ def GetOutDir(project_list) -> str:
     return out_dir
 
 
-def CreateProject(project_list):
-    out_dir = GetOutDir(project_list)
-        
-    print("Creating: " + project_list.file_name + ".vcxproj")
-    vcxproject, include_list, res_list, none_list = CreateVCXProj(project_list)
-    
-    # this is a little slow due to AddFormattingToXML()
-    WriteProject(project_list, out_dir, vcxproject)
-    
-    # would this be too much printing for the normal output? idk
-    print("Creating: " + project_list.file_name + ".vcxproj.filters")
-    vcxproject_filters = CreateVCXProjFilters(project_list, include_list, res_list, none_list)
-    WriteProject(project_list, out_dir, vcxproject_filters, True)
-    
-    return out_dir
+def make_conf_plat_cond(config: str, platform: Enum) -> str:
+    return f"'$(Configuration)|$(Platform)'=='{config}|{convert_platform(platform)}'"
 
 
-def MakeConfPlatCondition(config: str, platform: str) -> str:
-    return f"'$(Configuration)|$(Platform)'=='{config}|{GetPlatform(platform)}'"
-
-
-def GetPlatformRefactor(platform: Enum) -> str:
-    if platform == Platforms.WIN32:
-        return "Win32"
-    elif platform == Platforms.WIN64:
-        return "x64"
-
-
-def GetPlatform(platform: str) -> str:
-    if platform.lower() == "win32":
-        return "Win32"
-    elif platform.lower() == "win64":
-        return "x64"
-
-
-def CreateVCXProj(project_list):
+def create_vcxproj(project_list):
     vcxproj = et.Element("Project")
     vcxproj.set("DefaultTargets", "Build")
     vcxproj.set("ToolsVersion", "4.0")
@@ -102,22 +247,22 @@ def CreateVCXProj(project_list):
     
     # TODO: merge everything together, for now, just add a condition on each one lmao
     for project in project_list.projects:
-        condition = MakeConfPlatCondition(project.config_name, project.platform)
+        condition = make_conf_plat_cond(project.config_name, project.platform)
 
         # maybe do the same below for this?
-        CreateSourceFileItemGroup(project.source_files, vcxproj, condition)
+        create_source_file_item_group(project.source_files, vcxproj, condition)
         
-        include_list, remaining_files = GetProjectFiles(project.files, header_exts)
+        include_list, remaining_files = get_project_files(project.files, header_exts)
         full_include_list = {**full_include_list, **include_list}
-        CreateFileItemGroups("ClInclude", include_list, vcxproj, condition)
+        create_file_item_groups("ClInclude", include_list, vcxproj, condition)
         
-        res_list, remaining_files = GetProjectFiles(remaining_files, {".rc"})
+        res_list, remaining_files = get_project_files(remaining_files, {".rc"})
         full_res_list = {**full_res_list, **res_list}
-        CreateFileItemGroups("ResourceCompile", res_list, vcxproj, condition)
+        create_file_item_groups("ResourceCompile", res_list, vcxproj, condition)
         
-        none_list = GetProjectFiles(remaining_files, invalid_exts=none_exts)[0]
+        none_list = get_project_files(remaining_files, invalid_exts=none_exts)[0]
         full_none_list = {**full_none_list, **none_list}
-        CreateFileItemGroups("None", none_list, vcxproj, condition)
+        create_file_item_groups("None", none_list, vcxproj, condition)
     
     # other vstudio stuff idk
     elem_import = et.SubElement(vcxproj, "Import")
@@ -134,71 +279,67 @@ def SetupProjectConfigurations(vcxproj, project_list):
     
     for project in project_list.projects:
         project_configuration = et.SubElement(item_group, "ProjectConfiguration")
-        project_configuration.set("Include", project.config_name + "|" + GetPlatform(project.platform))
+        project_configuration.set("Include", project.config_name + "|" + convert_platform(project.platform))
         
         configuration = et.SubElement(project_configuration, "Configuration")
         configuration.text = project.config_name
         
         elem_platform = et.SubElement(project_configuration, "Platform")
-        elem_platform.text = GetPlatform(project.platform)
+        elem_platform.text = convert_platform(project.platform)
 
 
 def SetupGlobals(vcxproj, project_list):
     property_group = et.SubElement(vcxproj, "PropertyGroup")
     property_group.set("Label", "Globals")
     
-    et.SubElement(property_group, "ProjectName").text = project_list.GetProjectName()
-    et.SubElement(property_group, "ProjectGuid").text = MakeUUID()
+    et.SubElement(property_group, "ProjectName").text = project_list.get_display_name()
+    et.SubElement(property_group, "ProjectGuid").text = make_uuid()
+    
+    
+COMPILER_DICT = {
+    Compiler.MSVC_142: "142",
+    Compiler.MSVC_141: "141",
+    Compiler.MSVC_140: "140",
+    Compiler.MSVC_120: "120",
+    Compiler.MSVC_100: "100",
+}
 
 
 def SetupPropertyGroupConfigurations(vcxproj, project_list):
     for project in project_list.projects:
         property_group = et.SubElement(vcxproj, "PropertyGroup")
-        property_group.set("Condition", MakeConfPlatCondition(project.config_name, project.platform))
+        property_group.set("Condition", make_conf_plat_cond(project.config_name, project.platform))
         property_group.set("Label", "Configuration")
         
         config = project.config
         
         configuration_type = et.SubElement(property_group, "ConfigurationType")
         
-        if config.general.configuration_type == "application":
+        if config.general.configuration_type == ConfigType.APPLICATION:
             configuration_type.text = "Application"
-        elif config.general.configuration_type == "static_library":
+        elif config.general.configuration_type == ConfigType.STATIC_LIBRARY:
             configuration_type.text = "StaticLibrary"
-        elif config.general.configuration_type == "dynamic_library":
+        elif config.general.configuration_type == ConfigType.DYNAMIC_LIBRARY:
             configuration_type.text = "DynamicLibrary"
         
         toolset = et.SubElement(property_group, "PlatformToolset")
         
-        if config.general.toolset_version == "msvc_142":
-            toolset.text = "v142"
-        elif config.general.toolset_version == "msvc_141":
-            toolset.text = "v141"
-        elif config.general.toolset_version == "msvc_140":
-            toolset.text = "v140"
-        elif config.general.toolset_version == "msvc_120":
-            toolset.text = "v120"
-        elif config.general.toolset_version == "msvc_110":
-            toolset.text = "v110"
-        elif config.general.toolset_version == "msvc_100":
-            toolset.text = "v100"
+        if config.general.compiler and config.general.compiler in COMPILER_DICT:
+            toolset.text = COMPILER_DICT[config.general.compiler]
         else:
-            toolset.text = "v142"
+            toolset.text = "142"
         
-        defs = config.compiler.preprocessor_definitions
-        if "MBCS" in defs or "_MBCS" in defs:
-            et.SubElement(property_group, "CharacterSet").text = "MultiByte"
-            if "MBCS" in defs:
-                defs.remove("MBCS")
-            if "_MBCS" in defs:
-                defs.remove("_MBCS")
-                
-        elif "UNICODE" in defs or "_UNICODE" in defs:
-            et.SubElement(property_group, "CharacterSet").text = "Unicode"
-            if "UNICODE" in defs:
-                defs.remove("UNICODE")
-            if "_UNICODE" in defs:
-                defs.remove("_UNICODE")
+        character_set_text = ''
+        if "_MBCS" in config.compiler.preprocessor_definitions:
+            character_set_text = "Unicode"
+            config.compiler.preprocessor_definitions.remove("_MBCS")
+        elif "MBCS" in config.compiler.preprocessor_definitions:
+            character_set_text = "MultiByte"
+            config.compiler.preprocessor_definitions.remove("MBCS")
+        
+        if character_set_text:
+            character_set = et.SubElement(property_group, "CharacterSet")
+            character_set.text = character_set_text
         
         # "TargetName",
         # "WholeProgramOptimization",
@@ -219,7 +360,7 @@ def SetupGeneralProperties(vcxproj, project_list):
     et.SubElement(property_group, "_ProjectFileVersion").text = "10.0.30319.1"
     
     for project in project_list.projects:
-        condition = MakeConfPlatCondition(project.config_name, project.platform)
+        condition = make_conf_plat_cond(project.config_name, project.platform)
         config = project.config
         
         property_group = et.SubElement(vcxproj, "PropertyGroup")
@@ -235,17 +376,18 @@ def SetupGeneralProperties(vcxproj, project_list):
         if config.general.out_name:
             target_name.text = config.general.out_name
         else:
-            target_name.text = project_list.GetProjectName()
+            # target_name.text = project_list.get_project_name()
+            target_name.text = project_list.file_name
         
         target_ext = et.SubElement(property_group, "TargetExt")
         
-        if config.general.configuration_type == "application":
+        if config.general.configuration_type == ConfigType.APPLICATION:
             target_ext.text = project_list.macros["$_APP_EXT"]
         
-        elif config.general.configuration_type == "static_library":
+        elif config.general.configuration_type == ConfigType.STATIC_LIBRARY:
             target_ext.text = project_list.macros["$_STATICLIB_EXT"]
         
-        elif config.general.configuration_type == "dynamic_library":
+        elif config.general.configuration_type == ConfigType.DYNAMIC_LIBRARY:
             target_ext.text = project_list.macros["$_BIN_EXT"]
         
         include_paths = et.SubElement(property_group, "IncludePath")
@@ -265,7 +407,7 @@ def SetupGeneralProperties(vcxproj, project_list):
 
 def SetupItemDefinitionGroups(vcxproj, project_list):
     for project in project_list.projects:
-        condition = MakeConfPlatCondition(project.config_name, project.platform)
+        condition = make_conf_plat_cond(project.config_name, project.platform)
         cfg = project.config
         
         item_def_group = et.SubElement(vcxproj, "ItemDefinitionGroup")
@@ -277,7 +419,7 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
         
         # ------------------------------------------------------------------
         # linker - Link or Lib
-        if cfg.general.configuration_type == "static_library":
+        if cfg.general.configuration_type == ConfigType.STATIC_LIBRARY:
             link_lib = et.SubElement(item_def_group, "Lib")
         else:
             link_lib = et.SubElement(item_def_group, "Link")
@@ -288,11 +430,11 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
 
         if cfg.linker.output_file:
             output_file = os.path.splitext(cfg.linker.output_file)[0]
-            if cfg.general.configuration_type == "dynamic_library":
+            if cfg.general.configuration_type == ConfigType.DYNAMIC_LIBRARY:
                 et.SubElement(link_lib, "OutputFile").text = output_file + project.macros["$_BIN_EXT"]
-            elif cfg.general.configuration_type == "static_library":
+            elif cfg.general.configuration_type == ConfigType.STATIC_LIBRARY:
                 et.SubElement(link_lib, "OutputFile").text = output_file + project.macros["$_STATICLIB_EXT"]
-            elif cfg.general.configuration_type == "application":
+            elif cfg.general.configuration_type == ConfigType.APPLICATION:
                 et.SubElement(link_lib, "OutputFile").text = output_file + project.macros["$_APP_EXT"]
 
         if cfg.linker.debug_file:
@@ -301,9 +443,6 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
         if cfg.linker.import_library:
             et.SubElement(link_lib, "ImportLibrary").text = os.path.splitext(cfg.linker.import_library)[0] + \
                                                             project.macros["$_IMPLIB_EXT"]
-        
-        if cfg.linker.entry_point:
-            et.SubElement(link_lib, "EntryPointSymbol").text = cfg.linker.entry_point
         
         # what does "IgnoreAllDefaultLibraries" do differently than this? is it a boolean? idk
         et.SubElement(link_lib, "IgnoreSpecificDefaultLibraries").text = ';'.join(cfg.linker.ignore_libraries) + \
@@ -339,8 +478,8 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
             et.SubElement(et.SubElement(item_def_group, "PreLinkEvent"), "Command").text = ' '.join(cfg.pre_link)
 
 
-# TODO: this needs to have some default visual studio settings,
-#  because visual studio can't fucking pick default settings when none is set for them in the vcxproj
+# TODO: this needs to have some default visual studio info,
+#  because visual studio can't fucking pick default info when none is set for them in the vcxproj
 def AddCompilerOptions(compiler_elem, compiler, general=None):
     added_option = False
     
@@ -352,8 +491,12 @@ def AddCompilerOptions(compiler_elem, compiler, general=None):
     
     if compiler.precompiled_header:
         added_option = True
-        et.SubElement(compiler_elem, "PrecompiledHeader").text = \
-            {"none": "NotUsing", "use": "Use", "create": "Create"}[compiler.precompiled_header]
+        # Compiler, PrecompiledHeader, ConfigType, Language
+        et.SubElement(compiler_elem, "PrecompiledHeader").text = {
+            PrecompiledHeader.NONE: "NotUsing",
+            PrecompiledHeader.USE: "Use",
+            PrecompiledHeader.CREATE: "Create"
+        }[compiler.precompiled_header]
     
     if compiler.precompiled_header_file:
         added_option = True
@@ -365,9 +508,12 @@ def AddCompilerOptions(compiler_elem, compiler, general=None):
     
     if general and general.language:
         added_option = True
-        et.SubElement(compiler_elem, "CompileAs").text = {"c": "CompileAsC", "cpp": "CompileAsCpp"}[general.language]
+        if general.language == Language.CPP:
+            et.SubElement(compiler_elem, "CompileAs").text = "CompileAsCpp"
+        else:
+            et.SubElement(compiler_elem, "CompileAs").text = "CompileAsC"
         
-    # these are needed, because for some reason visual studio use shit stuff for default settings
+    # these are needed, because for some reason visual studio use shit stuff for default info
     if general:  # basically if not file
         added_option = True
         basic_runtime_checks = et.SubElement(compiler_elem, "BasicRuntimeChecks")
@@ -387,7 +533,7 @@ def AddCompilerOptions(compiler_elem, compiler, general=None):
                 warnings_list.append(option[8:])
                 remaining_options.remove(option)
             else:
-                option_key, option_value = CommandToCompilerOption(option)
+                option_key, option_value = command_to_compiler_option(option)
                 if option_key and option_value:
                     
                     if general:
@@ -466,14 +612,14 @@ COMPILER_OPTIONS = {
 }
 
 
-def CommandToCompilerOption(value: str) -> tuple:
+def command_to_compiler_option(value: str) -> tuple:
     for compiler_key, value_commands in COMPILER_OPTIONS.items():
         if value in value_commands:
             return compiler_key, value_commands[value]
     return None, None
 
 
-def CreateSourceFileItemGroup(file_list, parent_elem, condition):
+def create_source_file_item_group(file_list, parent_elem, condition):
     if file_list:
         item_group = et.SubElement(parent_elem, "ItemGroup")
         item_group.set("Condition", condition)
@@ -483,7 +629,7 @@ def CreateSourceFileItemGroup(file_list, parent_elem, condition):
             AddCompilerOptions(elem_file, values.compiler)
 
 
-def CreateFileItemGroups(file_type, file_dict, parent_elem, condition):
+def create_file_item_groups(file_type, file_dict, parent_elem, condition):
     if file_dict:
         item_group = et.SubElement(parent_elem, "ItemGroup")
         item_group.set("Condition", condition)
@@ -493,7 +639,7 @@ def CreateFileItemGroups(file_type, file_dict, parent_elem, condition):
 
 
 # TODO: maybe move this to the project class and rename to GetFilesByExt?
-def GetProjectFiles(project_files, valid_exts=None, invalid_exts=None):
+def get_project_files(project_files, valid_exts=None, invalid_exts=None):
     if not valid_exts:
         valid_exts = ()
     if not invalid_exts:
@@ -514,25 +660,25 @@ def GetProjectFiles(project_files, valid_exts=None, invalid_exts=None):
     return wanted_files, unwanted_files
 
 
-def CreateVCXProjFilters(project_list, include_list, res_list, none_list):
+def create_vcxproj_filters(project_list, include_list, res_list, none_list):
     proj_filters = et.Element("Project")
     proj_filters.set("ToolsVersion", "4.0")
     proj_filters.set("xmlns", "http://schemas.microsoft.com/developer/msbuild/2003")
     
-    Create_FolderFilters(proj_filters, project_list)
+    create_folder_filters(proj_filters, project_list)
     
     for project in project_list.projects:
         # these functions here are slow, oof
-        Create_SourceFileItemGroupFilters(proj_filters, project.source_files, "ClCompile")
+        create_source_file_item_group_filters(proj_filters, project.source_files, "ClCompile")
     
-    Create_ItemGroupFilters(proj_filters, include_list, "ClInclude")
-    Create_ItemGroupFilters(proj_filters, res_list, "ResourceCompile")
-    Create_ItemGroupFilters(proj_filters, none_list, "None")
+    create_item_group_filters(proj_filters, include_list, "ClInclude")
+    create_item_group_filters(proj_filters, res_list,     "ResourceCompile")
+    create_item_group_filters(proj_filters, none_list,    "None")
     
     return proj_filters
 
 
-def Create_FolderFilters(proj_filters, project_list):
+def create_folder_filters(proj_filters, project_list):
     folder_list = project_list.GetAllEditorFolderPaths()
     if folder_list:
         item_group = et.SubElement(proj_filters, "ItemGroup")
@@ -540,10 +686,10 @@ def Create_FolderFilters(proj_filters, project_list):
             elem_folder = et.SubElement(item_group, "Filter")
             elem_folder.set("Include", folder)
             unique_identifier = et.SubElement(elem_folder, "UniqueIdentifier")
-            unique_identifier.text = MakeUUID()
+            unique_identifier.text = make_uuid()
 
 
-def Create_SourceFileItemGroupFilters(proj_filters, files_dict, filter_name):
+def create_source_file_item_group_filters(proj_filters, files_dict, filter_name):
     item_group = et.SubElement(proj_filters, "ItemGroup")
     for file_path, source_file in files_dict.items():
         elem_file = et.SubElement(item_group, filter_name)
@@ -553,7 +699,7 @@ def Create_SourceFileItemGroupFilters(proj_filters, files_dict, filter_name):
             folder.text = source_file.folder
 
 
-def Create_ItemGroupFilters(proj_filters, files_dict, filter_name):
+def create_item_group_filters(proj_filters, files_dict, filter_name):
     item_group = et.SubElement(proj_filters, "ItemGroup")
     for file_path, folder_path in files_dict.items():
         elem_file = et.SubElement(item_group, filter_name)
@@ -563,26 +709,34 @@ def Create_ItemGroupFilters(proj_filters, files_dict, filter_name):
             folder.text = folder_path
 
 
-# --------------------------------------------------------------------------------------------------
+def create_directory(directory: str) -> None:
+    try:
+        os.makedirs(directory)
+        if args.verbose:
+            print("Created Directory: " + directory)
+    except FileExistsError:
+        pass
+    except FileNotFoundError:
+        pass
 
 
-def WriteProject(project_list, out_dir, xml_file, filters=False):
+def write_project(project: Project, out_dir: str, xml_file: et.Element, filters: bool = False) -> None:
     if out_dir and not out_dir.endswith("/"):
         out_dir += "/"
-    file_path = out_dir + os.path.splitext(project_list.file_name)[0] + ".vcxproj"
+    file_path = out_dir + os.path.splitext(project.file_name)[0] + ".vcxproj"
     
     if filters:
         file_path += ".filters"
         
     # directory = os.path.split(file_path)
-    CreateDirectory(out_dir)
+    create_directory(out_dir)
     
     with open(file_path, "w", encoding="utf-8") as project_file:
-        project_file.write(AddFormattingToXML(xml_file))
+        project_file.write(xml_to_string(xml_file))
 
 
-def AddFormattingToXML(elem):
-    return minidom.parseString(et.tostring(elem, 'utf-8')).toprettyxml(indent="  ")
+def xml_to_string(elem) -> str:
+    return et.tostring(elem, pretty_print=True).decode("utf-8")
 
 
 # --------------------------------------------------------------------------------------------------
@@ -590,130 +744,8 @@ def AddFormattingToXML(elem):
 # sln keys:
 # https://www.codeproject.com/Reference/720512/List-of-Visual-Studio-Project-Type-GUIDs
 
-def MakeSolutionFile(project_def_list, project_list, solution_path,
-                     configurations: list, platforms: list, project_dependencies: dict):
-    cpp_uuid = "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}"
-    filter_uuid = "{2150E333-8FDC-42A3-9474-1A3956D46DE8}"
-    
-    solution_path += ".sln"
-    
-    print("Creating Solution File: " + solution_path + "\n")
-    
-    out_dir_dict = {}
-    for hash_path, qpc_path in project_list.items():
-        out_dir_dict[qpc_path] = qpc_hash.GetOutDir(hash_path)
-    
-    with open(solution_path, "w", encoding="utf-8") as solution_file:
-        WriteTopOfSolution(solution_file)
-        
-        project_uuid_dict = {}
-        project_folder_uuid = {}
-        
-        for project_def in project_def_list:
-            
-            for folder in project_def.group_folder_list:
-                if folder not in project_folder_uuid:
-                    project_folder_uuid[folder] = MakeUUID()
-            
-            for script_path in project_def.script_list:
-                try:
-                    out_dir = out_dir_dict[script_path]
-                except KeyError:
-                    print("Project script is not in project_list? wtf")
-                    continue
-                vcxproj_path = out_dir + "/" + os.path.splitext(os.path.basename(script_path))[0] + ".vcxproj"
-                
-                if not os.path.isfile(vcxproj_path):
-                    print("Project does not exist: " + vcxproj_path)
-                    continue
-                
-                tree = et.parse(vcxproj_path)
-                vcxproj = tree.getroot()
-                
-                project_name, project_uuid = GetNameAndUUIDFromProject(vcxproj)
-                
-                # shut
-                CreateNewDictValue(project_uuid_dict, project_def.name, "list")
-                project_uuid_dict[project_def.name].append(project_uuid)
-                
-                SLN_WriteProjectLine(solution_file, project_name, vcxproj_path, cpp_uuid, project_uuid)
-                
-                # TODO: add dependencies to the project class and then use that here
-                #  and have a GetDependencies() function for if the hash check passes
-                # write any project dependencies
-                project_uuid_deps = GetProjectDependencies(project_list, project_dependencies[script_path])
-                SLN_WriteSection(solution_file, "ProjectDependencies", project_uuid_deps, True, True)
-                
-                solution_file.write("EndProject\n")
-        
-        # Write the folders as projects because vstudio dumb
-        # might have to make this a project def, idk
-        for folder_name, folder_uuid in project_folder_uuid.items():
-            SLN_WriteProjectLine(solution_file, folder_name, folder_name, filter_uuid, folder_uuid)
-            solution_file.write("EndProject\n")
-        
-        # Write the global stuff
-        solution_file.write("Global\n")
-        
-        config_plat_list = []
-        for config in configurations:
-            for plat in platforms:
-                config_plat_list.append(config + "|" + GetPlatform(plat))
-        
-        # SolutionConfigurationPlatforms
-        sln_config_plat = {}
-        for config_plat in config_plat_list:
-            sln_config_plat[config_plat] = config_plat
-        
-        SLN_WriteSection(solution_file, "SolutionConfigurationPlatforms", sln_config_plat, False)
-        
-        # ProjectConfigurationPlatforms
-        proj_config_plat = {}
-        for project_uuid_list in project_uuid_dict.values():
-            for project_uuid in project_uuid_list:
-                for config_plat in config_plat_list:
-                    proj_config_plat[project_uuid + "." + config_plat + ".ActiveCfg"] = config_plat
-                    # TODO: maybe get some setting for a default project somehow, i think the default is set here
-                    proj_config_plat[project_uuid + "." + config_plat + ".Build.0"] = config_plat
-        
-        SLN_WriteSection(solution_file, "ProjectConfigurationPlatforms", proj_config_plat, True)
-        
-        # write the project folders
-        global_folder_uuid_dict = {}
-        for project_def in project_def_list:
-            if project_def.name not in project_uuid_dict:
-                continue
-            
-            # projects
-            for folder_index, project_folder in enumerate(project_def.group_folder_list):
-                if project_def.group_folder_list[-(folder_index + 1)] in project_folder_uuid:
-                    folder_uuid = project_folder_uuid[project_folder]
-                    for project_uuid in project_uuid_dict[project_def.name]:
-                        global_folder_uuid_dict[project_uuid] = folder_uuid
-            
-            # sub folders
-            if len(project_def.group_folder_list) > 1:
-                folder_index = -1
-                while folder_index < len(project_def.group_folder_list):
-                    project_sub_folder = project_def.group_folder_list[folder_index]
-                    try:
-                        project_folder = project_def.group_folder_list[folder_index - 1]
-                    except IndexError:
-                        break
-                    
-                    if project_sub_folder in project_folder_uuid:
-                        sub_folder_uuid = project_folder_uuid[project_sub_folder]
-                        folder_uuid = project_folder_uuid[project_folder]
-                        if sub_folder_uuid not in global_folder_uuid_dict:
-                            global_folder_uuid_dict[sub_folder_uuid] = folder_uuid
-                        folder_index -= 1
-        
-        SLN_WriteSection(solution_file, "NestedProjects", global_folder_uuid_dict, False)
-        
-        solution_file.write("EndGlobal\n")
 
-
-def WriteTopOfSolution(solution_file):
+def write_solution_header(solution_file):
     solution_file.write("Microsoft Visual Studio Solution File, Format Version 12.00\n")
     
     # solution_file.write( "# Visual Studio Version 16\n" )
@@ -725,7 +757,7 @@ def WriteTopOfSolution(solution_file):
 
 
 # get stuff we need from the vcxproj file, might even need more later for dependencies, oof
-def GetNameAndUUIDFromProject(vcxproj):
+def get_name_and_uuid(vcxproj):
     xmlns = "{http://schemas.microsoft.com/developer/msbuild/2003}"
     
     # configurations = []
@@ -756,12 +788,12 @@ def GetNameAndUUIDFromProject(vcxproj):
     return project_name, project_guid
 
 
-def SLN_WriteProjectLine(solution_file, project_name, vcxproj_path, cpp_uuid, vcxproj_uuid):
+def sln_write_project_line(solution_file, project_name, vcxproj_path, cpp_uuid, vcxproj_uuid):
     solution_file.write(
         'Project("{0}") = "{1}", "{2}", "{3}"\n'.format(cpp_uuid, project_name, vcxproj_path, vcxproj_uuid))
 
 
-def SLN_WriteSection(solution_file, section_name, key_value_dict, is_post=False, is_project_section=False):
+def sln_write_section(solution_file, section_name, key_value_dict, is_post=False, is_project_section=False):
     if key_value_dict:
         if is_project_section:
             section_type = "Project"
@@ -777,11 +809,7 @@ def SLN_WriteSection(solution_file, section_name, key_value_dict, is_post=False,
         solution_file.write("\tEnd{0}Section\n".format(section_type))
 
 
-# unused, remove later
-# should change this to look every vcxproj file and
-# check if the output file in Lib fits what the project needs
-# first check if the config type is a StaticLibrary, then check OutputFile in Lib
-def GetProjectDependencies(project_dict: dict, project_dependency_paths: list) -> dict:
+def get_project_dependencies(project_dict: dict, project_dependency_paths: set) -> dict:
     project_list = set(project_dict.values())
     project_dependencies = {}
     for dependency_path in project_dependency_paths:
@@ -794,7 +822,7 @@ def GetProjectDependencies(project_dict: dict, project_dependency_paths: list) -
     
             try:
                 vcxproj = et.parse(vcxproj_abspath).getroot()
-                project_name, project_uuid = GetNameAndUUIDFromProject(vcxproj)
+                project_name, project_uuid = get_name_and_uuid(vcxproj)
         
                 # very cool vstudio
                 project_dependencies[project_uuid] = project_uuid

@@ -1,6 +1,11 @@
 import sys
 import os
 
+# from qpc_args import args
+from qpc_base import BaseProjectGenerator, Platform
+from qpc_project import Compiler, ConfigType, Language, Project, ProjectPass, Configuration
+from qpc_parser import BaseInfo
+
 import qpc_c_parser as cp
 
 header_extensions = [
@@ -12,11 +17,36 @@ header_extensions = [
 ]
 
 
-def MkIfEq(a, b, body):
+class MakefileGenerator(BaseProjectGenerator):
+    def __init__(self):
+        super().__init__("Makefile")
+        self._add_platform(Platform.LINUX32)
+        self._add_platform(Platform.LINUX64)
+        self._add_platform(Platform.MACOS)
+
+    def create_project(self, project: Project) -> None:
+        print("Creating: " + project.file_name + ".mak")
+        makefile = gen_defines(project.projects[0].config.general.compiler)
+        
+        for p in project.projects:
+            makefile += gen_project_config_definitions(p)
+        
+        with open(project.file_name + ".mak", "w", encoding="utf-8") as f:
+            f.write(makefile)
+
+    def does_project_exist(self, project_out_dir: str) -> bool:
+        return os.path.isfile(os.path.splitext(project_out_dir)[0] + ".mak")
+
+    def create_master_file(self, info: BaseInfo, master_file_path: str) -> None:
+        # do stuff with info.project_dependencies here
+        pass
+
+
+def make_ifeq(a, b, body) -> str:
     return f"\nifeq ({a},{b})\n{body}\nendif\n"
 
 
-def GenGnuCFlags(conf, libs=True, defs=True, includes=True):
+def gen_cflags(conf: Configuration, libs: bool = True, defs: bool = True, includes: bool = True) -> str:
     mk = ""
     if len(conf.compiler.preprocessor_definitions) > 0 and defs:
         mk += ' -D ' + ' -D '.join(conf.compiler.preprocessor_definitions)
@@ -30,22 +60,19 @@ def GenGnuCFlags(conf, libs=True, defs=True, includes=True):
 
 
 # TODO: add a non-gnu flag option (/ instead of --, etc)
-def GenCompileExeGnu(compiler, conf):
-    entry = ""
-    if not conf.linker.entry_point == "":
-        entry = "-Wl,--entry={conf.linker.entry_point}"
-    return f"@{compiler} -o $@ $(SOURCES) {entry} {GenGnuCFlags(conf)}"
+def gen_compile_exe(compiler, conf) -> str:
+    return f"@{compiler} -o $@ $(SOURCES) {gen_cflags(conf)}"
 
 
-def GenCompileDynGnu(compiler, conf):
-    return f"@{compiler} -shared -fPIC -o $@ $(SOURCES) {GenGnuCFlags(conf)}"
+def gen_compile_dyn(compiler, conf) -> str:
+    return f"@{compiler} -shared -fPIC -o $@ $(SOURCES) {gen_cflags(conf)}"
 
 
-def GenCompileStatGnu(compiler, conf):
+def gen_compile_stat(compiler, conf) -> str:
     return f"@ar rcs $@ $(OBJECTS)"
 
 
-def GenProjectTargets(conf):
+def gen_project_targets(conf) -> str:
     makefile = "\n\n# TARGETS\n\n"
     target_name = ""
     # theres got to be a better way to do this but im tired
@@ -54,47 +81,55 @@ def GenProjectTargets(conf):
     else:
         target_name = "$(OUTNAME)"
     
-    if True:  # conf.general.toolset_version == "gcc":
-        lang_switch = {"c": "gcc", "cpp": "g++", "c++": "g++"}
-        compiler = lang_switch[conf.general.language]
+    # compiler = "g++" if conf.general.language == Language.CPP else "gcc"
+    sel_compiler = conf.general.compiler
+    if sel_compiler in {Compiler.GCC_9, Compiler.GCC_8, Compiler.GCC_7, Compiler.GCC_6}:
+        if conf.general.language == Language.CPP:
+            compiler = "g++-" + str(sel_compiler.name[-1])
+        else:  # assume conf.general.language == Language.C:
+            compiler = "gcc-" + str(sel_compiler.name[-1])
+    elif sel_compiler in {Compiler.CLANG_9, Compiler.CLANG_8}:
+        compiler = "clang-" + str(sel_compiler.name[-1])
+    else:
+        compiler = "g++"
     
-    if conf.general.configuration_type == "application":
+    if conf.general.configuration_type == ConfigType.APPLICATION:
         makefile += f"{target_name}: __PREBUILD $(OBJECTS) $(FILES) __PRELINK\n"
         makefile += f"\t@echo '$(GREEN)Compiling executable {target_name}$(NC)'\n"
-        makefile += '\t' + '\n\t'.join(GenCompileExeGnu(compiler, conf).split('\n'))
+        makefile += '\t' + '\n\t'.join(gen_compile_exe(compiler, conf).split('\n'))
     
-    elif conf.general.configuration_type == "dynamic_library":
+    elif conf.general.configuration_type == ConfigType.DYNAMIC_LIBRARY:
         makefile += f"$(addsuffix .so,{target_name}): __PREBUILD $(OBJECTS) $(FILES) __PRELINK\n"
         makefile += f"\t@echo '$(CYAN)Compiling dynamic library {target_name + '.so'}$(NC)'\n"
-        makefile += '\t' + '\n\t'.join(GenCompileDynGnu(compiler, conf).split('\n'))
+        makefile += '\t' + '\n\t'.join(gen_compile_dyn(compiler, conf).split('\n'))
     
-    elif conf.general.configuration_type == "static_library":
+    elif conf.general.configuration_type == ConfigType.STATIC_LIBRARY:
         makefile += f"$(addsuffix .a,{target_name}): __PREBUILD $(OBJECTS) $(FILES) __PRELINK\n"
         makefile += f"\t@echo '$(CYAN)Compiling static library {target_name}.a$(NC)'\n"
-        makefile += '\t' + '\n\t'.join(GenCompileStatGnu(compiler, conf).split('\n'))
+        makefile += '\t' + '\n\t'.join(gen_compile_stat(compiler, conf).split('\n'))
     
     makefile += "\n\t" + "\n\t".join(conf.post_build)
     
     return makefile
 
 
-def GenDependencyTree(objects, headers, conf):
+def gen_dependency_tree(objects, headers, conf: Configuration) -> str:
     makefile = "\n#DEPENDENCY TREE:\n\n"
     pic = ""
-    if conf.general.configuration_type == "shared_library":
+    if conf.general.configuration_type == "shared_library":  # shared library is a thing?
         pic = "-fPIC"
     for obj in objects.keys():
-        makefile += f"\n{obj}: {objects[obj]} {' '.join(cp.GetIncludes(objects[obj]))}\n"
+        makefile += f"\n{obj}: {objects[obj]} {' '.join(cp.get_includes(objects[obj]))}\n"
         makefile += f"\t@echo '$(CYAN)Building Object {objects[obj]}$(NC)'\n"
-        makefile += f"\t@$(TOOLSET-VERSION) -c {pic} -o $@ {objects[obj]} {GenGnuCFlags(conf, libs=False)}\n"
+        makefile += f"\t@$(COMPILER) -c {pic} -o $@ {objects[obj]} {gen_cflags(conf, libs=False)}\n"
     
     for h in headers:
-        makefile += f"\n{h}: {' '.join(cp.GetIncludes(h))}\n"
+        makefile += f"\n{h}: {' '.join(cp.get_includes(h))}\n"
     
     return makefile
 
 
-def GenCleanTarget():
+def gen_clean_target() -> str:
     return f"""
 # CLEAN TARGET:
 
@@ -108,7 +143,7 @@ clean:
 """
 
 
-def GenScriptTargets(conf):
+def gen_script_targets(conf: Configuration) -> str:
     makefile = "\n\n__PREBUILD:\n"
     makefile += '\t' + '\n\t'.join(conf.pre_build) + "\n\n"
     
@@ -119,9 +154,11 @@ def GenScriptTargets(conf):
 
 
 # TODO: less shit name
-def GenProjConfDefs(project):
+def gen_project_config_definitions(project: ProjectPass) -> str:
     objects = {}
+    project_dir = os.path.split(project.project.project_path)[0]
     for i in project.source_files:
+        i = os.path.normpath(project_dir + "/" + i)
         objects['.'.join(i.split('.')[:-1])
                     .replace('/', '\\/')
                     .replace('..', ('\\.\\.')
@@ -140,25 +177,26 @@ def GenProjConfDefs(project):
     makefile += "FILES = " + '\t\\\n\t'.join(nonheader_files) + "\n"
     
     makefile += "\n# MACROS:\n\n"
-    try:
-        makefile += "OUTNAME = " + project.macros["$PROJECT_NAME"]
-    except KeyError:
-        makefile += "OUTNAME = default"
+
+    if project.config.general.out_name:
+        makefile += "OUTNAME = " + project.config.general.out_name
+    else:
+        makefile += "OUTNAME = " + project.project.file_name
     
-    makefile += GenProjectTargets(project.config)
+    makefile += gen_project_targets(project.config)
     
-    makefile += GenCleanTarget()
+    makefile += gen_clean_target()
     
-    makefile += GenDependencyTree(objects, headers, project.config)
+    makefile += gen_dependency_tree(objects, headers, project.config)
     # print(project.config)
     
-    makefile += GenScriptTargets(project.config)
+    makefile += gen_script_targets(project.config)
     
-    return MkIfEq(project.config_name, "$(CONFIG)",
-                  MkIfEq(project.platform, "$(PLATFORM)", makefile))
+    return make_ifeq(project.config_name, "$(CONFIG)",
+                     make_ifeq(project.platform, "$(PLATFORM)", makefile))
 
 
-def GetPlatform():
+def get_default_platform() -> str:
     p = sys.platform
     if sys.maxsize > 2 ** 32:
         p += "64"
@@ -168,7 +206,7 @@ def GetPlatform():
     return p
 
 
-def GenDefines(toolset):
+def gen_defines(toolset) -> str:
     if toolset:
         compiler = toolset
     else:
@@ -190,18 +228,16 @@ def GenDefines(toolset):
 # / 　 づ  
 
 # don't mess with this, might break stuff
-PLATFORM = {GetPlatform()}
+PLATFORM = {get_default_platform()}
 # change the config with CONFIG=[Release,Debug] to make
 CONFIG = Debug
-# edit this in your QPC script configuration/general/toolset-version
-TOOLSET-VERSION = {compiler}
+# edit this in your QPC script configuration/general/compiler
+COMPILER = {compiler}
 
 
 # COLORS!!!
 
-# i realize now that this will dump binary shit into the makefile.
-# i apologize in advance for anyone who decides to edit it by hand
-# and who's editor refuses to open it
+
 RED     =\033[0;31m
 CYAN    =\033[0;36m
 GREEN   =\033[0;32m
@@ -211,14 +247,3 @@ NC      =\033[0m
 ### BEGIN BUILD TARGETS ###
 ###########################
 """
-
-
-def CreateMakefile(projects):
-    print("CREATING MAKEFILE")
-    makefile = GenDefines(projects.projects[0].config.general.toolset_version)
-    
-    for p in projects.projects:
-        makefile += GenProjConfDefs(p)
-    
-    with open("makefile", "w") as f:
-        f.write(makefile)

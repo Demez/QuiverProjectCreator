@@ -1,12 +1,28 @@
 import hashlib
 import qpc_reader
-from qpc_base import args, CreateDirectory, PosixPath
-from os import path, sep, getcwd
+from qpc_args import args, PROJECT_GENERATORS
+from qpc_base import posix_path
+# from os import path, sep, getcwd
+import os
 
 
-QPC_DIR = PosixPath(path.dirname(path.realpath(__file__))) + "/"
+QPC_DIR = posix_path(os.path.dirname(os.path.realpath(__file__))) + "/"
+QPC_GENERATOR_DIR = QPC_DIR + "project_generators/"
 QPC_HASH_DIR = QPC_DIR + "hashes/"
-CreateDirectory(QPC_HASH_DIR)
+
+
+def create_directory(directory):
+    try:
+        os.makedirs(directory)
+        if args.verbose:
+            print("Created Directory: " + directory)
+    except FileExistsError:
+        pass
+    except FileNotFoundError:
+        pass
+    
+
+create_directory(QPC_HASH_DIR)
 
 
 # Source: https://bitbucket.org/prologic/tools/src/tip/md5sum
@@ -30,35 +46,38 @@ BASE_QPC_HASH_LIST = (
     "qpc_base.py",
     "qpc_c_parser.py",
     "qpc_hash.py",
-    "qpc_makefile.py",
     "qpc_parser.py",
+    "qpc_project.py",
     "qpc_reader.py",
-    "qpc_visual_studio.py",
-    "qpc_vpc_converter.py",
-    "qpc_writer.py",
+    # "qpc_vpc_converter.py",
+    "qpc_generator_handler.py",
 )
         
         
 BASE_QPC_HASHES = {}
 for file in BASE_QPC_HASH_LIST:
     BASE_QPC_HASHES[QPC_DIR + file] = MakeHash(QPC_DIR + file)
+    
+# for file in os.listdir(QPC_GENERATOR_DIR):
+for file in PROJECT_GENERATORS:
+    BASE_QPC_HASHES[QPC_GENERATOR_DIR + file + ".py"] = MakeHash(QPC_GENERATOR_DIR + file + ".py")
 
 
 # could make these functions into a class as a namespace
 # probably a class, to store hashes of files we've checked before
 def CheckHash(project_path: str, file_list=None):
-    project_hash_file_path = GetHashFilePath(project_path)
-    project_dir = path.split(project_path)[0]
+    project_hash_file_path = get_hash_file_path(project_path)
+    project_dir = os.path.split(project_path)[0]
     
-    if path.isfile(project_hash_file_path):
-        hash_file = qpc_reader.ReadFile(project_hash_file_path)
+    if os.path.isfile(project_hash_file_path):
+        hash_file = qpc_reader.read_file(project_hash_file_path)
         
         if not hash_file:
             return False
         
         for block in hash_file:
             if block.key == "commands":
-                if not _CheckCommands(project_dir, block.items):
+                if not _check_commands(project_dir, block.items):
                     return False
                 
             elif block.key == "hashes":
@@ -90,29 +109,32 @@ def CheckHash(project_path: str, file_list=None):
         return False
     
     
-def GetOutDir(project_hash_file_path):
-    if path.isfile(project_hash_file_path):
-        hash_file = qpc_reader.ReadFile(project_hash_file_path)
+def get_out_dir(project_hash_file_path):
+    if os.path.isfile(project_hash_file_path):
+        hash_file = qpc_reader.read_file(project_hash_file_path)
         
         if not hash_file:
             return ""
 
         commands_block = hash_file.GetItem("commands")
         
+        if commands_block is None:
+            print("hold up")
+        
         working_dir = commands_block.GetItemValues("working_dir")[0]
         out_dir = commands_block.GetItemValues("out_dir")[0]
-        return path.normpath(working_dir + "/" + out_dir)
+        return posix_path(os.path.normpath(working_dir + "/" + out_dir))
     
     
-def _CheckCommands(project_dir: str, command_list) -> bool:
+def _check_commands(project_dir: str, command_list) -> bool:
     for command_block in command_list:
         if command_block.key == "working_dir":
-            directory = getcwd()
+            directory = os.getcwd()
             if project_dir:
                 directory += "/" + project_dir
             # something just breaks here i use PosixPath in the if statement
-            directory = PosixPath(directory)
-            if directory != PosixPath(command_block.values[0]):
+            directory = posix_path(directory)
+            if directory != posix_path(command_block.values[0]):
                 return False
         
         elif command_block.key == "out_dir":
@@ -126,12 +148,16 @@ def _CheckCommands(project_dir: str, command_list) -> bool:
             if sorted(args.remove) != sorted(command_block.values):
                 return False
         
-        elif command_block.key == "types":
-            if sorted(args.types) != sorted(command_block.values):
+        elif command_block.key == "generators":  # generators
+            if sorted(args.generators) != sorted(command_block.values):
                 return False
         
         elif command_block.key == "macros":
             if sorted(args.macros) != sorted(command_block.values):
+                return False
+        
+        elif command_block.key == "qpc_py_count":
+            if len(BASE_QPC_HASHES) != int(command_block.values[0]):
                 return False
         
         else:
@@ -141,10 +167,10 @@ def _CheckCommands(project_dir: str, command_list) -> bool:
     
 def _CheckFileHash(project_dir, hash_list):
     for hash_block in hash_list:
-        if path.isabs(hash_block.values[0]) or not project_dir:
-            project_file_path = path.normpath(hash_block.values[0])
+        if os.path.isabs(hash_block.values[0]) or not project_dir:
+            project_file_path = os.path.normpath(hash_block.values[0])
         else:
-            project_file_path = path.normpath(project_dir + sep + hash_block.values[0])
+            project_file_path = os.path.normpath(project_dir + "/" + hash_block.values[0])
         
         if hash_block.key != MakeHash(project_file_path):
             if args.verbose:
@@ -155,12 +181,12 @@ def _CheckFileHash(project_dir, hash_list):
 
 def _CheckMasterFileDependencies(project_dir: str, dependency_list: list) -> bool:
     for script_path in dependency_list:
-        if path.isabs(script_path.key) or not project_dir:
-            project_file_path = PosixPath(path.normpath(script_path.key))
+        if os.path.isabs(script_path.key) or not project_dir:
+            project_file_path = posix_path(os.path.normpath(script_path.key))
         else:
-            project_file_path = PosixPath(path.normpath(project_dir + sep + script_path.key))
+            project_file_path = posix_path(os.path.normpath(project_dir + "/" + script_path.key))
 
-        project_dep_list = GetProjectDependencies(project_file_path)
+        project_dep_list = get_project_dependencies(project_file_path)
         if not project_dep_list:
             if script_path.values:  # and not script_path.values[0] == "":
                 # all dependencies were removed from it, and we think it has some still, rebuild
@@ -180,10 +206,10 @@ def _CheckMasterFileDependencies(project_dir: str, dependency_list: list) -> boo
     
 def _CheckFiles(project_dir, hash_file_list, file_list):
     for hash_block in hash_file_list:
-        if path.isabs(hash_block.values[0]) or not project_dir:
-            project_file_path = PosixPath(path.normpath(hash_block.values[0]))
+        if os.path.isabs(hash_block.values[0]) or not project_dir:
+            project_file_path = posix_path(os.path.normpath(hash_block.values[0]))
         else:
-            project_file_path = PosixPath(path.normpath(project_dir + "/" + hash_block.values[0]))
+            project_file_path = posix_path(os.path.normpath(project_dir + "/" + hash_block.values[0]))
             
         if project_file_path not in file_list:
             if args.verbose:
@@ -192,8 +218,8 @@ def _CheckFiles(project_dir, hash_file_list, file_list):
     return True
     
     
-def GetHashFilePath(project_path):
-    return PosixPath(path.normpath(QPC_HASH_DIR + GetHashFileName(project_path)))
+def get_hash_file_path(project_path):
+    return posix_path(os.path.normpath(QPC_HASH_DIR + GetHashFileName(project_path)))
     
     
 def GetHashFileName(project_path):
@@ -202,18 +228,18 @@ def GetHashFileName(project_path):
 
     
 def GetHashFileExt(project_path):
-    if path.splitext(project_path)[1] == ".qpc":
+    if os.path.splitext(project_path)[1] == ".qpc":
         return "_hash"
     else:
         return ".qpc_hash"
 
 
-def GetProjectDependencies(project_path: str) -> list:
-    project_hash_file_path = GetHashFilePath(project_path)
+def get_project_dependencies(project_path: str) -> list:
+    project_hash_file_path = get_hash_file_path(project_path)
     dep_list = []
 
-    if path.isfile(project_hash_file_path):
-        hash_file = qpc_reader.ReadFile(project_hash_file_path)
+    if os.path.isfile(project_hash_file_path):
+        hash_file = qpc_reader.read_file(project_hash_file_path)
 
         if not hash_file:
             return dep_list
@@ -229,24 +255,25 @@ def GetProjectDependencies(project_path: str) -> list:
 
 
 # TODO: change this to use QPC's ToString function in the lexer, this was made before that (i think)
-def WriteHashFile(project_path: str, out_dir: str = "", hash_list=None, file_list=None,
-                  master_file: bool = False, dependencies: dict = None) -> None:
+def write_hash_file(project_path: str, out_dir: str = "", hash_list=None, file_list=None,
+                    master_file: bool = False, dependencies=None) -> None:
     def ListToString(arg_list):
         if arg_list:
             return '"' + '" "'.join(arg_list) + '"\n'
         return "\n"
     
-    with open(GetHashFilePath(project_path), mode="w", encoding="utf-8") as hash_file:
+    with open(get_hash_file_path(project_path), mode="w", encoding="utf-8") as hash_file:
         # write the commands
         hash_file.write("commands\n{\n"
-                        '\tworking_dir\t"' + getcwd().replace('\\', '/') + '"\n'
-                        '\tout_dir\t\t"' + out_dir.replace('\\', '/') + '"\n')
+                        '\tworking_dir\t\t"' + os.getcwd().replace('\\', '/') + '"\n'
+                        '\tout_dir\t\t\t"' + out_dir.replace('\\', '/') + '"\n')
         if not master_file:
-            hash_file.write('\ttypes\t\t' + ListToString(args.types))
+            hash_file.write('\tgenerators\t\t' + ListToString(args.generators) +
+                            '\tqpc_py_count\t"' + str(len(BASE_QPC_HASHES)) + "\"\n")
         else:
-            hash_file.write('\tadd\t\t\t' + ListToString(args.add) +
-                            '\tremove\t\t' + ListToString(args.remove))
-        hash_file.write('\tmacros\t\t' + ListToString(args.macros) + "}\n\n")
+            hash_file.write('\tadd\t\t\t\t' + ListToString(args.add) +
+                            '\tremove\t\t\t' + ListToString(args.remove))
+        hash_file.write('\tmacros\t\t\t' + ListToString(args.macros) + "}\n\n")
         
         # write the hashes
         if hash_list:
@@ -279,9 +306,9 @@ def WriteHashFile(project_path: str, out_dir: str = "", hash_list=None, file_lis
                 dependency_list.sort()
                 if dependency_list:
                     dependency_hash = MakeHashFromString(' '.join(dependency_list))
-                    hash_file.write('\t"{0}"\t"{1}"\n'.format(PosixPath(project), dependency_hash))
+                    hash_file.write('\t"{0}"\t"{1}"\n'.format(posix_path(project), dependency_hash))
                 else:
-                    hash_file.write('\t"{0}"\n'.format(PosixPath(project)))
+                    hash_file.write('\t"{0}"\n'.format(posix_path(project)))
             hash_file.write("}\n")
     return
 

@@ -1,585 +1,34 @@
-# Parses Project Scripts, Base Scripts, Definition Files, and Hash Files
-
-# TODO: figure out what is $CRCCHECK is
-# may need to add a /checkfiles launch option to have this check if a file exists or not
-# it would probably slow it down as well
-
+import os
 import re
 import qpc_hash
-from qpc_reader import SolveCondition, ReadFile, QPCBlock
-from os import sep, path
-from qpc_base import args, ConfigurationTypes, Platforms, Compilers, Languages, PosixPath
+from qpc_reader import read_file, QPCBlock, QPCBlockBase
+from qpc_args import args
+from qpc_base import Platform, PlatformName, posix_path
+from qpc_project import Project, ProjectPass, ProjectDefinition, ProjectGroup, replace_macros, replace_macros_list
+import qpc_generator_handler
+from enum import EnumMeta, Enum, auto
 
 if args.time:
     from time import perf_counter
 
 
-# IDEA: be able to reference values from the configuration, like a macro
-# so lets say you set output directory in the configuration,
-# and you don't want to make that a macro just to use that somewhere else.
-# so, you do something like this instead: @config.general.out_dir
-# this would use the value of out_dir in the configuration
-# if it's invalid, just return None, or an empty string
-
-
-class ProjectDefinition:
-    def __init__(self, project_name: str, *folder_list):
-        self.name = project_name
-        self.script_list = []
-        self.groups = []
-        
-        # this is just so it stops changing this outside of the function
-        self.group_folder_list = folder_list
-    
-    def AddScript(self, script_path: str) -> None:
-        self.script_list.append(PosixPath(script_path))
-    
-    def AddScriptList(self, script_list) -> None:
-        [self.AddScript(script_path) for script_path in script_list]
-
-
-class ProjectGroup:
-    def __init__(self, group_name):
-        self.name = group_name
-        self.projects = []
-    
-    def AddProject(self, project_name, project_scripts, folder_list):
-        project_def = ProjectDefinition(project_name, *folder_list)
-        project_def.AddScriptList(project_scripts)
-        self.projects.append(project_def)
-
-
-class ProjectPass:
-    def __init__(self, project, macros, config, platform):
-        self.project = project
-        self.config = Configuration()
-        self.source_files = {}
-        self.files = {}
-        self.dependencies = []
-        
-        self.hash_list = {}
-        self.macros = {**macros, "$" + config.upper(): "1", "$" + platform.upper(): "1"}
-        
-        self.config_name = config
-        self.platform = platform
-    
-    def AddMacro(self, macro_name: str, macro_value: str = "") -> None:
-        key_name = "$" + macro_name.upper()
-        
-        if macro_value:
-            self.macros[key_name] = macro_value
-        else:
-            if key_name not in self.macros:
-                self.macros[key_name] = ''
-
-        self.ReplaceAnyUndefinedMacros()
-    
-    def ReplaceAnyUndefinedMacros(self):
-        # this could probably be sped up
-        # TODO: add scanning of files and certain config settings
-        for macro, value in self.macros.items():
-            self.macros[macro] = ReplaceMacros(value, self.macros)
-
-    def AddFileWildcard(self, folder_list, file_block) -> None:
-        # use glob to search
-        pass
-    
-    def AddFile(self, folder_list, file_block) -> None:
-        for file_path in (file_block.key, *file_block.values):
-            if path.splitext(file_path)[1] in (".cpp", ".cxx", ".c", ".cc"):
-                if self.GetSourceFile(file_path):
-                    file_block.Warning("File already added")
-                else:
-                    CheckFileExists(file_path)
-                    self.source_files[file_path] = SourceFile(folder_list)
-                    continue
-            else:
-                if self.GetFileFolder(file_path):
-                    file_block.Warning("File already added")
-                else:
-                    CheckFileExists(file_path)
-                    self.files[file_path] = sep.join(folder_list)
-                    continue
-                    
-    @staticmethod
-    def _AddDependencyExt(qpc_path: str) -> str:
-        if not qpc_path.endswith(".qpc"):
-            qpc_path = path.splitext(qpc_path)[0] + ".qpc"
-        return qpc_path
-    
-    def ConvertDependencyPath(self, key: str) -> str:
-        if key in self.project.dependency_dict:
-            return self.project.dependency_dict[key]
-        return key
-
-    def AddDependency(self, qpc_path: str) -> None:
-        new_qpc_path = self.ConvertDependencyPath(qpc_path)
-        qpc_path = new_qpc_path if new_qpc_path else PosixPath(self._AddDependencyExt(qpc_path))
-        if qpc_path not in self.dependencies:
-            self.dependencies.append(qpc_path)
-
-    def RemoveDependency(self, qpc_path: str) -> None:
-        new_qpc_path = self.ConvertDependencyPath(qpc_path)
-        qpc_path = new_qpc_path if new_qpc_path else PosixPath(self._AddDependencyExt(qpc_path))
-        if qpc_path in self.dependencies:
-            self.dependencies.remove(qpc_path)
-
-    def AddDependencies(self, *qpc_paths) -> None:
-        [self.AddDependency(qpc_path) for qpc_path in qpc_paths]
-    
-    def RemoveDependencies(self, *qpc_paths) -> None:
-        [self.RemoveDependency(qpc_path) for qpc_path in qpc_paths]
-    
-    # Gets every single folder in the project, splitting each one as well
-    # this function is awful
-    def GetAllEditorFolderPaths(self) -> set:
-        folder_paths = set()
-        # TODO: is there a better way to do this?
-        [folder_paths.add(file_path) for file_path in self.files.values()]
-        [folder_paths.add(sf.folder) for sf in self.source_files.values()]
-        
-        full_folder_paths = set()
-        # split every single folder because visual studio bad
-        for folder_path in folder_paths:
-            current_path = list(folder_path.split(sep))
-            if not current_path or not current_path[0]:
-                continue
-            folder_list = [current_path[0]]
-            del current_path[0]
-            for folder in current_path:
-                folder_list.append(folder_list[-1] + sep + folder)
-            full_folder_paths.update(folder_list)
-        
-        return full_folder_paths
-    
-    def GetAllFolderPaths(self) -> set:
-        folder_paths = GetAllPaths(self.files)
-        folder_paths.update(GetAllPaths(self.source_files))
-        return folder_paths
-    
-    def GetFilesInFolder(self, folder_path) -> list:
-        file_list = []
-        
-        # maybe change to startswith, so you can get stuff in nested folders as well?
-        for file_path, file_folder in self.files.items():
-            if file_folder == folder_path:
-                file_list.append(file_path)
-        
-        for file_path, file_folder in self.source_files.items():
-            if file_folder == folder_path:
-                file_list.append(file_path)
-        
-        return file_list
-    
-    def GetFileFolder(self, file_path):
-        try:
-            return self.files[file_path]
-        except KeyError:
-            return False
-    
-    def GetSourceFile(self, file_path):
-        try:
-            return self.source_files[file_path]
-        except KeyError:
-            return False
-    
-    def GetSourceFileFolder(self, file_path):
-        return self.GetSourceFile(file_path).folder
-    
-    def GetSourceFileCompiler(self, file_path):
-        return self.GetSourceFile(file_path).compiler
-    
-    def AddLib(self, lib_block):
-        for lib_path in (lib_block.key, *lib_block.values):
-            lib_path = self.FixLibPathAndExt(lib_path)
-            if lib_path not in self.config.linker.libraries:
-                self.config.linker.libraries.append(lib_path)
-            else:
-                lib_block.Warning("Library already added")
-    
-    def RemoveLib(self, lib_block):
-        for lib_path in lib_block.values:
-            lib_path = self.FixLibPathAndExt(lib_path)
-            if lib_path in self.config.linker.libraries:
-                self.config.linker.libraries.remove(lib_path)
-            else:
-                lib_block.Warning("Trying to remove a library that hasn't been added yet")
-    
-    # actually do you even need the extension?
-    def FixLibPathAndExt(self, lib_path):
-        lib_path = ReplaceMacros(lib_path, self.macros)
-        return path.splitext(path.normpath(lib_path))[0] + self.macros["$_STATICLIB_EXT"]
-    
-    def RemoveFile(self, file_block):
-        for file_path in file_block.values:
-            if path.splitext(file_path)[1] in (".cpp", ".cxx", ".c", ".cc"):
-                if file_path in self.source_files:
-                    del self.source_files[file_path]
-                else:
-                    file_block.Warning("Trying to remove a file that hasn't been added yet")
-            else:
-                if file_path in self.files:
-                    del self.files[file_path]
-                else:
-                    file_block.Warning("Trying to remove a file that hasn't been added yet")
-
-
-class Project:
-    def __init__(self, name: str, project_path: str, base_macros, dependency_dict: dict):
-        self.file_name = name  # the actual file name
-        self.project_dir = project_path  # should use the macro instead tbh, might remove
-        self.projects = []
-        self.hash_dict = {}
-        self.dependency_dict = dependency_dict
-        # shared across configs, used as a base for them
-        self.macros = {**base_macros, "$PROJECT_NAME": name, "$SCRIPT_NAME": name}
-        # self.global_config = GlobalConfig()
-    
-    def AddParsedProject(self, project):
-        self.hash_dict.update({**project.hash_list})
-        
-        # update the name in case it changed
-        self.macros.update({"$PROJECT_NAME": project.macros["$PROJECT_NAME"]})
-        
-        del project.hash_list
-        del project.macros["$PROJECT_NAME"]
-        
-        self.projects.append(project)
-    
-    def GetAllEditorFolderPaths(self) -> set:
-        folder_paths = set()
-        for project in self.projects:
-            folder_paths.update(project.GetAllEditorFolderPaths())
-        return folder_paths
-    
-    def GetAllFolderPaths(self) -> set:
-        folder_paths = set()
-        for project in self.projects:
-            folder_paths.update(project.GetAllFolderPaths())
-        return folder_paths
-
-    def GetProjectName(self) -> str:
-        return self.macros["$PROJECT_NAME"]
-
-
-class SourceFile:
-    def __init__(self, folder_list):
-        self.folder = sep.join(folder_list)
-        self.compiler = Compiler()
-
-
-# TODO: maybe add some enums for options with specific values?
-#  though how would writers get all the available values? maybe a seperate file
-
-
-class Configuration:
-    def __init__(self):
-        self.general = General()
-        self.compiler = Compiler()
-        self.linker = Linker()
-        self.pre_build = []
-        self.pre_link = []
-        self.post_build = []
-
-
-class General:
-    def __init__(self):
-        self.out_dir = ''
-        self.int_dir = ''
-        self.out_name = ''
-        self.configuration_type = ''
-        self.language = ''
-        self.toolset_version = ''
-        self.default_include_directories = True
-        self.default_library_directories = True
-        self.include_directories = []
-        self.library_directories = []
-        self.options = []
-        
-    def SetDefaultIncludeDirectories(self, option_block: QPCBlock) -> None:
-        value = option_block.values[0]
-        if value in ("true", "false"):
-            self.default_include_directories = StringToBool(value)
-        else:
-            option_block.InvalidOption("true", "false")
-        
-    def SetDefaultLibraryDirectories(self, option_block: QPCBlock) -> None:
-        value = option_block.values[0]
-        if value in ("true", "false"):
-            self.default_library_directories = StringToBool(value)
-        else:
-            option_block.InvalidOption("true", "false")
-
-
-def StringToBool(value: str) -> bool:
-    if value == "true":
-        return True
-    return False
-
-
-class GlobalConfig:
-    def __init__(self):
-        self.configuration_type = ConfigurationTypes.STATIC_LIB
-        self.language = Languages.CPP
-        self.toolset_version = Compilers.MSVC_142 if \
-            args.platform in {Platforms.WIN32, Platforms.WIN64} else Compilers.GCC_9
-
-    # these convert to Enum
-    def SetType(self, option: str) -> None:
-        if option in {"static_library", "static_lib"}:
-            self.configuration_type = ConfigurationTypes.STATIC_LIB
-        elif option in {"dynamic_library", "dynamic_lib"}:
-            self.configuration_type = ConfigurationTypes.DYNAMIC_LIB
-        elif option in {"shared_library", "shared_lib"}:
-            self.configuration_type = ConfigurationTypes.SHARED_LIB
-        elif option in {"application", "executable"}:  # TODO: rename all application stuff to executable?
-            self.configuration_type = ConfigurationTypes.APPLICATION
-
-    def SetLanguage(self, option: str) -> None:
-        if option == "cpp":
-            self.language = Languages.CPP
-        elif option == "c":
-            self.language = Languages.C
-
-    def SetToolsetVersion(self, option: str) -> None:
-        if option == "msvc_142":  # TODO: change msvc-X options to msvc_X
-            self.toolset_version = Compilers.MSVC_142
-        elif option == "msvc_141":
-            self.toolset_version = Compilers.MSVC_141
-        elif option == "msvc_140":
-            self.toolset_version = Compilers.MSVC_140
-        elif option == "msvc_120":
-            self.toolset_version = Compilers.MSVC_120
-        elif option == "msvc_100":
-            self.toolset_version = Compilers.MSVC_100
-
-        elif option == "clang_9":
-            self.toolset_version = Compilers.CLANG_9
-        elif option == "clang_8":
-            self.toolset_version = Compilers.CLANG_8
-
-        elif option == "gcc_9":
-            self.toolset_version = Compilers.GCC_9
-        elif option == "gcc_8":
-            self.toolset_version = Compilers.GCC_8
-        elif option == "gcc_7":
-            self.toolset_version = Compilers.GCC_7
-        elif option == "gcc_6":
-            self.toolset_version = Compilers.GCC_6
-
-
-class Compiler:
-    def __init__(self):
-        self.preprocessor_definitions = []
-        self.precompiled_header = ''
-        self.precompiled_header_file = ''
-        self.precompiled_header_output_file = ''
-        self.options = []
-
-    def SetPrecompiledHeader(self, option: str) -> None:
-        # convert to Enum
-        pass
-
-
-class Linker:
-    def __init__(self):
-        self.output_file = ''
-        self.debug_file = ''
-        self.import_library = ''
-        self.ignore_import_library = ''
-        self.entry_point = ''
-        self.libraries = []
-        self.ignore_libraries = []
-        self.options = []
-
-    def SetIgnoreImportLibrary(self, option: str) -> None:
-        pass
-
-       
-# TODO: maybe do this?
-class SpecificOption:
-    def __init__(self):
-        self.value = ''
-        self.valid_options = []
-        
-        
-def CheckFileExists(file_path):
-    if args.check_files:
-        if not path.isfile(file_path):
-            raise FileNotFoundError("File does not exist: " + file_path)
-
-
-def GetAllPaths(path_list):
-    full_folder_paths = set()
-    
-    for folder_path in set(path_list):
-        # uhhhhhh
-        current_path = list(path.split(folder_path)[0].split(sep))
-        if not current_path:
-            continue
-        folder_list = [current_path[0]]
-        del current_path[0]
-        for folder in current_path:
-            folder_list.append(folder_list[-1] + sep + folder)
-        full_folder_paths.update(folder_list)
-    
-    return full_folder_paths
-
-
-# TODO: bug discovered with this,
-#  if i include the groups before the projects, it won't add any projects
-def ParseBaseFile(base_file, macros, project_list, group_dict) -> tuple:
-    configurations = set()
-    dependency_dict = {}
-    for project_block in base_file:
-        
-        if not SolveCondition(project_block.condition, macros):
-            continue
-        
-        if project_block.key == "project":
-            project_def = ProjectDefinition(project_block.values[0])
-            
-            # could have values next to it as well now
-            for script_path in project_block.values[1:]:
-                script_path = ReplaceMacros(script_path, macros)
-                project_def.AddScript(script_path)
-            
-            for item in project_block.items:
-                if SolveCondition(item.condition, macros):
-                    item.key = ReplaceMacros(item.key, macros)
-                    project_def.AddScript(item.key)
-            
-            project_list.append(project_def)
-        
-        elif project_block.key == "group":
-            # TODO: fix this for multiple groups
-            for group in project_block.values:
-                
-                # do we have a group with this name already?
-                if group in group_dict:
-                    project_group = group_dict[group]
-                else:
-                    project_group = ProjectGroup(group)
-                
-                ParseProjectGroupItems(project_group, project_list, project_block, macros)
-                group_dict[project_group.name] = project_group
-        
-        elif project_block.key == "macro":
-            macros["$" + project_block.values[0].upper()] = ReplaceMacros(project_block.values[1], macros)
-        
-        elif project_block.key == "configurations":
-            configurations.update(project_block.GetItemKeyAndValuesThatPassCondition(macros))
-        
-        elif project_block.key == "dependency_paths":
-            for dependency in project_block.items:
-                if SolveCondition(dependency.condition, macros):
-                    if dependency.values:
-                        dependency_dict[dependency.key] = dependency.values[0]
-        
-        elif project_block.key == "include":
-            # "Ah shit, here we go again."
-            file_path = path.normpath(ReplaceMacros(project_block.values[0], macros))
-            
-            if args.verbose:
-                print("Reading: " + file_path)
-            
-            include_file = ReadFile(file_path)
-            
-            if args.verbose:
-                print("Parsing... ")
-            
-            ParseBaseFile(include_file, macros, project_list, group_dict)
-        
-        else:
-            project_block.Warning("Unknown Key: ")
-    
-    return configurations, dependency_dict
-
-
-def ParseProjectGroupItems(project_group, project_list, project_block, macros, folder_list=None):
-    if not folder_list:
-        folder_list = []
-    
-    for item in project_block.items:
-        if SolveCondition(item.condition, macros):
-            
-            if item.key == "folder":
-                folder_list.append(item.values[0])
-                ParseProjectGroupItems(project_group, project_list, item, macros, folder_list)
-                folder_list.remove(item.values[0])
-            else:
-                for project in project_list:
-                    if project.name == item.key:
-                        project_group.AddProject(project.name, project.script_list, folder_list)
-    return
-
-
-def ParseProjectFile(project_file, project, project_path, indent):
-    for project_block in project_file:
-        if SolveCondition(project_block.condition, project.macros):
-            
-            project_block.values = ReplaceMacrosInList(project.macros, *project_block.values)
-            
-            if project_block.key == "macro":
-                project.AddMacro(*project_block.values)
-            
-            elif project_block.key == "configuration":
-                ParseConfigBlock(project_block, project)
-            
-            elif project_block.key == "files":
-                ParseFilesBlock(project_block, project, [])
-            
-            elif project_block.key == "dependencies":
-                for block in project_block.items:
-                    if block.key == "-":
-                        project.RemoveDependencies(*block.values)
-                    else:
-                        project.AddDependencies(block.key, *block.values)
-            
-            elif project_block.key == "include":
-                # Ah shit, here we go again.
-                include_path = project_block.values[0]
-                include_file = IncludeFile(include_path, project, project_path, indent + "    ")
-                ParseProjectFile(include_file, project, include_path, indent + "    ")
-                if args.verbose:
-                    print(indent + "    " + "Finished Parsing")
-            
-            else:
-                project_block.Warning("Unknown key: ")
-    return
-
-
-def IncludeFile(include_path, project, project_path, indent):
-    project.hash_list[include_path] = qpc_hash.MakeHash(include_path)
-    include_file = ReadFile(include_path)
-    
-    if not include_file:
-        raise FileNotFoundError(
-            "File does not exist:\n\tScript: {0}\n\tFile: {1}".format(project_path, include_path))
-    
-    if args.verbose:
-        print(indent + "Parsing: " + include_path)
-    
-    return include_file
-
-
 def ParseLibrariesBlock(libraries_block, project):
-    if SolveCondition(libraries_block.condition, project.macros):
+    if libraries_block.solve_condition(project.macros):
         for library in libraries_block.items:
-            if SolveCondition(library.condition, project.macros):
+            if library.solve_condition(project.macros):
                 
                 if library.key == "-":
-                    library_path = ReplaceMacros(library.values[0], project.macros)
+                    library_path = replace_macros(library.values[0], project.macros)
                     project.RemoveLib(library_path)
                 else:
-                    library_path = ReplaceMacros(library.key, project.macros)
+                    library_path = replace_macros(library.key, project.macros)
                     project.AddLib(library_path)
 
 
-def ParseFilesBlock(files_block, project, folder_list):
-    if SolveCondition(files_block.condition, project.macros):
+def ParseFilesBlock(files_block: QPCBlock, project: ProjectPass, folder_list: list) -> None:
+    if files_block.solve_condition(project.macros):
         for block in files_block.items:
-            if SolveCondition(block.condition, project.macros):
+            if block.solve_condition(project.macros):
                 
                 if block.key == "folder":
                     folder_list.append(block.values[0])
@@ -587,228 +36,42 @@ def ParseFilesBlock(files_block, project, folder_list):
                     folder_list.remove(block.values[0])
                 
                 elif block.key == "-":
-                    block.values = ReplaceMacrosInList(project.macros, *block.values)
-                    project.RemoveFile(block)
+                    block.values = replace_macros_list(project.macros, *block.values)
+                    project.remove_file(block)
                 else:
-                    block.key = ReplaceMacros(block.key, project.macros)
-                    block.values = ReplaceMacrosInList(project.macros, *block.values)
-                    project.AddFile(folder_list, block)
+                    block.key = replace_macros(block.key, project.macros)
+                    block.values = replace_macros_list(project.macros, *block.values)
+                    project.add_file(folder_list, block)
                     
                     if block.items:
-                        for file_path in (block.key, *block.values):
-                            source_file = project.GetSourceFile(file_path)
+                        for file_path in block.GetKeyValues():
+                            source_file = project.get_source_file(file_path)
                             
                             # TODO: set this to directly edit the configuration options
                             #  remove need to write out configuration {}
                             #  also this is messy
                             
                             for config_block in block.items:
-                                if SolveCondition(config_block.condition, project.macros):
-                                    for group_block in config_block.items:
-                                        
-                                        if group_block.key != "compiler":
-                                            group_block.Error("Invalid Group, can only use compiler")
-                                            continue
-                                        
-                                        if SolveCondition(group_block.condition, project.macros):
-                                            for option_block in group_block.items:
-                                                if SolveCondition(option_block.condition, project.macros):
-                                                    ParseCompilerOption(project, source_file.compiler, option_block)
-
-
-def ParseConfigBlock(project_block, project):
-    if SolveCondition(project_block.condition, project.macros):
-        for group_block in project_block.items:
-            if SolveCondition(group_block.condition, project.macros):
-                for option_block in group_block.items:
-                    if SolveCondition(option_block.condition, project.macros):
-                        ParseConfigOption(project, group_block, option_block)
-
-
-# this could be so much better
-def ParseConfigOption(project, group_block, option_block):
-    config = project.config
-    if group_block.key == "general":
-        # single path options
-        if option_block.key in ("out_dir", "int_dir", "out_name", "toolset_version"):
-            if not option_block.values:
-                return
-            if option_block.key == "out_dir":
-                config.general.out_dir = path.normpath(ReplaceMacros(option_block.values[0], project.macros))
-            elif option_block.key == "int_dir":
-                config.general.int_dir = path.normpath(ReplaceMacros(option_block.values[0], project.macros))
-            elif option_block.key == "out_name":
-                config.general.out_name = ReplaceMacros(option_block.values[0], project.macros)
-            elif option_block.key == "toolset_version":
-                # self.config.SetToolsetVersion(option_block.values[0])
-                config.general.toolset_version = option_block.values[0]
-
-        elif option_block.key in ("default_include_directories", "default_library_directories"):
-            if option_block.values:
-                if option_block.key == "default_include_directories":
-                    config.general.SetDefaultIncludeDirectories(option_block)
-                else:
-                    config.general.SetDefaultLibraryDirectories(option_block)
-            
-        # multiple path options
-        elif option_block.key in ("include_directories", "library_directories"):
-            for item in option_block.items:
-                if SolveCondition(item.condition, project.macros):
-                    value_list = ReplaceMacrosInList(project.macros, item.key, *item.values)
-                    if option_block.key == "include_directories":
-                        config.general.include_directories.extend(value_list)
-                    elif option_block.key == "library_directories":
-                        config.general.library_directories.extend(value_list)
-        
-        elif option_block.key in {"configuration_type", "type"}:
-            # if option_block.values:
-            #     # function will convert the option set to the enum
-            #     self.config.SetConfiguration(option_block.values[0})
-            if option_block.values:
-                if option_block.values[0] in ("static_library", "dynamic_library", "application"):
-                    config.general.configuration_type = option_block.values[0]
-                else:
-                    option_block.InvalidOption("static_library", "dynamic_library", "application")
-        
-        elif option_block.key == "language":
-            if option_block.values:
-                # function will convert the option set to the enum
-                # self.config.SetLanguage(option_block.values[0})
-                if option_block.values[0] in ("c", "cpp"):
-                    config.general.language = option_block.values[0]
-                else:
-                    option_block.InvalidOption("c", "cpp")
-        
-        elif option_block.key == "options":
-            for item in option_block.items:
-                if SolveCondition(item.condition, project.macros):
-                    config.general.options.extend([item.key, *item.values])
-
-        else:
-            option_block.Error("Unknown General Option: ")
-    
-    elif group_block.key == "compiler":
-        # TODO: maybe do the same for the rest? only moving this to it's own function for source files
-        ParseCompilerOption(project, config.compiler, option_block)
-    
-    elif group_block.key == "linker":
-        if option_block.key in {"output_file", "debug_file", "import_library", "ignore_import_library", "entry_point"}:
-            if option_block.values:
-                if option_block.key == "ignore_import_library":
-                    # self.config.SetIgnoreImportLibrary(option_block.values[0])
-                    if option_block.values[0] in ("true", "false"):
-                        config.linker.ignore_import_library = option_block.values[0]
-                    else:
-                        option_block.InvalidOption("true", "false")
-                    return
-                
-                # TODO: maybe split the extension here?
-                value = path.normpath(ReplaceMacros(option_block.values[0], project.macros))
-                
-                if option_block.key == "output_file":
-                    config.linker.output_file = value
-                elif option_block.key == "debug_file":
-                    config.linker.debug_file = value
-                elif option_block.key == "import_library":
-                    config.linker.import_library = value
-                elif option_block.key == "entry_point":
-                    config.linker.entry_point = value
-        
-        elif option_block.key in ("libraries", "ignore_libraries"):
-            
-            if option_block.key == "libraries":
-                for item in option_block.items:
-                    if SolveCondition(item.condition, project.macros):
-                        if item.key != "-":
-                            project.AddLib(item)
-                        else:
-                            project.RemoveLib(item)
-            
-            elif option_block.key == "ignore_libraries":
-                for item in option_block.items:
-                    if SolveCondition(item.condition, project.macros):
-                        config.linker.ignore_libraries.extend(
-                            ReplaceMacrosInList(project.macros, item.key, *item.values))
-        
-        elif option_block.key == "options":
-            for item in option_block.items:
-                if SolveCondition(item.condition, project.macros):
-                    config.linker.options.extend([item.key, *item.values])
-
-        else:
-            option_block.Error("Unknown Linker Option: ")
-    
-    elif group_block.key in ("post_build", "pre_build", "pre_link"):
-        value = ReplaceMacros(option_block.key, project.macros)
-        if option_block.values:
-            value = ReplaceMacros(value + " " + " ".join(*option_block.values), project.macros)
-        if value:
-            # TODO: improve this, what if \\n is used in the file? it would just become \ and then new line, awful
-            value = value.replace("\\n", "\n")
-        
-            if group_block.key == "post_build":
-                config.post_build.append(value)
-            
-            elif group_block.key == "pre_build":
-                config.pre_build.append(value)
-            
-            elif group_block.key == "pre_link":
-                config.pre_link.append(value)
-    
-    else:
-        group_block.Error("Unknown Configuration Group: ")
-    
-    return
-
-
-def ParseCompilerOption(project, compiler, option_block):
-    if option_block.key in ("preprocessor_definitions", "options"):
-        for item in option_block.items:
-            if SolveCondition(item.condition, project.macros):
-                if option_block.key == "preprocessor_definitions":
-                    compiler.preprocessor_definitions.extend(ReplaceMacrosInList(project.macros, *item.GetKeyValues()))
-                elif option_block.key == "options":
-                    compiler.options.extend(item.GetKeyValues())
-    
-    elif option_block.key == "precompiled_header":
-        if option_block.values:
-            # self.config.SetPrecompiledHeader(option_block.values[0])
-            if option_block.values[0] in ("none", "create", "use"):
-                compiler.precompiled_header = option_block.values[0]
-            else:
-                option_block.InvalidOption("none", "create", "use")
-    
-    elif option_block.key == "precompiled_header_file":
-        compiler.precompiled_header_file = ReplaceMacros(option_block.values[0], project.macros)
-    
-    elif option_block.key in {"precompiled_header_output_file"}:
-        compiler.precompiled_header_output_file = ReplaceMacros(option_block.values[0], project.macros)
-        
-    else:
-        option_block.Error("Unknown Compiler Option: ")
-    
-    return
-
-
-# configuration options unaffected by config and platform macros, run before it goes through each config/platform
-def ParseGlobalConfigOptions() -> None:
-    pass
-
-
-def ReplaceMacrosInList(macros, *value_list):
-    value_list = list(value_list)
-    for index, item in enumerate(value_list):
-        value_list[index] = ReplaceMacros(item, macros)
-    return value_list
-
-
-def ReplaceMacros(string, macros):
-    if "$" in string:
-        for macro, macro_value in macros.items():
-            if macro in string:
-                string_split = string.split(macro)
-                string = macro_value.join(string_split)
-    return string
+                                if config_block.solve_condition(project.macros):
+                                    
+                                    if config_block.key == "configuration":
+                                        if not args.hide_warnings:
+                                            config_block.Warning("Legacy Source File compiler info syntax\n"
+                                                                 "Remove \"configuration { compiler {\", "
+                                                                 "no need for it anymore")
+                                        for group_block in config_block.items:
+                                            
+                                            if group_block.key != "compiler":
+                                                group_block.Error("Invalid Group, can only use compiler")
+                                                continue
+                                            
+                                            if group_block.solve_condition(project.macros):
+                                                for option_block in group_block.items:
+                                                    if option_block.solve_condition(project.macros):
+                                                        source_file.compiler.parse_option(project.macros, option_block)
+                                    else:
+                                        # new, cleaner way, just assume it's compiler
+                                        source_file.compiler.parse_option(project.macros, config_block)
 
 
 # unused, idk if this will ever be useful either
@@ -821,47 +84,325 @@ def ReplaceExactMacros(split_string, macros):
     return split_string
 
 
-def ParseProject(project_dir, project_filename, base_macros, configurations,
-                 platforms, project_pass, dependency_dict: dict) -> tuple:
-    project_path = project_dir + sep + project_filename
-    project_name = path.splitext(project_filename)[0]
+def get_base_macros(platform: Enum) -> dict:
+    # OS Specific Defines
+    arg_macros = {}
+    for macro in args.macros:
+        arg_macros["$" + macro] = "1"
     
-    if args.verbose:
-        print("Reading: " + project_filename)
+    # if platform in {Platforms.WIN32, Platforms.WIN64}:
+    if platform == PlatformName.WINDOWS:
+        return {
+            "$WINDOWS": "1",
+            "$_BIN_EXT": ".dll",
+            # "$_DYNAMIC_LIB_EXT": ".dll",
+            "$_STATICLIB_EXT": ".lib",
+            "$_IMPLIB_EXT": ".lib",
+            "$_APP_EXT": ".exe",
+            # "$_EXE_EXT": ".exe",
+            # "$_DBG_EXT": ".pdb",
+            **arg_macros,
+        }
     
-    project_file = ReadFile(project_filename)
+    # elif platform in {Platforms.LINUX32, Platforms.LINUX64}:
+    elif platform == PlatformName.LINUX:
+        return {
+            "$POSIX": "1",
+            "$LINUX": "1",
+            "$_BIN_EXT": ".so",
+            "$_STATICLIB_EXT": ".a",
+            "$_IMPLIB_EXT": ".so",
+            "$_APP_EXT": "",
+            # "$_DBG_EXT": ".dbg",
+            **arg_macros,
+        }
     
-    print("Parsing: " + project_filename)
+    # TODO: finish setting up MacOS stuff here
+    elif platform == PlatformName.MACOS:
+        return {
+            "$POSIX": "1",
+            "$MACOS": "1",
+            "$_BIN_EXT": ".dylib",
+            "$_STATICLIB_EXT": ".a",
+            "$_IMPLIB_EXT": ".so",
+            "$_APP_EXT": "",
+            # "$_DBG_EXT": ".dbg",
+        }
+
+
+class BaseInfo:
+    def __init__(self, base_file_path: str, platform: Enum):
+        self.path = base_file_path
+        self.platform = platform
+        self.macros = get_base_macros(platform)
+
+        if args.verbose:
+            print()
+            [print('Set Macro: {0} = "{1}"'.format(name, value)) for name, value in self.macros.items()]
+        
+        self.groups = {}
+        self._projects = []
+        self.dependency_dict = {}
+        self.configurations = set()
+        self.project_definitions = []
+        
+        self.project_hashes = {}
+        self.project_dependencies = {}
+
+    def add_macro(self, project_block: QPCBlock):
+        self.macros["$" + project_block.values[0].upper()] = replace_macros(project_block.values[1], self.macros)
+        
+    def add_project(self, project: ProjectDefinition):
+        self._projects.append(project)
+
+    # get all the projects the user wants (this is probably the worst part in this whole project)
+    def setup_projects(self):
+        self.project_definitions = []
     
-    project_hash = qpc_hash.MakeHash(project_filename)
-    project_list = Project(project_name, project_dir, base_macros, dependency_dict)
+        unwanted_projects = {}
+        for removed_item in args.remove:
+            if removed_item in self.groups:
+                for project in self.groups[removed_item].projects:
+                    if project.name not in unwanted_projects:
+                        unwanted_projects[project.name] = project
+        
+            else:
+                for project in self._projects:
+                    if project.name == removed_item:
+                        unwanted_projects[project.name] = project
+                        break
     
-    # project_macros = {**base_macros, "$PROJECT_NAME": project_name}
-    
-    if args.time:
-        start_time = perf_counter()
-    
-    # TODO: read all include files in the project, and then put them into a list here, and then use that in parsing
-    #  and maybe even return them as well so you don't have to read the same file like 40 times?
-    #  apparently ReadFile is actually really slow, oof
-    
-    # you might have to loop through all project types you want to make, aaaa
-    # project_pass = 0
-    for config in configurations:
-        for platform in platforms:
+        # TODO: clean up this mess
+        if args.add:
+            for added_item in args.add:
+                if added_item in self.groups:
+                    if added_item not in args.remove:
+                    
+                        # TODO: move to another function
+                        for project in self.groups[added_item].projects:
+                            if project.name not in unwanted_projects:
+                                for added_project in self.project_definitions:
+                                    if added_project.name == project.name:
+                                        break
+                                else:
+                                    self.project_definitions.append(project)
             
-            project_pass += 1
-            if args.verbose:
-                print("Pass {0}: {1} - {2}".format(
-                    str(project_pass), config, platform))
+                else:
+                    if added_item not in args.remove:
+                        for project in self._projects:
+                            if added_item == project.name:
+                                for added_project in self.project_definitions:
+                                    if added_project.name == project.name:
+                                        break
+                                else:
+                                    self.project_definitions.append(project)
+                                    continue
+                    # else:
+                    # print("hey this item doesn't exist: " + added_item)
+        else:
+            raise Exception("No base_settings were added to generate for")
+
+
+class Parser:
+    def __init__(self):
+        self.counter = 0
+        self.read_files = {}
+
+    # TODO: bug discovered with this,
+    #  if i include the groups before the base_settings, it won't add any base_settings
+    # def parse_base_settings(self, base_file_path: str, output_type: str, platform: Enum) -> BaseInfo:
+    def parse_base_info(self, base_file_path: str, platform: Enum) -> BaseInfo:
+        info = BaseInfo(base_file_path, platform)
+    
+        if args.verbose:
+            print("\nReading: " + args.base_file)
             
-            project = ProjectPass(project_list, project_list.macros, config, platform)
-            project.hash_list[project_filename] = project_hash
-            ParseProjectFile(project_file, project, project_path, "")
-            project_list.AddParsedProject(project)
+        base_file = self.read_file(base_file_path)
     
-    if args.time:
-        end_time = perf_counter()
-        print("Finished Parsing Project - Time: " + str(end_time - start_time))
+        if args.verbose:
+            print("\nParsing: " + args.base_file)
+        
+        self._parse_base_info_include(info, base_file)
+        info.setup_projects()
+        return info
     
-    return project_list, project_pass
+    def _parse_base_info_include(self, info: BaseInfo, base_file: QPCBlockBase) -> BaseInfo:
+        for project_block in base_file:
+        
+            if not project_block.solve_condition(info.macros):
+                continue
+        
+            if project_block.key == "project":
+                project_def = ProjectDefinition(project_block.values[0])
+            
+                # could have values next to it as well now
+                for script_path in project_block.values[1:]:
+                    script_path = replace_macros(script_path, info.macros)
+                    project_def.AddScript(script_path)
+            
+                for item in project_block.items:
+                    if item.solve_condition(info.macros):
+                        project_def.AddScript(replace_macros(item.key, info.macros))
+            
+                info.add_project(project_def)
+        
+            elif project_block.key == "group":
+                for group in project_block.values:
+                
+                    # do we have a group with this name already?
+                    if group in info.groups:
+                        project_group = info.groups[group]
+                    else:
+                        project_group = ProjectGroup(group)
+                
+                    self._parse_project_group_items(project_group, info, project_block, [])
+                    info.groups[project_group.name] = project_group
+        
+            elif project_block.key == "macro":
+                info.add_macro(project_block)
+        
+            elif project_block.key == "configurations":
+                info.configurations.update(project_block.get_item_list_condition(info.macros))
+        
+            # very rushed thing that could of been done with macros tbh
+            elif project_block.key == "dependency_paths":
+                for dependency in project_block.items:
+                    if dependency.solve_condition(info.macros):
+                        if dependency.values:
+                            info.dependency_dict[dependency.key] = dependency.values[0]
+        
+            elif project_block.key == "include":
+                # "Ah shit, here we go again."
+                file_path = os.path.normpath(replace_macros(project_block.values[0], info.macros))
+            
+                if args.verbose:
+                    print("Reading: " + file_path)
+            
+                include_file = read_file(file_path)
+            
+                if args.verbose:
+                    print("Parsing... ")
+            
+                self._parse_base_info_include(info, include_file)
+
+            elif not args.hide_warnings:
+                project_block.Warning("Unknown Key: ")
+    
+        # return configurations, dependency_convert
+    
+        return info
+    
+    def _parse_project_group_items(self, project_group, settings: BaseInfo, project_block, folder_list: list):
+        for item in project_block.items:
+            if item.solve_condition(settings.macros):
+                
+                if item.key == "folder":
+                    folder_list.append(item.values[0])
+                    self._parse_project_group_items(project_group, settings, item, folder_list)
+                    folder_list.remove(item.values[0])
+                else:
+                    for project in settings._projects:
+                        if project.name == item.key:
+                            project_group.AddProject(project.name, project.script_list, folder_list)
+    
+    def parse_project(self, project_script: str, settings: BaseInfo, platforms: list) -> Project:
+        if args.time:
+            start_time = perf_counter()
+        else:
+            print("Parsing: " + project_script)
+        project_dir, project_filename = os.path.split(project_script)
+        project_name = os.path.splitext(project_filename)[0]
+        
+        project_block = self.read_file(project_script)
+        
+        if project_dir:
+            os.chdir(project_dir)
+
+        project = Project(project_name, project_script, settings)
+        
+        for config in settings.configurations:
+            for platform in platforms:
+                project_pass = ProjectPass(project, config, platform)
+                project_list = self._parse_project_pass(project_block, project_pass)
+                project.add_parsed_project_pass(project_list)
+                self.counter += 1
+    
+        if args.verbose:
+            print("Parsed: " + project.get_display_name())
+            
+        if project_dir:
+            os.chdir(args.root_dir)
+
+        if args.time:
+            print(str(round(perf_counter() - start_time, 4)) + " - Parsed: " + project_script)
+            
+        return project
+    
+    def _parse_project_pass(self, project_file: QPCBlockBase, project: ProjectPass, indent: str = "") -> ProjectPass:
+        for project_block in project_file:
+            if project_block.solve_condition(project.macros):
+            
+                project_block.values = replace_macros_list(project.macros, *project_block.values)
+            
+                if project_block.key == "macro":
+                    project.add_macro(*project_block.values)
+            
+                elif project_block.key == "configuration":
+                    self._parse_config(project_block, project)
+            
+                elif project_block.key == "files":
+                    ParseFilesBlock(project_block, project, [])
+            
+                elif project_block.key == "dependencies":
+                    for block in project_block.items:
+                        if block.key == "-":
+                            project.remove_dependencies(*block.values)
+                        else:
+                            project.add_dependencies(block.key, *block.values)
+            
+                elif project_block.key == "include":
+                    # Ah shit, here we go again.
+                    include_path = project_block.values[0]
+                    include_file = self._include_file(include_path, project, project_file.file_path, indent + "    ")
+                    self._parse_project_pass(include_file, project, indent + "    ")
+                    if args.verbose:
+                        print(indent + "    " + "Finished Parsing")
+            
+                elif not args.hide_warnings:
+                    project_block.Warning("Unknown key: ")
+        return project
+    
+    def _include_file(self, include_path: str, project: ProjectPass, project_path: str, indent: str) -> QPCBlockBase:
+        project.hash_list[include_path] = qpc_hash.MakeHash(include_path)
+        include_file = self.read_file(include_path)
+    
+        if not include_file:
+            raise FileNotFoundError(
+                "File does not exist:\n\tScript: {0}\n\tFile: {1}".format(project_path, include_path))
+    
+        if args.verbose:
+            print(indent + "Parsing: " + include_path)
+    
+        return include_file
+    
+    def get_parsed_projects(self) -> list:
+        pass
+
+    def read_file(self, project_path: str) -> QPCBlockBase:
+        if project_path in self.read_files:
+            return self.read_files[project_path]
+        else:
+            project_file = read_file(project_path)
+            self.read_files[project_path] = project_file
+            return project_file
+    
+    # awful
+    @staticmethod
+    def _parse_config(project_block: QPCBlock, project: ProjectPass) -> None:
+        if project_block.solve_condition(project.macros):
+            for group_block in project_block.items:
+                if group_block.solve_condition(project.macros):
+                    for option_block in group_block.items:
+                        if option_block.solve_condition(project.macros):
+                            project.config.parse_config_option(group_block, option_block)
+

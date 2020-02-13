@@ -1,9 +1,11 @@
 # Reads QPC files and returns a list of QPCBlocks
 
 import os
-from pathlib import Path
 from re import compile
-from qpc_base import args, FixPathSeparator
+
+
+def posix_path(string: str) -> str:
+    return string.replace("\\", "/")
 
 
 COND_OPERATORS = compile('(\\(|\\)|\\|\\||\\&\\&|>=|<=|==|!=|>|<)')
@@ -72,29 +74,29 @@ class QPCBlockBase:
     def GetItemsThatPassCondition(self, macros: list):
         items = []
         for item in self.items:
-            if SolveCondition(item.condition, macros):
+            if solve_condition(item.condition, macros):
                 items.append(item)
         return items
     
     def GetItemKeysThatPassCondition(self, macros: list):
         items = []
         for item in self.items:
-            if SolveCondition(item.condition, macros):
+            if solve_condition(item.condition, macros):
                 items.append(item.key)
         return items
     
     def GetItemValuesThatPassCondition(self, macros: list):
         items = []
         for item in self.items:
-            if SolveCondition(item.condition, macros):
+            if solve_condition(item.condition, macros):
                 items.extend(item.values)
         return items
     
     # way too long
-    def GetItemKeyAndValuesThatPassCondition(self, macros: list):
+    def get_item_list_condition(self, macros: list):
         items = []
         for item in self.items:
-            if SolveCondition(item.condition, macros):
+            if solve_condition(item.condition, macros):
                 items.extend([item.key, *item.values])
         return items
 
@@ -176,11 +178,11 @@ class QPCBlock(QPCBlockBase):
     
         return string
 
-    def GetKeyValues(self):
-        return [self.key, *self.values]
+    def GetKeyValues(self) -> tuple:
+        return self.key, *self.values
 
-    def SolveCondition(self, macros: dict) -> int:
-        return SolveCondition(self.condition, macros)
+    def solve_condition(self, macros: dict) -> int:
+        return solve_condition(self.condition, macros)
 
     def InvalidOption(self, *valid_option_list):
         if not args.hide_warnings:
@@ -200,9 +202,8 @@ class QPCBlock(QPCBlockBase):
         self.PrintInfo()
     
     def Warning(self, message):
-        if not args.hide_warnings:
-            print("WARNING: " + message)
-            self.PrintInfo()
+        print("WARNING: " + message)
+        self.PrintInfo()
     
     def PrintInfo(self):
         # TODO: this path is relative to the current directory
@@ -242,14 +243,14 @@ def ReplaceMacrosCondition(split_string, macros):
     return split_string
 
 
-def SolveCondition(condition, macros):
+def solve_condition(condition, macros):
     if not condition:
         return True
     
     # solve any sub conditionals first
     while "(" in condition:
         sub_cond_line = (condition.split('(')[1]).split(')')[0]
-        sub_cond_value = SolveCondition(sub_cond_line, macros)
+        sub_cond_value = solve_condition(sub_cond_line, macros)
         condition = condition.split('(', 1)[0] + str(sub_cond_value * 1) + condition.split(')', 1)[1]
     
     split_string = COND_OPERATORS.split(condition)
@@ -337,11 +338,11 @@ def AddSpacingToCondition(cond):
     return cond
     
         
-def ReadFile(path, keep_quotes=False):
-    path = FixPathSeparator(path)
+def read_file(path, keep_quotes=False) -> QPCBlockBase:
+    path = posix_path(path)
     lexer = QPCLexer(path, keep_quotes)
     qpc_file = QPCBlockBase(path)
-    path = os.getcwd() + os.sep + path
+    path = posix_path(os.getcwd() + "/" + path)
 
     while lexer.chari < lexer.file_len:
         key, line_num = lexer.NextKey()
@@ -368,7 +369,8 @@ def CreateSubBlock(lexer, block, path):
         if not key:
             if lexer.NextSymbol() == "}":
                 return
-            print( "uhhhhhhh" )
+            print("empty key? might work, who knows")
+            block.PrintInfo()
         
         # line_num = lexer.linei
         values = lexer.NextValueList()
