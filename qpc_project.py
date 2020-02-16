@@ -125,36 +125,44 @@ class ProjectPass:
         # TODO: add scanning of files and certain config info
         for macro, value in self.macros.items():
             self.macros[macro] = replace_macros(value, self.macros)
+            
+    def replace_macros(self, string: str) -> str:
+        return replace_macros(string, self.macros)
+        
+    def replace_macros_list(self, *values) -> list:
+        return replace_macros_list(self.macros, *values)
     
     def add_file(self, folder_list: list, file_block: QPCBlock) -> None:
-        for file_path in file_block.GetKeyValues():
+        for file_path in file_block.get_list():
+            file_path = self.replace_macros(file_path)
             if os.path.splitext(file_path)[1] in EXTS_C:
                 if file_path in self.source_files:
                     if not args.hide_warnings:
-                        file_block.Warning("File already added")
+                        file_block.warning("File already added")
                 else:
-                    check_if_file_exists(file_path, file_block.Warning)
+                    check_if_file_exists(file_path, file_block.warning)
                     self.source_files[file_path] = SourceFile(folder_list)
             else:
                 if file_path in self.files:
                     if not args.hide_warnings:
-                        file_block.Warning("File already added")
+                        file_block.warning("File already added")
                 else:
-                    check_if_file_exists(file_path, file_block.Warning)
+                    check_if_file_exists(file_path, file_block.warning)
                     self.files[file_path] = "/".join(folder_list)
     
     def remove_file(self, file_block: QPCBlock):
         for file_path in file_block.values:
+            file_path = self.replace_macros(file_path)
             if os.path.splitext(file_path)[1] in EXTS_C:
                 if file_path in self.source_files:
                     del self.source_files[file_path]
                 elif not args.hide_warnings:
-                    file_block.Warning("Trying to remove a file that hasn't been added yet")
+                    file_block.warning("Trying to remove a file that hasn't been added yet")
             else:
                 if file_path in self.files:
                     del self.files[file_path]
                 elif not args.hide_warnings:
-                    file_block.Warning("Trying to remove a file that hasn't been added yet")
+                    file_block.warning("Trying to remove a file that hasn't been added yet")
 
     def add_file_glob(self, folder_list, file_block: QPCBlock) -> None:
         # use glob to search
@@ -178,7 +186,7 @@ class ProjectPass:
     
     # Gets every single folder in the project, splitting each one as well
     # this function is awful
-    def GetAllEditorFolderPaths(self) -> set:
+    def get_editor_folders(self) -> set:
         folder_paths = set()
         # TODO: is there a better way to do this?
         [folder_paths.add(file_path) for file_path in self.files.values()]
@@ -198,12 +206,12 @@ class ProjectPass:
         
         return full_folder_paths
     
-    def GetAllFolderPaths(self) -> set:
-        folder_paths = GetAllPaths(self.files)
-        folder_paths.update(GetAllPaths(self.source_files))
+    def get_folders(self) -> set:
+        folder_paths = split_folders(self.files)
+        folder_paths.update(split_folders(self.source_files))
         return folder_paths
     
-    def GetFilesInFolder(self, folder_path: str) -> list:
+    def get_files_in_folder(self, folder_path: str) -> list:
         file_list = []
         
         # maybe change to startswith, so you can get stuff in nested folders as well?
@@ -219,25 +227,25 @@ class ProjectPass:
     
     def get_file_folder(self, file_path) -> str:
         try:
-            return self.files[file_path]
+            return self.files[self.replace_macros(file_path)]
         except KeyError:
             pass
     
     def get_source_file(self, file_path) -> SourceFile:
         try:
-            return self.source_files[file_path]
+            return self.source_files[self.replace_macros(file_path)]
         except KeyError:
             pass
     
     def GetSourceFileFolder(self, file_path):
-        return self.get_source_file(file_path).folder
+        return self.get_source_file(self.replace_macros(file_path)).folder
     
     def GetSourceFileCompiler(self, file_path):
-        return self.get_source_file(file_path).compiler
+        return self.get_source_file(self.replace_macros(file_path)).compiler
 
 
 class Project:
-    # def __init__(self, name: str, project_path: str, base_macros, dependency_dict: dict):
+    # def __init__(self, name: str, script_path: str, base_macros, dependency_dict: dict):
     def __init__(self, name: str, project_path: str, settings):  # info is BaseInfo from qpc_parser.py
         self.file_name = name  # the actual file name
         self.project_path = project_path  # should use the macro instead tbh, might remove
@@ -294,16 +302,16 @@ class Project:
     def remove_dependencies(self, *qpc_paths) -> None:
         [self.remove_dependency(qpc_path) for qpc_path in qpc_paths]
     
-    def GetAllEditorFolderPaths(self) -> set:
+    def get_editor_folders(self) -> set:
         folder_paths = set()
         for project in self.projects:
-            folder_paths.update(project.GetAllEditorFolderPaths())
+            folder_paths.update(project.get_editor_folders())
         return folder_paths
     
-    def GetAllFolderPaths(self) -> set:
+    def get_folders(self) -> set:
         folder_paths = set()
         for project in self.projects:
-            folder_paths.update(project.GetAllFolderPaths())
+            folder_paths.update(project.get_folders())
         return folder_paths
 
     def get_display_name(self) -> str:
@@ -341,7 +349,7 @@ class Configuration:
         elif group_block.key == "global":
             pass
         else:
-            group_block.Error("Unknown Configuration Group: ")
+            group_block.error("Unknown Configuration Group: ")
 
 
 # idea, for debug options in the editor used (if it can debug)
@@ -381,12 +389,12 @@ class General:
         if option_block.key in {"include_directories", "library_directories", "options"}:
             for item in option_block.items:
                 if item.solve_condition(macros):
-                    self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.GetKeyValues()))
+                    self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
 
         elif option_block.key == "options":
             for item in option_block.items:
                 if item.solve_condition(macros):
-                    self.options.extend(item.GetKeyValues())
+                    self.options.extend(item.get_list())
 
         if not option_block.values:
             return
@@ -407,11 +415,11 @@ class General:
         elif option_block.key in {"toolset_version", "compiler"}:
             if option_block.key == "toolset_version":
                 if not args.hide_warnings:
-                    option_block.Warning("toolset_version is now compiler")
+                    option_block.warning("toolset_version is now compiler")
             self.set_compiler(option_block)
             
         else:
-            option_block.Error("Unknown General Option: ")
+            option_block.error("Unknown General Option: ")
             
     def set_type(self, option: QPCBlock) -> None:
         self.configuration_type = convert_enum_option(self.configuration_type, option, ConfigType)
@@ -435,7 +443,7 @@ class ConfigCompiler:
         if option_block.key in ("preprocessor_definitions", "options"):
             for item in option_block.items:
                 if item.solve_condition(macros):
-                    self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.GetKeyValues()))
+                    self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
     
         elif option_block.key == "precompiled_header":
             if option_block.values:
@@ -445,7 +453,7 @@ class ConfigCompiler:
             self.__dict__[option_block.key] = replace_macros(option_block.values[0], macros)
     
         else:
-            option_block.Error("Unknown Compiler Option: ")
+            option_block.error("Unknown Compiler Option: ")
 
 
 class Linker:
@@ -469,7 +477,7 @@ class Linker:
                         else:
                             self.add_lib(macros, item)
                     else:
-                        self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.GetKeyValues()))
+                        self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
                     
         elif not option_block.values:
             return
@@ -486,7 +494,7 @@ class Linker:
             self.ignore_import_library = convert_bool_option(self.ignore_import_library, option_block)
     
         else:
-            option_block.Error("Unknown Linker Option: ")
+            option_block.error("Unknown Linker Option: ")
 
     def add_lib(self, macros: dict, lib_block: QPCBlock) -> None:
         for lib_path in (lib_block.key, *lib_block.values):
@@ -494,7 +502,7 @@ class Linker:
             if lib_path not in self.libraries:
                 self.libraries.append(lib_path)
             elif not args.hide_warnings:
-                lib_block.Warning("Library already added")
+                lib_block.warning("Library already added")
 
     def remove_lib(self, macros: dict, lib_block: QPCBlock) -> None:
         for lib_path in lib_block.values:
@@ -502,7 +510,7 @@ class Linker:
             if lib_path in self.libraries:
                 self.libraries.remove(lib_path)
             elif not args.hide_warnings:
-                lib_block.Warning("Trying to remove a library that hasn't been added yet")
+                lib_block.warning("Trying to remove a library that hasn't been added yet")
 
     # actually do you even need the extension?
     @staticmethod
@@ -518,7 +526,7 @@ def convert_bool_option(old_value: bool, option_block: QPCBlock) -> bool:
     elif value == "false":
         return False
     else:
-        option_block.InvalidOption("true", "false")
+        option_block.invalid_option("true", "false")
         return old_value
     
     
@@ -529,7 +537,7 @@ def convert_enum_option(old_value: Enum, option_block: QPCBlock, enum_list: Enum
         if value == enum.name.lower():
             return enum
     else:
-        option_block.InvalidOption(*[enum.name.lower() for enum in enum_list])
+        option_block.invalid_option(*[enum.name.lower() for enum in enum_list])
         return old_value
         
         
@@ -541,11 +549,12 @@ def check_if_file_exists(file_path: str, option_warning: classmethod):
                 option_warning("File does not exist: ")
 
 
-def GetAllPaths(path_list):
+def split_folders(path_list):
     full_folder_paths = set()
     
     for folder_path in set(path_list):
         # uhhhhhh
+        # current_path = list(os.path.split(folder_path)[0].split("/"))
         current_path = list(os.path.split(folder_path)[0].split("/"))
         if not current_path:
             continue

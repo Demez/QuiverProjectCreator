@@ -19,7 +19,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         self.cpp_uuid = "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}"
         self.filter_uuid = "{2150E333-8FDC-42A3-9474-1A3956D46DE8}"
 
-    def create_project(self, project_list):
+    def create_project(self, project_list: Project) -> None:
         out_dir = get_out_dir(project_list)
 
         if args.time:
@@ -45,7 +45,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         if args.time:
             print(str(round(perf_counter() - start_time, 4)) + " - Created: " + project_list.file_name + ".vcxproj.filters")
         
-        return out_dir
+        # return out_dir
     
     def does_project_exist(self, project_out_dir: str) -> bool:
         # base_path = self._get_base_path(project_out_dir)
@@ -213,13 +213,13 @@ def create_vcxproj(project_list):
     vcxproj.set("xmlns", "http://schemas.microsoft.com/developer/msbuild/2003")
     
     # Project Configurations
-    SetupProjectConfigurations(vcxproj, project_list)
-    SetupGlobals(vcxproj, project_list)
+    setup_project_configurations(vcxproj, project_list)
+    setup_globals(vcxproj, project_list)
     
     elem_import = et.SubElement(vcxproj, "Import")
     elem_import.set("Project", "$(VCTargetsPath)\\Microsoft.Cpp.Default.props")
     
-    SetupPropertyGroupConfigurations(vcxproj, project_list)
+    setup_property_group_configurations(vcxproj, project_list)
     
     elem_import = et.SubElement(vcxproj, "Import")
     elem_import.set("Project", "$(VCTargetsPath)\\Microsoft.Cpp.props")
@@ -227,13 +227,13 @@ def create_vcxproj(project_list):
     extension_settings = et.SubElement(vcxproj, "ImportGroup")
     extension_settings.set("Label", "ExtensionSettings")
     
-    SetupPropertySheets(vcxproj)
+    setup_property_sheets(vcxproj)
     
     user_macros = et.SubElement(vcxproj, "PropertyGroup")
     user_macros.set("Label", "UserMacros")
     
-    SetupGeneralProperties(vcxproj, project_list)
-    SetupItemDefinitionGroups(vcxproj, project_list)
+    setup_general_properties(vcxproj, project_list)
+    setup_item_definition_groups(vcxproj, project_list)
     
     # --------------------------------------------------------------------
     # Now, add the files
@@ -273,7 +273,7 @@ def create_vcxproj(project_list):
     return vcxproj, full_include_list, full_res_list, full_none_list
 
 
-def SetupProjectConfigurations(vcxproj, project_list):
+def setup_project_configurations(vcxproj, project_list):
     item_group = et.SubElement(vcxproj, "ItemGroup")
     item_group.set("Label", "ProjectConfigurations")
     
@@ -288,7 +288,7 @@ def SetupProjectConfigurations(vcxproj, project_list):
         elem_platform.text = convert_platform(project.platform)
 
 
-def SetupGlobals(vcxproj, project_list):
+def setup_globals(vcxproj, project_list):
     property_group = et.SubElement(vcxproj, "PropertyGroup")
     property_group.set("Label", "Globals")
     
@@ -297,15 +297,15 @@ def SetupGlobals(vcxproj, project_list):
     
     
 COMPILER_DICT = {
-    Compiler.MSVC_142: "142",
-    Compiler.MSVC_141: "141",
-    Compiler.MSVC_140: "140",
-    Compiler.MSVC_120: "120",
-    Compiler.MSVC_100: "100",
+    Compiler.MSVC_142: "v142",
+    Compiler.MSVC_141: "v141",
+    Compiler.MSVC_140: "v140",
+    Compiler.MSVC_120: "v120",
+    Compiler.MSVC_100: "v100",
 }
 
 
-def SetupPropertyGroupConfigurations(vcxproj, project_list):
+def setup_property_group_configurations(vcxproj, project_list):
     for project in project_list.projects:
         property_group = et.SubElement(vcxproj, "PropertyGroup")
         property_group.set("Condition", make_conf_plat_cond(project.config_name, project.platform))
@@ -327,25 +327,28 @@ def SetupPropertyGroupConfigurations(vcxproj, project_list):
         if config.general.compiler and config.general.compiler in COMPILER_DICT:
             toolset.text = COMPILER_DICT[config.general.compiler]
         else:
-            toolset.text = "142"
-        
-        character_set_text = ''
-        if "_MBCS" in config.compiler.preprocessor_definitions:
-            character_set_text = "Unicode"
-            config.compiler.preprocessor_definitions.remove("_MBCS")
-        elif "MBCS" in config.compiler.preprocessor_definitions:
-            character_set_text = "MultiByte"
-            config.compiler.preprocessor_definitions.remove("MBCS")
-        
-        if character_set_text:
-            character_set = et.SubElement(property_group, "CharacterSet")
-            character_set.text = character_set_text
+            toolset.text = "v142"
+
+        defs = config.compiler.preprocessor_definitions
+        if "MBCS" in defs or "_MBCS" in defs:
+            et.SubElement(property_group, "CharacterSet").text = "MultiByte"
+            if "MBCS" in defs:
+                defs.remove("MBCS")
+            if "_MBCS" in defs:
+                defs.remove("_MBCS")
+
+        elif "UNICODE" in defs or "_UNICODE" in defs:
+            et.SubElement(property_group, "CharacterSet").text = "Unicode"
+            if "UNICODE" in defs:
+                defs.remove("UNICODE")
+            if "_UNICODE" in defs:
+                defs.remove("_UNICODE")
         
         # "TargetName",
         # "WholeProgramOptimization",
 
 
-def SetupPropertySheets(vcxproj):
+def setup_property_sheets(vcxproj):
     import_group = et.SubElement(vcxproj, "ImportGroup")
     import_group.set("Label", "PropertySheets")
     
@@ -355,7 +358,7 @@ def SetupPropertySheets(vcxproj):
     elem_import.set("Label", "LocalAppDataPlatform")
 
 
-def SetupGeneralProperties(vcxproj, project_list):
+def setup_general_properties(vcxproj, project_list):
     property_group = et.SubElement(vcxproj, "PropertyGroup")
     et.SubElement(property_group, "_ProjectFileVersion").text = "10.0.30319.1"
     
@@ -405,7 +408,7 @@ def SetupGeneralProperties(vcxproj, project_list):
         # also why does WholeProgramOptimization go here and in ClCompile
 
 
-def SetupItemDefinitionGroups(vcxproj, project_list):
+def setup_item_definition_groups(vcxproj, project_list):
     for project in project_list.projects:
         condition = make_conf_plat_cond(project.config_name, project.platform)
         cfg = project.config
@@ -415,7 +418,7 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
         
         # ------------------------------------------------------------------
         # compiler - ClCompile
-        AddCompilerOptions(et.SubElement(item_def_group, "ClCompile"), cfg.compiler, cfg.general)
+        add_compiler_options(et.SubElement(item_def_group, "ClCompile"), cfg.compiler, cfg.general)
         
         # ------------------------------------------------------------------
         # linker - Link or Lib
@@ -480,7 +483,7 @@ def SetupItemDefinitionGroups(vcxproj, project_list):
 
 # TODO: this needs to have some default visual studio info,
 #  because visual studio can't fucking pick default info when none is set for them in the vcxproj
-def AddCompilerOptions(compiler_elem, compiler, general=None):
+def add_compiler_options(compiler_elem, compiler, general=None):
     added_option = False
     
     if compiler.preprocessor_definitions:
@@ -536,11 +539,8 @@ def AddCompilerOptions(compiler_elem, compiler, general=None):
                 option_key, option_value = command_to_compiler_option(option)
                 if option_key and option_value:
                     
-                    if general:
-                        if option_key == "BasicRuntimeChecks":
-                            basic_runtime_checks.text = option_value
-                        else:
-                            et.SubElement(compiler_elem, option_key).text = option_value
+                    if general and option_key == "BasicRuntimeChecks":
+                        basic_runtime_checks.text = option_value
                     else:
                         et.SubElement(compiler_elem, option_key).text = option_value
                     remaining_options.remove(option)
@@ -626,7 +626,7 @@ def create_source_file_item_group(file_list, parent_elem, condition):
         for file_path, values in file_list.items():
             elem_file = et.SubElement(item_group, "ClCompile")
             elem_file.set("Include", file_path)
-            AddCompilerOptions(elem_file, values.compiler)
+            add_compiler_options(elem_file, values.compiler)
 
 
 def create_file_item_groups(file_type, file_dict, parent_elem, condition):
@@ -679,7 +679,7 @@ def create_vcxproj_filters(project_list, include_list, res_list, none_list):
 
 
 def create_folder_filters(proj_filters, project_list):
-    folder_list = project_list.GetAllEditorFolderPaths()
+    folder_list = project_list.get_display_name()
     if folder_list:
         item_group = et.SubElement(proj_filters, "ItemGroup")
         for folder in folder_list:

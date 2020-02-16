@@ -425,7 +425,7 @@ def convert_vgc(vgc_dir, vgc_filename, vgc_project):
         elif key in {"$games"}:
             pass
         else:
-            project_block.Warning("Unknown Key:")
+            project_block.warning("Unknown Key:")
             
     # add configurations block
     qpc_base_file.extend(
@@ -721,7 +721,7 @@ def convert_vpc(vpc_dir, vpc_filename, vpc_project):
             pass
         
         else:
-            project_block.Warning("Unknown Key: ")
+            project_block.warning("Unknown Key: ")
     
     if libraries:
         # if not qpc_project_list[-1].endswith("\n") and qpc_project_list[-1] != "":
@@ -973,7 +973,7 @@ def WriteFile(file_block, qpc_project, indent):
             qpc_project = WriteConfiguration(file_config, indent + "\t", qpc_project)
             qpc_project.append(indent + "}")
     else:
-        file_block.Warning("Unknown Key: ")
+        file_block.warning("Unknown Key: ")
     return qpc_project
 
 
@@ -1101,7 +1101,7 @@ def ParseConfiguration(vpc_config, qpc_config):
         config_group_name = ConvertConfigGroupName(config_group.key)
         
         if not config_group_name:
-            config_group.Warning("Unknown config group: ")
+            config_group.warning("Unknown config group: ")
             continue
         
         for option_block in config_group.items:
@@ -1121,7 +1121,7 @@ def ParseConfiguration(vpc_config, qpc_config):
                 option_value = ConvertVPCOptionToQPCOption(option_block.values)
                 
                 if not option_value:
-                    option_block.Warning("Unknown config option: ")
+                    option_block.warning("Unknown config option: ")
                     continue
                 else:
                     option_name = "options"

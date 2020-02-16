@@ -12,70 +12,8 @@ if args.time:
     from time import perf_counter
 
 
-def ParseLibrariesBlock(libraries_block, project):
-    if libraries_block.solve_condition(project.macros):
-        for library in libraries_block.items:
-            if library.solve_condition(project.macros):
-                
-                if library.key == "-":
-                    library_path = replace_macros(library.values[0], project.macros)
-                    project.RemoveLib(library_path)
-                else:
-                    library_path = replace_macros(library.key, project.macros)
-                    project.AddLib(library_path)
-
-
-def ParseFilesBlock(files_block: QPCBlock, project: ProjectPass, folder_list: list) -> None:
-    if files_block.solve_condition(project.macros):
-        for block in files_block.items:
-            if block.solve_condition(project.macros):
-                
-                if block.key == "folder":
-                    folder_list.append(block.values[0])
-                    ParseFilesBlock(block, project, folder_list)
-                    folder_list.remove(block.values[0])
-                
-                elif block.key == "-":
-                    block.values = replace_macros_list(project.macros, *block.values)
-                    project.remove_file(block)
-                else:
-                    block.key = replace_macros(block.key, project.macros)
-                    block.values = replace_macros_list(project.macros, *block.values)
-                    project.add_file(folder_list, block)
-                    
-                    if block.items:
-                        for file_path in block.GetKeyValues():
-                            source_file = project.get_source_file(file_path)
-                            
-                            # TODO: set this to directly edit the configuration options
-                            #  remove need to write out configuration {}
-                            #  also this is messy
-                            
-                            for config_block in block.items:
-                                if config_block.solve_condition(project.macros):
-                                    
-                                    if config_block.key == "configuration":
-                                        if not args.hide_warnings:
-                                            config_block.Warning("Legacy Source File compiler info syntax\n"
-                                                                 "Remove \"configuration { compiler {\", "
-                                                                 "no need for it anymore")
-                                        for group_block in config_block.items:
-                                            
-                                            if group_block.key != "compiler":
-                                                group_block.Error("Invalid Group, can only use compiler")
-                                                continue
-                                            
-                                            if group_block.solve_condition(project.macros):
-                                                for option_block in group_block.items:
-                                                    if option_block.solve_condition(project.macros):
-                                                        source_file.compiler.parse_option(project.macros, option_block)
-                                    else:
-                                        # new, cleaner way, just assume it's compiler
-                                        source_file.compiler.parse_option(project.macros, config_block)
-
-
 # unused, idk if this will ever be useful either
-def ReplaceExactMacros(split_string, macros):
+def replace_exact_macros(split_string, macros):
     for macro, macro_value in macros.items():
         for index, item in enumerate(split_string):
             if macro == item:
@@ -248,13 +186,8 @@ class Parser:
         
             elif project_block.key == "group":
                 for group in project_block.values:
-                
                     # do we have a group with this name already?
-                    if group in info.groups:
-                        project_group = info.groups[group]
-                    else:
-                        project_group = ProjectGroup(group)
-                
+                    project_group = info.groups[group] if group in info.groups else ProjectGroup(group)
                     self._parse_project_group_items(project_group, info, project_block, [])
                     info.groups[project_group.name] = project_group
         
@@ -267,9 +200,8 @@ class Parser:
             # very rushed thing that could of been done with macros tbh
             elif project_block.key == "dependency_paths":
                 for dependency in project_block.items:
-                    if dependency.solve_condition(info.macros):
-                        if dependency.values:
-                            info.dependency_dict[dependency.key] = dependency.values[0]
+                    if dependency.values and dependency.solve_condition(info.macros):
+                        info.dependency_dict[dependency.key] = dependency.values[0]
         
             elif project_block.key == "include":
                 # "Ah shit, here we go again."
@@ -286,7 +218,7 @@ class Parser:
                 self._parse_base_info_include(info, include_file)
 
             elif not args.hide_warnings:
-                project_block.Warning("Unknown Key: ")
+                project_block.warning("Unknown Key: ")
     
         # return configurations, dependency_convert
     
@@ -342,16 +274,14 @@ class Parser:
         for project_block in project_file:
             if project_block.solve_condition(project.macros):
             
-                project_block.values = replace_macros_list(project.macros, *project_block.values)
-            
                 if project_block.key == "macro":
-                    project.add_macro(*project_block.values)
+                    project.add_macro(*project.replace_macros_list(*project_block.values))
             
                 elif project_block.key == "configuration":
                     self._parse_config(project_block, project)
             
                 elif project_block.key == "files":
-                    ParseFilesBlock(project_block, project, [])
+                    self._parse_files(project_block, project, [])
             
                 elif project_block.key == "dependencies":
                     for block in project_block.items:
@@ -362,18 +292,18 @@ class Parser:
             
                 elif project_block.key == "include":
                     # Ah shit, here we go again.
-                    include_path = project_block.values[0]
+                    include_path = project.replace_macros(project_block.values[0])
                     include_file = self._include_file(include_path, project, project_file.file_path, indent + "    ")
                     self._parse_project_pass(include_file, project, indent + "    ")
                     if args.verbose:
                         print(indent + "    " + "Finished Parsing")
             
                 elif not args.hide_warnings:
-                    project_block.Warning("Unknown key: ")
+                    project_block.warning("Unknown key: ")
         return project
     
     def _include_file(self, include_path: str, project: ProjectPass, project_path: str, indent: str) -> QPCBlockBase:
-        project.hash_list[include_path] = qpc_hash.MakeHash(include_path)
+        project.hash_list[include_path] = qpc_hash.make_hash(include_path)
         include_file = self.read_file(include_path)
     
         if not include_file:
@@ -385,16 +315,61 @@ class Parser:
     
         return include_file
     
+    def _parse_files(self, files_block: QPCBlock, project: ProjectPass, folder_list: list) -> None:
+        if files_block.solve_condition(project.macros):
+            for block in files_block.items:
+                if block.solve_condition(project.macros):
+                
+                    if block.key == "folder":
+                        folder_list.append(block.values[0])
+                        self._parse_files(block, project, folder_list)
+                        folder_list.remove(block.values[0])
+                    elif block.key == "-":
+                        project.remove_file(block)
+                    else:
+                        project.add_file(folder_list, block)
+                    
+                        if block.items:
+                            for file_path in block.get_list():
+                                source_file = project.get_source_file(file_path)
+                            
+                                # TODO: set this to directly edit the configuration options
+                                #  remove need to write out configuration {}
+                                #  also this is messy
+                            
+                                for config_block in block.items:
+                                    if config_block.solve_condition(project.macros):
+                                    
+                                        if config_block.key == "configuration":
+                                            if not args.hide_warnings:
+                                                config_block.warning("Legacy Source File compiler info syntax\n"
+                                                                     "Remove \"configuration { compiler {\", "
+                                                                     "no need for it anymore")
+                                            for group_block in config_block.items:
+                                            
+                                                if group_block.key != "compiler":
+                                                    group_block.error("Invalid Group, can only use compiler")
+                                                    continue
+                                            
+                                                if group_block.solve_condition(project.macros):
+                                                    for option_block in group_block.items:
+                                                        if option_block.solve_condition(project.macros):
+                                                            source_file.compiler.parse_option(project.macros,
+                                                                                              option_block)
+                                        else:
+                                            # new, cleaner way, just assume it's compiler
+                                            source_file.compiler.parse_option(project.macros, config_block)
+    
     def get_parsed_projects(self) -> list:
         pass
 
-    def read_file(self, project_path: str) -> QPCBlockBase:
-        if project_path in self.read_files:
-            return self.read_files[project_path]
+    def read_file(self, script_path: str) -> QPCBlockBase:
+        if script_path in self.read_files:
+            return self.read_files[script_path]
         else:
-            project_file = read_file(project_path)
-            self.read_files[project_path] = project_file
-            return project_file
+            script = read_file(script_path)
+            self.read_files[script_path] = script
+            return script
     
     # awful
     @staticmethod

@@ -7,12 +7,12 @@ import os
 import sys
 
 from enum import Enum
-import qpc_generator_handler
 import qpc_hash
 import qpc_reader
-import qpc_parser
-from qpc_args import args, PROJECT_GENERATORS
-from qpc_base import posix_path, Platform, PlatformName, get_platform_name, PLATFORM_DICT
+from qpc_generator_handler import GeneratorHandler
+from qpc_parser import Parser
+from qpc_args import args
+from qpc_base import PLATFORM_DICT
 
 if args.time:
     from time import perf_counter
@@ -51,8 +51,8 @@ def get_platform_dict() -> dict:
 def main():
     os.chdir(args.root_dir)
     
-    generator_handler = qpc_generator_handler.GeneratorHandler()
-    parser = qpc_parser.Parser()
+    generator_handler = GeneratorHandler()
+    parser = Parser()
     # loop PlatformNames -> BaseSettings, OutputTypes -> Configs -> Platforms
     if args.time:
         start_time = perf_counter()
@@ -81,7 +81,7 @@ def main():
                     # may look in the hash for where the project output directory is
                     if args.force or \
                             not generator.does_project_exist(project_script) or \
-                            not qpc_hash.CheckHash(project_script):
+                            not qpc_hash.check_hash(project_script):
                         project = parser.parse_project(project_script, info, platforms)
                         generator.create_project(project)
                         info.project_dependencies[project_script] = project.dependencies
