@@ -1,5 +1,6 @@
 import sys
 import os
+from enum import Enum
 
 # from qpc_args import args
 from qpc_base import BaseProjectGenerator, Platform
@@ -26,7 +27,9 @@ class MakefileGenerator(BaseProjectGenerator):
 
     def create_project(self, project: Project) -> None:
         print("Creating: " + project.file_name + ".mak")
-        makefile = gen_defines(project.projects[0].config.general.compiler)
+        compiler = get_compiler(project.projects[0].config.general.compiler,
+                                project.projects[0].config.general.language)
+        makefile = gen_defines(compiler)
         
         for p in project.projects:
             makefile += gen_project_config_definitions(p)
@@ -82,16 +85,7 @@ def gen_project_targets(conf) -> str:
         target_name = "$(OUTNAME)"
     
     # compiler = "g++" if conf.general.language == Language.CPP else "gcc"
-    sel_compiler = conf.general.compiler
-    if sel_compiler in {Compiler.GCC_9, Compiler.GCC_8, Compiler.GCC_7, Compiler.GCC_6}:
-        if conf.general.language == Language.CPP:
-            compiler = "g++-" + str(sel_compiler.name[-1])
-        else:  # assume conf.general.language == Language.C:
-            compiler = "gcc-" + str(sel_compiler.name[-1])
-    elif sel_compiler in {Compiler.CLANG_9, Compiler.CLANG_8}:
-        compiler = "clang-" + str(sel_compiler.name[-1])
-    else:
-        compiler = "g++"
+    compiler = get_compiler(conf.general.compiler, conf.general.language)
     
     if conf.general.configuration_type == ConfigType.APPLICATION:
         makefile += f"{target_name}: __PREBUILD $(OBJECTS) $(FILES) __PRELINK\n"
@@ -206,11 +200,18 @@ def get_default_platform() -> str:
     return p
 
 
-def gen_defines(toolset) -> str:
-    if toolset:
-        compiler = toolset
-    else:
-        compiler = "gcc"
+def get_compiler(compiler: Enum, language: Enum) -> str:
+    if compiler in {Compiler.GCC_9, Compiler.GCC_8, Compiler.GCC_7, Compiler.GCC_6}:
+        if language == Language.CPP:
+            return "g++-" + str(compiler.name[-1])
+        else:  # assuming language == Language.C:
+            return "gcc-" + str(compiler.name[-1])
+    elif compiler in {Compiler.CLANG_9, Compiler.CLANG_8}:
+        return "clang-" + str(compiler.name[-1])
+    return "g++"
+
+
+def gen_defines(compiler: str) -> str:
     return f"""#!/usr/bin/make -f
 
 
