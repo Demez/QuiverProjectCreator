@@ -82,8 +82,18 @@ def main():
                     if args.force or \
                             not generator.does_project_exist(project_script) or \
                             not qpc_hash.check_hash(project_script):
+    
+                        project_dir = os.path.split(project_script)[0]
+    
+                        if project_dir != args.root_dir:
+                            os.chdir(project_dir)
+                        
                         project = parser.parse_project(project_script, info, platforms)
                         generator.create_project(project)
+                        
+                        if project_dir != args.root_dir:
+                            os.chdir(args.root_dir)
+
                         info.project_dependencies[project_script] = project.dependencies
 
                         qpc_hash.write_hash_file(project_script, project.out_dir, project.hash_dict,

@@ -158,7 +158,6 @@ def gen_project_config_definitions(project: ProjectPass) -> str:
     objects = {}
     project_dir = os.path.split(project.project.project_path)[0]
     for i in project.source_files:
-        i = os.path.normpath(project_dir + "/" + i)
         objects['.'.join(i.split('.')[:-1])
                     .replace('/', '\\/')
                     .replace('..', ('\\.\\.')

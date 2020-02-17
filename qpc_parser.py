@@ -242,14 +242,11 @@ class Parser:
             start_time = perf_counter()
         else:
             print("Parsing: " + project_script)
-        project_dir, project_filename = os.path.split(project_script)
-        project_name = os.path.splitext(project_filename)[0]
-        
-        project_block = self.read_file(project_script)
-        
-        if project_dir:
-            os.chdir(project_dir)
 
+        project_filename = os.path.split(project_script)[1]
+        project_block = self.read_file(project_filename)
+
+        project_name = os.path.splitext(project_filename)[0]
         project = Project(project_name, project_script, settings)
         
         for config in settings.configurations:
@@ -261,9 +258,6 @@ class Parser:
     
         if args.verbose:
             print("Parsed: " + project.get_display_name())
-            
-        if project_dir:
-            os.chdir(args.root_dir)
 
         if args.time:
             print(str(round(perf_counter() - start_time, 4)) + " - Parsed: " + project_script)
