@@ -20,7 +20,7 @@ def decode(data) -> str:
             return data.decode("ANSI")
 
 
-def get_includes(file_path: str) -> list:
+def GetIncludes(file_path: str) -> list:
     try:
         if file_path in INCLUDE_DICT:
             return INCLUDE_DICT[file_path]
