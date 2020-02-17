@@ -118,10 +118,11 @@ def gen_dependency_tree(objects, headers, conf: Configuration) -> str:
     pic = ""
     if conf.general.configuration_type == "shared_library":  # shared library is a thing?
         pic = "-fPIC"
-    for obj in objects.keys():
-        makefile += f"\n{obj}: {objects[obj]} {' '.join(cp.get_includes(objects[obj]))}\n"
-        makefile += f"\t@echo '$(CYAN)Building Object {objects[obj]}$(NC)'\n"
-        makefile += f"\t@$(COMPILER) -c {pic} -o $@ {objects[obj]} {gen_cflags(conf, libs=False)}\n"
+        
+    for obj, path in objects.items():
+        makefile += f"\n{obj}: {path} {' '.join(cp.get_includes(path))}\n"
+        makefile += f"\t@echo '$(CYAN)Building Object {path}$(NC)'\n"
+        makefile += f"\t@$(COMPILER) -c {pic} -o $@ {path} {gen_cflags(conf, libs=False)}\n"
     
     for h in headers:
         makefile += f"\n{h}: {' '.join(cp.get_includes(h))}\n"
