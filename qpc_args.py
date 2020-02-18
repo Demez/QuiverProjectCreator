@@ -35,7 +35,7 @@ def parse_args():
 
     cmd_parser.add_argument("--time", "-t", action="store_true", help="Print the time taken to parse")
     cmd_parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose console output")
-    cmd_parser.add_argument("--force", "-f", action="store_true", help="Force recreate all base_settings")
+    cmd_parser.add_argument("--force", "-f", action="store_true", help="Force recreate all projects")
     cmd_parser.add_argument("--force_master", "-fm", action="store_true", help="Force recreate master file")
     cmd_parser.add_argument("--hidewarnings", "-w", dest="hide_warnings", action="store_true", help="Suppress all warnings")
     cmd_parser.add_argument("--checkfiles", "-c", dest="check_files", action="store_true", help="Check if any added file exists")
@@ -43,18 +43,18 @@ def parse_args():
     cmd_parser.add_argument("--platforms", "-p", nargs="+", default=get_default_platforms(), choices=platforms,
                             help="Select plaforms to generate for instead of default")
     cmd_parser.add_argument("--generators", "-g", nargs="+", default=(), choices=PROJECT_GENERATORS, help="Project types to generate")
-    cmd_parser.add_argument("--add", "-a", nargs="+", default=(), help="Add base_settings or groups to generate")
-    cmd_parser.add_argument("--remove", "-r", default=(), nargs="+", help="Remove base_settings or groups from generating")
-    cmd_parser.add_argument("--macros", "-m", nargs="+", default=(), help="Macros to define and set to '1' in base_settings")
+    cmd_parser.add_argument("--add", "-a", nargs="+", default=(), help="Add projects or groups to generate")
+    cmd_parser.add_argument("--remove", "-r", default=(), nargs="+", help="Remove projects or groups from generating")
+    cmd_parser.add_argument("--macros", "-m", nargs="+", default=(), help="Macros to define and set to '1' in projects")
 
     # TODO: figure out how vpc handles these and recreate it here
     #  might come waaay later since it"s very low priority
-    # cmd_parser.add_argument("-at", "--add_tree", nargs="+", help="Add a project and all base_settings that depend on it")
-    # cmd_parser.add_argument("-ad", "--add_depend", nargs="+", help="Add a project and all base_settings that it depends on")
+    # cmd_parser.add_argument("-at", "--add_tree", nargs="+", help="Add a project and all projects that depend on it")
+    # cmd_parser.add_argument("-ad", "--add_depend", nargs="+", help="Add a project and all projects that it depends on")
     # Use /h spew final target build set only (no .vcproj created). - what?
 
     cmd_parser.add_argument("--masterfile", "-mf", dest="master_file",
-                            help='Create a master file for building all base_settings with')
+                            help='Create a master file for building all projects with')
 
     return cmd_parser
 
@@ -81,15 +81,17 @@ def _get_enum_from_name(enum_name: str, enum_list: EnumMeta) -> Enum:
 
 
 # convert stuff in args to the enum value
-def _ConvertToEnum(arg_list: list, enum_list: EnumMeta) -> list:
+def _convert_to_enum(arg_list: list, enum_list: EnumMeta) -> list:
     for index, value in enumerate(arg_list):
         arg_list[index] = _get_enum_from_name(value, enum_list)
     return arg_list
 
 
-args.platforms = _ConvertToEnum(args.platforms, Platform)
+args.platforms = _convert_to_enum(args.platforms, Platform)
 
 
-class GlobalSettings:
-    def __init__(self):
-        pass
+def get_arg_macros() -> dict:
+    arg_macros = {}
+    for macro in args.macros:
+        arg_macros["$" + macro] = "1"
+    return arg_macros

@@ -4,7 +4,7 @@ from enum import Enum
 
 # from qpc_args import args
 from qpc_base import BaseProjectGenerator, Platform
-from qpc_project import Compiler, ConfigType, Language, Project, ProjectPass, Configuration
+from qpc_project import Compiler, ConfigType, Language, ProjectContainer, ProjectPass, Configuration
 from qpc_parser import BaseInfo
 
 import qpc_c_parser as cp
@@ -25,13 +25,17 @@ class MakefileGenerator(BaseProjectGenerator):
         self._add_platform(Platform.LINUX64)
         self._add_platform(Platform.MACOS)
 
-    def create_project(self, project: Project) -> None:
+    def create_project(self, project: ProjectContainer) -> None:
+        project_passes = project.get_passes(self._platforms)
+        if not project_passes:
+            return
+        
         print("Creating: " + project.file_name + ".mak")
-        compiler = get_compiler(project.projects[0].config.general.compiler,
-                                project.projects[0].config.general.language)
+        compiler = get_compiler(project_passes[0].config.general.compiler,
+                                project_passes[0].config.general.language)
         makefile = gen_defines(compiler)
         
-        for p in project.projects:
+        for p in project_passes:
             makefile += gen_project_config_definitions(p)
         
         with open(project.file_name + ".mak", "w", encoding="utf-8") as f:

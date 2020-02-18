@@ -9,8 +9,8 @@ import re
 import qpc_hash
 from qpc_reader import solve_condition, read_file, QPCBlock
 # from os import sep, path
-from qpc_args import args
-from qpc_base import posix_path, Platform, PlatformName
+from qpc_args import args, get_arg_macros
+from qpc_base import posix_path, Platform, PlatformName, PLATFORM_DICT
 from enum import EnumMeta, Enum, auto
 
 if args.time:
@@ -67,28 +67,53 @@ class Language(Enum):
 class ProjectDefinition:
     def __init__(self, project_name: str, *folder_list):
         self.name = project_name
-        self.script_list = []
-        self.groups = []
+        self.script_list = set()
+        self.platforms = set()
+        self.groups = set()  # could be a list, depends on which is faster here, x in set? or for x in list?
         
         # this is just so it stops changing this outside of the function
         self.group_folder_list = folder_list
+        
+    # group is ProjectGroup, right below
+    def add_group(self, group):
+        self.groups.add(group)
+        # if self not in self.groups:
+        #     self.groups.add(group)
+        # else:
+        #     print("project already in group?")
+        
+    def update_groups(self):
+        # list would be faster here
+        for group in self.groups:
+            group.project_defined(self)
     
-    def AddScript(self, script_path: str) -> None:
-        self.script_list.append(posix_path(script_path))
+    def add_script(self, script_path: str) -> None:
+        self.script_list.add(posix_path(script_path))
     
-    def AddScriptList(self, script_list) -> None:
-        [self.AddScript(script_path) for script_path in script_list]
+    def add_script_list(self, script_list) -> None:
+        [self.add_script(script_path) for script_path in script_list]
 
 
 class ProjectGroup:
     def __init__(self, group_name):
         self.name = group_name
-        self.projects = []
+        self.projects = dict()  # dict keeps order, set doesn't as of 3.8, both faster than lists
+        # self._undef_projects = set()
     
-    def AddProject(self, project_name, project_scripts, folder_list):
-        project_def = ProjectDefinition(project_name, *folder_list)
-        project_def.AddScriptList(project_scripts)
-        self.projects.append(project_def)
+    # def get_undef_projects(self):
+    #     return self._undef_projects
+    
+    def project_defined(self, project_def: ProjectDefinition):
+        self.projects[project_def] = None
+        # self.projects.add(project_def)
+    
+    def add_project(self, project_name: str, folder_list: list, unsorted_projects: dict):
+        if project_name in unsorted_projects:
+            project_def = unsorted_projects[project_name]
+        else:
+            project_def = ProjectDefinition(project_name, *folder_list)
+            unsorted_projects[project_name] = project_def
+        project_def.add_group(self)
 
 
 class SourceFile:
@@ -97,17 +122,14 @@ class SourceFile:
         self.compiler = ConfigCompiler()
 
 
-class ProjectPass:
-    def __init__(self, project, config: str, platform: Enum):
+class ProjectBase:
+    def __init__(self, project):
         self.project = project
-        self.config_name = config
-        self.platform = platform
         self.config = Configuration(self)
         self.source_files = {}
         self.files = {}
-        
         self.hash_list = {}
-        self.macros = {**project.macros, "$" + config.upper(): "1", "$" + platform.name.upper(): "1"}
+        self.macros = project.macros.copy()
     
     def add_macro(self, macro_name: str, macro_value: str = "") -> None:
         key_name = "$" + macro_name.upper()
@@ -171,18 +193,21 @@ class ProjectPass:
     def remove_file_glob(self, folder_list, file_block: QPCBlock) -> None:
         # use glob to search
         pass
+    
+    def _convert_dependency_path(self, key: str) -> str:
+        return key
 
     def add_dependency(self, qpc_path: str) -> None:
-        self.project.add_dependency(qpc_path)
+        self.project.add_dependency(self._convert_dependency_path(qpc_path))
 
     def remove_dependency(self, qpc_path: str) -> None:
-        self.project.remove_dependency(qpc_path)
+        self.project.remove_dependency(self._convert_dependency_path(qpc_path))
 
     def add_dependencies(self, *qpc_paths) -> None:
-        self.project.add_dependencies(*qpc_paths)
+        [self.add_dependency(qpc_path) for qpc_path in qpc_paths]
     
     def remove_dependencies(self, *qpc_paths) -> None:
-        self.project.remove_dependencies(*qpc_paths)
+        [self.remove_dependency(qpc_path) for qpc_path in qpc_paths]
     
     # Gets every single folder in the project, splitting each one as well
     # this function is awful
@@ -236,42 +261,45 @@ class ProjectPass:
             return self.source_files[self.replace_macros(file_path)]
         except KeyError:
             pass
-    
-    def GetSourceFileFolder(self, file_path):
-        return self.get_source_file(self.replace_macros(file_path)).folder
-    
-    def GetSourceFileCompiler(self, file_path):
-        return self.get_source_file(self.replace_macros(file_path)).compiler
 
 
-class Project:
-    # def __init__(self, name: str, script_path: str, base_macros, dependency_dict: dict):
-    def __init__(self, name: str, project_path: str, settings):  # info is BaseInfo from qpc_parser.py
+class ProjectPass(ProjectBase):
+    def __init__(self, container, config: str, platform_name: Enum, platform: Enum):
+        self.config_name = config
+        self.platform = platform
+        self.base_info = container.base_info.get_base_info(platform_name)
+        super().__init__(container)
+        self.macros.update({**self.base_info.macros, "$" + config.upper(): "1", "$" + platform.name.upper(): "1"})
+
+    def _convert_dependency_path(self, key: str) -> str:
+        if key in self.base_info.dependency_dict:
+            return self.base_info.dependency_dict[key]
+        return key
+
+
+class ProjectContainer:
+    # base_info is BaseInfo from qpc_parser.py
+    def __init__(self, name: str, project_path: str, base_info, project_def: ProjectDefinition):
         self.file_name = name  # the actual file name
         self.project_path = project_path  # should use the macro instead tbh, might remove
         self.out_dir = os.path.split(project_path)[0]
-        self.projects = []
         self.hash_dict = {}
-        self.base_settings = settings
+        self.base_info = base_info
+        
         # self.dependency_convert = dependency_dict
         self.dependencies = set()
         # shared across configs, used as a base for them
-        self.macros = {**settings.macros, "$PROJECT_NAME": name, "$SCRIPT_NAME": name}
-        # self.global_config = GlobalConfig()
+        self.macros = {"$PROJECT_NAME": name, "$SCRIPT_NAME": name, **get_arg_macros()}
         
-    def parse_project(self):
-        pass
-    
-    def add_parsed_project_pass(self, project):
-        self.hash_dict.update({**project.hash_list})
+        self._passes = []
+        for plat_name in project_def.platforms:
+            for config in base_info.get_base_info(plat_name).configurations:
+                for plat in PLATFORM_DICT[plat_name]:
+                    self._passes.append(ProjectPass(self, config, plat_name, plat))
+        # self.shared = ProjectBase(self)
         
-        # update the name in case it changed
-        self.macros.update({"$PROJECT_NAME": project.macros["$PROJECT_NAME"]})
-        
-        del project.hash_list
-        del project.macros["$PROJECT_NAME"]
-        
-        self.projects.append(project)
+    def get_passes(self, platforms) -> list:
+        return [project_pass for project_pass in self._passes if project_pass.platform in platforms]
 
     @staticmethod
     def _add_dependency_ext(qpc_path: str) -> str:
@@ -279,39 +307,33 @@ class Project:
             qpc_path = os.path.splitext(qpc_path)[0] + ".qpc"
         return qpc_path
 
-    def _convert_dependency_path(self, key: str) -> str:
-        if key in self.base_settings.dependency_dict:
-            return self.base_settings.dependency_dict[key]
-        return key
-
     def add_dependency(self, qpc_path: str) -> None:
-        new_qpc_path = self._convert_dependency_path(qpc_path)
-        qpc_path = new_qpc_path if new_qpc_path else posix_path(self._add_dependency_ext(qpc_path))
+        qpc_path = posix_path(self._add_dependency_ext(qpc_path))
         if qpc_path != self.project_path:
             self.dependencies.add(qpc_path)
 
     def remove_dependency(self, qpc_path: str) -> None:
-        new_qpc_path = self._convert_dependency_path(qpc_path)
-        qpc_path = new_qpc_path if new_qpc_path else posix_path(self._add_dependency_ext(qpc_path))
+        qpc_path = posix_path(self._add_dependency_ext(qpc_path))
         if qpc_path in self.dependencies:
             self.dependencies.remove(qpc_path)
 
     def add_dependencies(self, *qpc_paths) -> None:
-        [self.add_dependency(qpc_path) for qpc_path in qpc_paths]
+        map(self.add_dependency, qpc_paths)
+        # [self.add_dependency(qpc_path) for qpc_path in qpc_paths]
 
     def remove_dependencies(self, *qpc_paths) -> None:
-        [self.remove_dependency(qpc_path) for qpc_path in qpc_paths]
+        map(self.remove_dependency, qpc_paths)
+        # [self.remove_dependency(qpc_path) for qpc_path in qpc_paths]
     
     def get_editor_folders(self) -> set:
         folder_paths = set()
-        for project in self.projects:
-            folder_paths.update(project.get_editor_folders())
+        map(folder_paths.update, map(operator.methodcaller("get_editor_folders"), self._passes))
+        # [folder_paths.update(project.get_editor_folders()) for project in self._passes]
         return folder_paths
     
     def get_folders(self) -> set:
         folder_paths = set()
-        for project in self.projects:
-            folder_paths.update(project.get_folders())
+        [folder_paths.update(project.get_folders()) for project in self._passes]
         return folder_paths
 
     def get_display_name(self) -> str:
@@ -323,10 +345,13 @@ class Project:
 
 
 class Configuration:
-    def __init__(self, project_pass: ProjectPass):
-        self._project = project_pass
+    def __init__(self, project: ProjectBase):
+        self._project = project
         # self.debug = Debug()
-        self.general = General(project_pass.platform)
+        if "platform" in project.__dict__:
+            self.general = General(project.platform)
+        else:
+            self.general = General(None)
         self.compiler = ConfigCompiler()
         self.linker = Linker()
         self.pre_build = []
@@ -376,7 +401,12 @@ class General:
         # won't work, so im just leaving it as it is for now, hopefully i can get something better later on
         self.configuration_type = None
         self.language = None
-        self.compiler = Compiler.MSVC_142 if platform in {Platform.WIN32, Platform.WIN64} else Compiler.GCC_9
+        if platform is None:
+            self.compiler = None
+        elif platform in {Platform.WIN32, Platform.WIN64}:
+            self.compiler = Compiler.MSVC_142
+        else:
+            self.compiler = Compiler.GCC_9
         
         self.default_include_directories = True
         self.default_library_directories = True
