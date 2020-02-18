@@ -66,7 +66,7 @@ PLATFORM_DICT = {
 
 def get_platform_name(platform: Enum) -> Enum:
     for platform_name in PLATFORM_DICT:
-        if platform in PLATFORM_DICT:
+        if platform in PLATFORM_DICT[platform_name]:
             return platform_name
 
 
