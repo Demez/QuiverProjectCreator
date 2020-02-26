@@ -211,6 +211,7 @@ class Parser:
                     project_def = unsorted_projects[project_block.values[0]]
                 else:
                     project_def = ProjectDefinition(project_block.values[0])
+                    unsorted_projects[project_block.values[0]] = project_def
                 project_def.platforms.add(info.platform)
     
                 # could have values next to it as well now
