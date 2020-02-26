@@ -327,8 +327,7 @@ class ProjectContainer:
     
     def get_editor_folders(self) -> set:
         folder_paths = set()
-        map(folder_paths.update, map(operator.methodcaller("get_editor_folders"), self._passes))
-        # [folder_paths.update(project.get_editor_folders()) for project in self._passes]
+        [folder_paths.update(project.get_editor_folders()) for project in self._passes]
         return folder_paths
     
     def get_folders(self) -> set:
