@@ -111,6 +111,7 @@ class ProjectGroup:
             project_def = unsorted_projects[project_name]
             if not project_def.group_folder_list:
                 project_def.group_folder_list = tuple(folder_list)
+            self.project_defined(project_def)
         else:
             project_def = ProjectDefinition(project_name, *folder_list)
             unsorted_projects[project_name] = project_def
