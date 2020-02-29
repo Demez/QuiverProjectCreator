@@ -465,7 +465,7 @@ class General:
 class ConfigCompiler:
     def __init__(self):
         self.preprocessor_definitions = []
-        self.precompiled_header = PrecompiledHeader.NONE
+        self.precompiled_header = None  # PrecompiledHeader.NONE
         self.precompiled_header_file = None
         self.precompiled_header_output_file = None
         self.options = []
