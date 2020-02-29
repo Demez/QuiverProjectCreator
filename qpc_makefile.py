@@ -56,7 +56,10 @@ def GenProjectTargets(conf):
     
     if True:  # conf.general.toolset_version == "gcc":
         lang_switch = {"c": "gcc", "cpp": "g++", "c++": "g++"}
-        compiler = lang_switch[conf.general.language]
+        try:
+            compiler = lang_switch[conf.general.language]
+        except KeyError:
+            compiler = "g++"
     
     if conf.general.configuration_type == "application":
         makefile += f"{target_name}: __PREBUILD $(OBJECTS) $(FILES) __PRELINK\n"
@@ -84,12 +87,12 @@ def GenDependencyTree(objects, headers, conf):
     if conf.general.configuration_type == "shared_library":
         pic = "-fPIC"
     for obj in objects.keys():
-        makefile += f"\n{obj}: {objects[obj]} {' '.join(cp.GetIncludes(objects[obj]))}\n"
+        makefile += f"\n{obj}: {objects[obj]} {' '.join(cp.GetIncludes(objects[obj], conf.general.include_directories))}\n"
         makefile += f"\t@echo '$(CYAN)Building Object {objects[obj]}$(NC)'\n"
         makefile += f"\t@$(TOOLSET-VERSION) -c {pic} -o $@ {objects[obj]} {GenGnuCFlags(conf, libs=False)}\n"
     
     for h in headers:
-        makefile += f"\n{h}: {' '.join(cp.GetIncludes(h))}\n"
+        makefile += f"\n{h}: {' '.join(cp.GetIncludes(h, conf.general.include_directories))}\n"
     
     return makefile
 
