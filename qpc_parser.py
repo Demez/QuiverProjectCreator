@@ -61,7 +61,8 @@ def get_platform_macros(platform: Enum) -> dict:
     
     
 class BaseInfoPlatform:
-    def __init__(self, base_file_path: str, platform: Enum):
+    def __init__(self, base_info, base_file_path: str, platform: Enum):
+        self.shared = base_info
         self.path = base_file_path
         self.platform = platform
         self.macros = {**get_arg_macros(), **get_platform_macros(platform)}
@@ -90,8 +91,8 @@ class BaseInfoPlatform:
         
         unwanted_projects = {}
         for removed_item in args.remove:
-            if removed_item in self.groups:
-                for project in self.groups[removed_item].projects:
+            if removed_item in self.shared.groups:
+                for project in self.shared.groups[removed_item].projects:
                     if project.name not in unwanted_projects:
                         unwanted_projects[project.name] = project
             
@@ -104,12 +105,12 @@ class BaseInfoPlatform:
         # TODO: clean up this mess
         if args.add:
             for added_item in args.add:
-                if added_item in self.groups:
+                if added_item in self.shared.groups:
                     if added_item not in args.remove:
                         
                         # TODO: move to another function
-                        for project in self.groups[added_item].projects:
-                            if project.name not in unwanted_projects:
+                        for project in self.shared.groups[added_item].projects:
+                            if self.platform in project.platforms and project.name not in unwanted_projects:
                                 for added_project in self.project_definitions:
                                     if added_project.name == project.name:
                                         break
@@ -140,7 +141,8 @@ class BaseInfo:
         self.platform_list = platform_list
         self.project_list = []
         self.unsorted_projects = {}
-        self.info_list = [BaseInfoPlatform(base_file_path, platform) for platform in platform_list]
+        self.groups = {}
+        self.info_list = [BaseInfoPlatform(self, base_file_path, platform) for platform in platform_list]
         
         self.project_hashes = {}
         self.project_dependencies = {}
@@ -181,11 +183,16 @@ class Parser:
         if args.verbose:
             print("\nParsing: " + args.base_file)
         
-        [self._parse_base_info_include(info.unsorted_projects, info_plat, base_file) for info_plat in info.info_list]
+        [self._parse_base_info_include(info_plat, base_file) for info_plat in info.info_list]
         info.get_wanted_projects()
         return info
     
-    def _parse_base_info_include(self, unsorted_projects: dict, info: BaseInfoPlatform, base_file: QPCBlockBase) -> None:
+    def _parse_base_info_include(self, info: BaseInfoPlatform, base_file: QPCBlockBase) -> None:
+        # group_list = base_file.get_items("group")
+        # project_list = base_file.get_items("project")
+        group_list = []
+        project_list = []
+        
         for project_block in base_file:
         
             if not project_block.solve_condition(info.macros):
@@ -207,30 +214,10 @@ class Parser:
                 continue
 
             elif project_block.key == "project":
-                if project_block.values[0] in unsorted_projects:
-                    project_def = unsorted_projects[project_block.values[0]]
-                else:
-                    project_def = ProjectDefinition(project_block.values[0])
-                    unsorted_projects[project_block.values[0]] = project_def
-                project_def.platforms.add(info.platform)
-    
-                # could have values next to it as well now
-                for script_path in project_block.values[1:]:
-                    script_path = replace_macros(script_path, info.macros)
-                    project_def.add_script(script_path)
-    
-                for item in project_block.items:
-                    if item.solve_condition(info.macros):
-                        project_def.add_script(replace_macros(item.key, info.macros))
-    
-                info.add_project(project_def)
+                self._base_project_define(project_block, info)
 
             elif project_block.key == "group":
-                for group in project_block.values:
-                    # do we have a group with this name already?
-                    project_group = info.groups[group] if group in info.groups else ProjectGroup(group)
-                    self._parse_project_group_items(unsorted_projects, project_group, info, project_block, [])
-                    info.groups[project_group.name] = project_group
+                self._base_group_define(project_block, info)
         
             elif project_block.key == "include":
                 # "Ah shit, here we go again."
@@ -244,22 +231,60 @@ class Parser:
                 if args.verbose:
                     print("Parsing... ")
             
-                self._parse_base_info_include(unsorted_projects, info, include_file)
+                self._parse_base_info_include(info, include_file)
 
             elif not args.hide_warnings:
                 project_block.warning("Unknown Key: ")
+                
+        # self._parse_base_groups(group_list, all_projects, info)
+        # self._parse_base_projects(project_list, all_projects, info)
+            
+    def _base_group_define(self, group_block: QPCBlock, info: BaseInfoPlatform):
+        for group in group_block.values:
+            # do we have a group with this name already?
+            if group in info.shared.groups:
+                project_group = info.shared.groups[group]
+            else:
+                project_group = ProjectGroup(group)
+                info.shared.groups[project_group.name] = project_group
+            self._parse_project_group_items(project_group, info, group_block, [])
+                
+    def _base_project_define(self, project_block: QPCBlock, info: BaseInfoPlatform):
+        if project_block.values[0] in info.shared.unsorted_projects:
+            project_def = info.shared.unsorted_projects[project_block.values[0]]
+        else:
+            project_def = ProjectDefinition(project_block.values[0])
+            info.shared.unsorted_projects[project_block.values[0]] = project_def
+        project_def.platforms.add(info.platform)
+
+        # could have values next to it as well now
+        for script_path in project_block.values[1:]:
+            script_path = replace_macros(script_path, info.macros)
+            project_def.add_script(script_path)
+
+        for item in project_block.items:
+            if item.solve_condition(info.macros):
+                project_def.add_script(replace_macros(item.key, info.macros))
+
+        info.add_project(project_def)
+                
+    @staticmethod
+    def _check_plat_condition(condition: str) -> bool:
+        cond = condition.lower()
+        return PlatformName.WINDOWS.name.lower() in cond or PlatformName.LINUX.name.lower() in cond or \
+            PlatformName.POSIX.name.lower() in cond or PlatformName.MACOS.name.lower() in cond
     
-    def _parse_project_group_items(self, unsorted_projects: dict, project_group: ProjectGroup,
-                                   info: BaseInfoPlatform, project_block: QPCBlock, folder_list: list) -> None:
+    def _parse_project_group_items(self, project_group: ProjectGroup, info: BaseInfoPlatform,
+                                   project_block: QPCBlock, folder_list: list) -> None:
         for item in project_block.items:
             if item.solve_condition(info.macros):
                 
                 if item.key == "folder":
                     folder_list.append(item.values[0])
-                    self._parse_project_group_items(unsorted_projects, project_group, info, item, folder_list)
+                    self._parse_project_group_items(project_group, info, item, folder_list)
                     folder_list.remove(item.values[0])
                 else:
-                    project_group.add_project(item.key, folder_list, unsorted_projects)
+                    project_group.add_project(item.key, folder_list, info.shared.unsorted_projects)
     
     def parse_project(self, project_def: ProjectDefinition, project_script: str, info: BaseInfo) -> ProjectContainer:
         if args.time:

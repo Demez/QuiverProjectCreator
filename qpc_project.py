@@ -97,11 +97,10 @@ class ProjectDefinition:
 class ProjectGroup:
     def __init__(self, group_name):
         self.name = group_name
-        self.projects = dict()  # dict keeps order, set doesn't as of 3.8, both faster than lists
-        # self._undef_projects = set()
-    
-    # def get_undef_projects(self):
-    #     return self._undef_projects
+        # dict keeps order, set doesn't as of 3.8, both faster than lists
+        self.includes = dict()  # groups to be merged into this one
+        self.groups_in = dict()  # groups that include this group
+        self.projects = dict()
     
     def project_defined(self, project_def: ProjectDefinition):
         self.projects[project_def] = None
@@ -110,10 +109,13 @@ class ProjectGroup:
     def add_project(self, project_name: str, folder_list: list, unsorted_projects: dict):
         if project_name in unsorted_projects:
             project_def = unsorted_projects[project_name]
+            if not project_def.group_folder_list:
+                project_def.group_folder_list = tuple(folder_list)
         else:
             project_def = ProjectDefinition(project_name, *folder_list)
             unsorted_projects[project_name] = project_def
         project_def.add_group(self)
+        # self.project_defined(project_def)
 
 
 class SourceFile:
@@ -336,7 +338,7 @@ class ProjectContainer:
         return folder_paths
 
     def get_display_name(self) -> str:
-        return self.macros["$PROJECT_NAME"]
+        return self._passes[0].macros["$PROJECT_NAME"]
 
 
 # TODO: maybe add some enums for options with specific values?
