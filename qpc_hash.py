@@ -235,7 +235,8 @@ def WriteHashFile(project_path: str, out_dir: str = "", hash_list=None, file_lis
         if arg_list:
             return '"' + '" "'.join(arg_list) + '"\n'
         return "\n"
-    
+    out_dir = "" if out_dir is None else out_dir
+
     with open(GetHashFilePath(project_path), mode="w", encoding="utf-8") as hash_file:
         # write the commands
         hash_file.write("commands\n{\n"
