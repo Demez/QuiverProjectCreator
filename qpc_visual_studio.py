@@ -414,11 +414,9 @@ def AddCompilerOptions(compiler_elem, compiler, general=None):
     # "IntrinsicFunctions"
     # "StringPooling"
     # "MinimalRebuild"
-    # "ExceptionHandling"
     # "BufferSecurityCheck"
     # "FunctionLevelLinking"
     # "EnableEnhancedInstructionSet"
-    # "FloatingPointModel"
     # "ForceConformanceInForLoopScope"
     # "RuntimeTypeInfo"
     # "OpenMPSupport"
@@ -463,6 +461,8 @@ COMPILER_OPTIONS = {
     "FavorSizeOrSpeed":             {"/Os": "Size",             "/Ot": "Speed"},
     "TreatWarningAsError":          {"/WX-": "false",           "/WX": "true"},
     "TreatWChar_tAsBuiltInType":    {"/Zc:wchar_t-": "false",   "/Zc:wchar_t": "true"},
+    "FloatingPointModel":           {"/fp:precise": "Precise", "/fp:strict": "Strict", "/fp:fast": "Fast"},
+    "ExceptionHandling":            {"/EHa": "Async", "/EHsc": "Sync", "/EHs": "SyncCThrow", "": "false"},
 }
 
 
