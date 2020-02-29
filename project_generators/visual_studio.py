@@ -687,7 +687,7 @@ def create_vcxproj_filters(project_list: ProjectContainer, project_passes: list,
 
 
 def create_folder_filters(proj_filters, project_list):
-    folder_list = project_list.get_display_name()
+    folder_list = project_list.get_editor_folders()
     if folder_list:
         item_group = et.SubElement(proj_filters, "ItemGroup")
         for folder in folder_list:
