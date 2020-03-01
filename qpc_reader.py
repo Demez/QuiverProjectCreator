@@ -35,13 +35,15 @@ class QPCBlockBase:
     def index(self, item):
         self.items.index(item)
     
-    def to_string(self, depth=0, quote_keys=False, quote_values=False, break_multi_value=False, break_on_key=False):
+    def to_string(self, quote_keys=False, quote_values=False, break_multi_value=False, break_on_key=False):
         final_string = ""
         for item in self.items:
-            final_string += item.to_string(depth, quote_keys) + "\n"
+            final_string += item.to_string(0, quote_keys, quote_values, break_multi_value, break_on_key) + "\n"
         return final_string
     
     def add_item(self, key: str, values: list, condition: str = "", line_num: int = 0):
+        if type(values) == str:
+            values = [values]
         sub_qpc = QPCBlock(self, key, values, condition, file_path=self.file_path, line_num=line_num)
         self.items.append(sub_qpc)
         return sub_qpc
@@ -135,11 +137,13 @@ class QPCBlock(QPCBlockBase):
         if self.values:
             for value_index, value in enumerate(self.values):
                 if quote_values:
-                    formatted_value = "{0}".format(value.replace("'", "\\'").replace('"', '\\"'))
+                    formatted_value = value.replace("'", "\\'").replace('"', '\\"')
                 else:
-                    formatted_value = "{0}".format(value.replace("'", "\\'"))
-                    formatted_value = "{0}".format(
-                        formatted_value[0] + formatted_value[1:-1].replace('"', '\\"') + formatted_value[-1])
+                    formatted_value = value.replace("'", "\\'")
+                    if formatted_value:
+                        formatted_value = formatted_value[0] + \
+                                          formatted_value[1:-1].replace('"', '\\"') + \
+                                          formatted_value[-1]
                 
                 if quote_values:
                     string += " \"{0}\"".format(formatted_value)
@@ -159,7 +163,7 @@ class QPCBlock(QPCBlockBase):
             
             string += "\n" + indent + "{\n"
             for item in self.items:
-                string += item.to_string(depth + 1, quote_keys) + "\n"
+                string += item.to_string(depth + 1, quote_keys, quote_values, break_multi_value, break_on_key) + "\n"
             string += indent + "}"
             
             if index < len(self.parent.items) - 1:
