@@ -34,7 +34,7 @@ class MakefileGenerator(BaseProjectGenerator):
         print("Creating: " + project.file_name + ".mak")
         compiler = get_compiler(project_passes[0].config.general.compiler,
                                 project_passes[0].config.general.language)
-        makefile = gen_defines(compiler)
+        makefile = gen_defines(compiler, project.base_info.get_base_info(self._platforms[0]).configurations)
         
         for p in project_passes:
             makefile += gen_project_config_definitions(p)
@@ -76,9 +76,7 @@ def gen_cflags(conf: Configuration, libs: bool = True, defs: bool = True, includ
 
 # TODO: add a non-gnu flag option (/ instead of --, etc)
 def gen_compile_exe(compiler, conf) -> str:
-    entry = ""
-    if not conf.linker.entry_point == "":
-        entry = f"-Wl,--entry={conf.linker.entry_point}"
+    entry = f"-Wl,--entry={conf.linker.entry_point}" if conf.linker.entry_point != "" else ""
     return f"@{compiler} -o $@ $(SOURCES) {entry} {gen_cflags(conf)}"
 
 
@@ -226,7 +224,7 @@ def get_compiler(compiler: Enum, language: Enum) -> str:
     return "g++"
 
 
-def gen_defines(compiler: str) -> str:
+def gen_defines(compiler: str, configs: list) -> str:
     return f"""#!/usr/bin/make -f
 
 
@@ -245,8 +243,8 @@ def gen_defines(compiler: str) -> str:
 
 # don't mess with this, might break stuff
 PLATFORM = {get_default_platform()}
-# change the config with CONFIG=[Release,Debug] to make
-CONFIG = Debug
+# change the config with CONFIG=[{','.join(configs)}] to make
+CONFIG = {configs[0]}
 # edit this in your QPC script configuration/general/compiler
 COMPILER = {compiler}
 
