@@ -261,7 +261,7 @@ class ProjectPass(ProjectBase):
     def __init__(self, container, config: str, platform_name: Enum, platform: Enum):
         self.config_name = config
         self.platform = platform
-        self.base_info = container.base_info.get_base_info(platform_name)
+        self.base_info = container.base_info.get_base_info_plat_name(platform_name)
         super().__init__(container)
         self.macros.update({**self.base_info.macros, "$" + config.upper(): "1", "$" + platform.name.upper(): "1"})
 
@@ -287,7 +287,7 @@ class ProjectContainer:
         
         self._passes = []
         for plat_name in project_def.platforms:
-            for config in base_info.get_base_info(plat_name).configurations:
+            for config in base_info.get_base_info_plat_name(plat_name).configurations:
                 for plat in PLATFORM_DICT[plat_name]:
                     self._passes.append(ProjectPass(self, config, plat_name, plat))
         # self.shared = ProjectBase(self)

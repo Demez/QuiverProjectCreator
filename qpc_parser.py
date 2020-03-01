@@ -3,7 +3,7 @@ import re
 import qpc_hash
 from qpc_reader import read_file, QPCBlock, QPCBlockBase
 from qpc_args import args, get_arg_macros
-from qpc_base import Platform, PlatformName, posix_path, PLATFORM_DICT
+from qpc_base import Platform, PlatformName, get_platform_name
 from qpc_project import ProjectContainer, ProjectPass, ProjectBase, ProjectDefinition, ProjectGroup, replace_macros
 import qpc_generator_handler
 from enum import EnumMeta, Enum, auto
@@ -75,7 +75,7 @@ class BaseInfoPlatform:
         self.all_projects = []
         self.undef_projects = {}
         self.dependency_dict = {}
-        self.configurations = set()
+        self.configurations = []
         self.projects_to_use = []
 
     def add_macro(self, project_block: QPCBlock):
@@ -147,7 +147,11 @@ class BaseInfo:
         self.project_hashes = {}
         self.project_dependencies = {}
 
-    def get_base_info(self, platform_name: Enum) -> BaseInfoPlatform:
+    def get_base_info(self, platform: Enum) -> BaseInfoPlatform:
+        if platform in Platform:
+            return self.get_base_info_plat_name(get_platform_name(platform))
+
+    def get_base_info_plat_name(self, platform_name: Enum) -> BaseInfoPlatform:
         for base_info in self.info_list:
             if base_info.platform == platform_name:
                 return base_info
@@ -202,7 +206,8 @@ class Parser:
                 info.add_macro(project_block)
         
             elif project_block.key == "configurations":
-                info.configurations.update(project_block.get_item_list_condition(info.macros))
+                configs = project_block.get_item_list_condition(info.macros)
+                [info.configurations.append(config) for config in configs if config not in info.configurations]
         
             # very rushed thing that could of been done with macros tbh
             elif project_block.key == "dependency_paths":

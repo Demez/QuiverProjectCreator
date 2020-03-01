@@ -378,7 +378,7 @@ def write_master_file_hash(project_path: str, base_info, platforms: list, genera
         hashes.add_item(QPC_GENERATOR_HASHES[generator_path], generator_path)
     
     info_list = set()
-    [info_list.add(base_info.get_base_info(get_platform_name(platform))) for platform in platforms]
+    [info_list.add(base_info.get_base_info(platform)) for platform in platforms]
     files = base_block.add_item("files", [])
     
     for info_platform in info_list:

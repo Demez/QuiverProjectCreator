@@ -102,7 +102,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
             
             config_plat_list = [config + "|" + convert_platform(plat)
                                 for plat in self._platforms
-                                for config in info.get_base_info(get_platform_name(plat)).configurations]
+                                for config in info.get_base_info(plat).configurations]
         
             # SolutionConfigurationPlatforms
             sln_config_plat = {}
