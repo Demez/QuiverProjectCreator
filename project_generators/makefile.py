@@ -78,7 +78,7 @@ def gen_cflags(conf: Configuration, libs: bool = True, defs: bool = True, includ
 def gen_compile_exe(compiler, conf) -> str:
     entry = ""
     if not conf.linker.entry_point == "":
-        entry = "-Wl,--entry={conf.linker.entry_point}"
+        entry = f"-Wl,--entry={conf.linker.entry_point}"
     return f"@{compiler} -o $@ $(SOURCES) {entry} {gen_cflags(conf)}"
 
 
