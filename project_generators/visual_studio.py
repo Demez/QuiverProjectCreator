@@ -16,6 +16,9 @@ class VisualStudioGenerator(BaseProjectGenerator):
         super().__init__("Visual Studio")
         self._add_platform(Platform.WIN32)
         self._add_platform(Platform.WIN64)
+        self._set_project_folders(True)
+        self._set_generate_master_file(True)
+        
         self.cpp_uuid = "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}"
         self.filter_uuid = "{2150E333-8FDC-42A3-9474-1A3956D46DE8}"
         self.project_uuid_dict = {}
@@ -58,14 +61,21 @@ class VisualStudioGenerator(BaseProjectGenerator):
         split_ext_path = os.path.splitext(project_out_dir)[0]
         return os.path.isfile(split_ext_path + ".vcxproj") and os.path.isfile(split_ext_path + ".vcxproj.filters")
     
-    def create_master_file(self, info: BaseInfo, master_file_path: str):
-        master_file_path += ".sln"
+    def does_master_file_exist(self, master_file_path: str) -> bool:
+        base_path, project_name = os.path.split(master_file_path)
+        split_ext_path = os.path.splitext(master_file_path)[0]
+        base_path += "/"
+        return os.path.isfile(split_ext_path + ".sln")
+
+    def get_master_file_path(self, master_file_path: str) -> str:
+        return master_file_path + ".sln"
     
+    def create_master_file(self, info: BaseInfo, master_file_path: str) -> str:
         print("Creating Solution File: " + master_file_path + "\n")
     
         # slow?
         self.out_dir_dict = {}
-        for hash_path, qpc_path in info.project_hashes.items():
+        for qpc_path, hash_path in info.project_hashes.items():
             self.out_dir_dict[qpc_path] = qpc_hash.get_out_dir(hash_path)
     
         with open(master_file_path, "w", encoding="utf-8") as self.solution_file:
@@ -118,20 +128,20 @@ class VisualStudioGenerator(BaseProjectGenerator):
                 if project_def.name not in self.project_uuid_dict:
                     continue
             
-                # projects
-                for folder_index, project_folder in enumerate(project_def.group_folder_list):
-                    if project_def.group_folder_list[-(folder_index + 1)] in self.project_folder_uuid:
+                # all_projects
+                for folder_index, project_folder in enumerate(project_def.folder_list):
+                    if project_def.folder_list[-(folder_index + 1)] in self.project_folder_uuid:
                         folder_uuid = self.project_folder_uuid[project_folder]
                         for project_uuid in self.project_uuid_dict[project_def.name]:
                             global_folder_uuid_dict[project_uuid] = folder_uuid
             
                 # sub folders, i have no clue how this works anymore and im not touching it unless i have to
-                if len(project_def.group_folder_list) > 1:
+                if len(project_def.folder_list) > 1:
                     folder_index = -1
-                    while folder_index < len(project_def.group_folder_list):
-                        project_sub_folder = project_def.group_folder_list[folder_index]
+                    while folder_index < len(project_def.folder_list):
+                        project_sub_folder = project_def.folder_list[folder_index]
                         try:
-                            project_folder = project_def.group_folder_list[folder_index - 1]
+                            project_folder = project_def.folder_list[folder_index - 1]
                         except IndexError:
                             break
                     
@@ -143,11 +153,12 @@ class VisualStudioGenerator(BaseProjectGenerator):
                             folder_index -= 1
         
             sln_write_section(self.solution_file, "NestedProjects", global_folder_uuid_dict, False)
-        
             self.solution_file.write("EndGlobal\n")
+            
+        return master_file_path
 
     def sln_project_def_loop(self, project_def, info):
-        for folder in project_def.group_folder_list:
+        for folder in project_def.folder_list:
             if folder not in self.project_folder_uuid:
                 self.project_folder_uuid[folder] = make_uuid()
         
@@ -567,11 +578,9 @@ def add_compiler_options(compiler_elem, compiler, general=None):
     # "IntrinsicFunctions"
     # "StringPooling"
     # "MinimalRebuild"
-    # "ExceptionHandling"
     # "BufferSecurityCheck"
     # "FunctionLevelLinking"
     # "EnableEnhancedInstructionSet"
-    # "FloatingPointModel"
     # "ForceConformanceInForLoopScope"
     # "RuntimeTypeInfo"
     # "OpenMPSupport"
@@ -616,6 +625,8 @@ COMPILER_OPTIONS = {
     "FavorSizeOrSpeed":             {"/Os": "Size",             "/Ot": "Speed"},
     "TreatWarningAsError":          {"/WX-": "false",           "/WX": "true"},
     "TreatWChar_tAsBuiltInType":    {"/Zc:wchar_t-": "false",   "/Zc:wchar_t": "true"},
+    "FloatingPointModel":           {"/fp:precise": "Precise", "/fp:strict": "Strict", "/fp:fast": "Fast"},
+    "ExceptionHandling":            {"/EHa": "Async", "/EHsc": "Sync", "/EHs": "SyncCThrow", "": "false"},
 }
 
 
@@ -818,7 +829,7 @@ def sln_write_section(solution_file, section_name, key_value_dict, is_post=False
 
 
 def get_project_dependencies(project_dict: dict, project_dependency_paths: set) -> dict:
-    project_list = set(project_dict.values())
+    project_list = set(project_dict.keys())
     project_dependencies = {}
     for dependency_path in project_dependency_paths:
         if dependency_path in project_list:

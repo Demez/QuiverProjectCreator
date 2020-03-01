@@ -36,10 +36,17 @@ class GeneratorHandler:
                 __import__("project_generators." + project_generator_name, locals(), globals())
                 self.project_generator_modules[project_generator_name] = \
                     str_to_class("project_generators." + project_generator_name)
+            else:
+                print("Warning: Invalid Generator: " + project_generator_name)
             
         self.project_generators = []
         for project_generator_type in inheritors(BaseProjectGenerator):
-            self.project_generators.append(project_generator_type())
+            project_generator = project_generator_type()
+            for generator_module in self.project_generator_modules.values():
+                if project_generator_type in generator_module.__dict__.values():
+                    project_generator.path = generator_module.__file__.replace("\\", "/")
+                    break
+            self.project_generators.append(project_generator)
             
     def get_generator_names(self) -> list:
         return [project_generator.output_type for project_generator in self.project_generators]
@@ -58,15 +65,4 @@ class GeneratorHandler:
         generator = self.get_generator(generator_name)
         if generator:
             return generator.does_project_exist(project_path)
-
-
-def find_master_file(file_path):
-    base_path, project_name = os.path.split(file_path)
-    split_ext_path = os.path.splitext(file_path)[0]
-    base_path += "/"
-    if "vstudio" in args.types:
-        if os.path.isfile(split_ext_path + ".sln"):
-            return True
-        else:
-            return False
 

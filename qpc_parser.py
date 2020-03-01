@@ -3,7 +3,7 @@ import re
 import qpc_hash
 from qpc_reader import read_file, QPCBlock, QPCBlockBase
 from qpc_args import args, get_arg_macros
-from qpc_base import Platform, PlatformName, posix_path
+from qpc_base import Platform, PlatformName, posix_path, PLATFORM_DICT
 from qpc_project import ProjectContainer, ProjectPass, ProjectBase, ProjectDefinition, ProjectGroup, replace_macros
 import qpc_generator_handler
 from enum import EnumMeta, Enum, auto
@@ -72,22 +72,22 @@ class BaseInfoPlatform:
             [print('Set Macro: {0} = "{1}"'.format(name, value)) for name, value in self.macros.items()]
         
         self.groups = {}
-        self.projects = []
+        self.all_projects = []
         self.undef_projects = {}
         self.dependency_dict = {}
         self.configurations = set()
-        self.project_definitions = []
+        self.projects_to_use = []
 
     def add_macro(self, project_block: QPCBlock):
         self.macros["$" + project_block.values[0].upper()] = replace_macros(project_block.values[1], self.macros)
     
     def add_project(self, project: ProjectDefinition):
         project.update_groups()
-        self.projects.append(project)
+        self.all_projects.append(project)
         
     # get all the _passes the user wants (this is probably the worst part in this whole project)
     def get_wanted_projects(self) -> list:
-        self.project_definitions = []
+        self.projects_to_use = []
         
         unwanted_projects = {}
         for removed_item in args.remove:
@@ -97,7 +97,7 @@ class BaseInfoPlatform:
                         unwanted_projects[project.name] = project
             
             else:
-                for project in self.projects:
+                for project in self.all_projects:
                     if project.name == removed_item:
                         unwanted_projects[project.name] = project
                         break
@@ -111,28 +111,28 @@ class BaseInfoPlatform:
                         # TODO: move to another function
                         for project in self.shared.groups[added_item].projects:
                             if self.platform in project.platforms and project.name not in unwanted_projects:
-                                for added_project in self.project_definitions:
+                                for added_project in self.projects_to_use:
                                     if added_project.name == project.name:
                                         break
                                 else:
-                                    self.project_definitions.append(project)
+                                    self.projects_to_use.append(project)
                 
                 else:
                     if added_item not in args.remove:
-                        for project in self.projects:
+                        for project in self.all_projects:
                             if added_item == project.name:
-                                for added_project in self.project_definitions:
+                                for added_project in self.projects_to_use:
                                     if added_project.name == project.name:
                                         break
                                 else:
-                                    self.project_definitions.append(project)
+                                    self.projects_to_use.append(project)
                                     continue
                     # else:
                     # print("hey this item doesn't exist: " + added_item)
         else:
-            raise Exception("No projects were added to generate for")
+            raise Exception("No all_projects were added to generate for")
         
-        return self.project_definitions
+        return self.projects_to_use
 
 
 class BaseInfo:
@@ -147,9 +147,9 @@ class BaseInfo:
         self.project_hashes = {}
         self.project_dependencies = {}
 
-    def get_base_info(self, platform: Enum):
+    def get_base_info(self, platform_name: Enum) -> BaseInfoPlatform:
         for base_info in self.info_list:
-            if base_info.platform == platform:
+            if base_info.platform == platform_name:
                 return base_info
 
     # get all the _passes the user wants (this is probably the worst part in this whole project)

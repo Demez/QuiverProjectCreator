@@ -67,28 +67,23 @@ class Language(Enum):
 class ProjectDefinition:
     def __init__(self, project_name: str, *folder_list):
         self.name = project_name
-        self.script_list = set()
+        self.script_list = dict()  # dict keeps order set doesn't
         self.platforms = set()
         self.groups = set()  # could be a list, depends on which is faster here, x in set? or for x in list?
         
         # this is just so it stops changing this outside of the function
-        self.group_folder_list = folder_list
+        self.folder_list = folder_list
         
     # group is ProjectGroup, right below
-    def add_group(self, group):
+    def add_group(self, group) -> None:
         self.groups.add(group)
-        # if self not in self.groups:
-        #     self.groups.add(group)
-        # else:
-        #     print("project already in group?")
         
-    def update_groups(self):
+    def update_groups(self) -> None:
         # list would be faster here
-        for group in self.groups:
-            group.project_defined(self)
+        [group.project_defined(self) for group in self.groups]
     
     def add_script(self, script_path: str) -> None:
-        self.script_list.add(posix_path(script_path))
+        self.script_list[posix_path(script_path)] = None
     
     def add_script_list(self, script_list) -> None:
         [self.add_script(script_path) for script_path in script_list]
@@ -98,25 +93,21 @@ class ProjectGroup:
     def __init__(self, group_name):
         self.name = group_name
         # dict keeps order, set doesn't as of 3.8, both faster than lists
-        self.includes = dict()  # groups to be merged into this one
-        self.groups_in = dict()  # groups that include this group
         self.projects = dict()
     
-    def project_defined(self, project_def: ProjectDefinition):
+    def project_defined(self, project_def: ProjectDefinition) -> None:
         self.projects[project_def] = None
-        # self.projects.add(project_def)
     
-    def add_project(self, project_name: str, folder_list: list, unsorted_projects: dict):
+    def add_project(self, project_name: str, folder_list: list, unsorted_projects: dict) -> None:
         if project_name in unsorted_projects:
             project_def = unsorted_projects[project_name]
-            if not project_def.group_folder_list:
-                project_def.group_folder_list = tuple(folder_list)
+            if not project_def.folder_list:
+                project_def.folder_list = tuple(folder_list)
             self.project_defined(project_def)
         else:
             project_def = ProjectDefinition(project_name, *folder_list)
             unsorted_projects[project_name] = project_def
         project_def.add_group(self)
-        # self.project_defined(project_def)
 
 
 class SourceFile:
@@ -145,7 +136,7 @@ class ProjectBase:
 
         self._replace_undefined_macros()
     
-    def _replace_undefined_macros(self):
+    def _replace_undefined_macros(self) -> None:
         # this could probably be sped up
         # TODO: add scanning of files and certain config info
         for macro, value in self.macros.items():
@@ -175,7 +166,7 @@ class ProjectBase:
                     check_if_file_exists(file_path, file_block.warning)
                     self.files[file_path] = "/".join(folder_list)
     
-    def remove_file(self, file_block: QPCBlock):
+    def remove_file(self, file_block: QPCBlock) -> None:
         for file_path in file_block.values:
             file_path = self.replace_macros(file_path)
             if os.path.splitext(file_path)[1] in EXTS_C:
@@ -303,6 +294,11 @@ class ProjectContainer:
         
     def get_passes(self, platforms) -> list:
         return [project_pass for project_pass in self._passes if project_pass.platform in platforms]
+    
+    def get_hashes(self) -> dict:
+        hash_dict = {}
+        [hash_dict.update(**project_pass.hash_list) for project_pass in self._passes]
+        return hash_dict
 
     @staticmethod
     def _add_dependency_ext(qpc_path: str) -> str:
@@ -310,6 +306,8 @@ class ProjectContainer:
             qpc_path = os.path.splitext(qpc_path)[0] + ".qpc"
         return qpc_path
 
+    # IDEA: maybe we can use the dependency paths block to look if there's any libs with the same name
+    #  and add the dependency for that automatically
     def add_dependency(self, qpc_path: str) -> None:
         qpc_path = posix_path(self._add_dependency_ext(qpc_path))
         if qpc_path != self.project_path:

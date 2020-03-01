@@ -24,6 +24,7 @@ class MakefileGenerator(BaseProjectGenerator):
         self._add_platform(Platform.LINUX32)
         self._add_platform(Platform.LINUX64)
         self._add_platform(Platform.MACOS)
+        self._set_generate_master_file(False)
 
     def create_project(self, project: ProjectContainer) -> None:
         project_passes = project.get_passes(self._platforms)
@@ -44,10 +45,17 @@ class MakefileGenerator(BaseProjectGenerator):
     def does_project_exist(self, project_out_dir: str) -> bool:
         return os.path.isfile(os.path.splitext(project_out_dir)[0] + ".mak")
 
-    def create_master_file(self, info: BaseInfo, master_file_path: str) -> None:
+    def get_master_file_path(self, master_file_path: str) -> str:
+        pass
+
+    def create_master_file(self, info: BaseInfo, master_file_path: str) -> str:
         # do stuff with info.project_dependencies here
+        # also return file name or abspath or whatever
         pass
     
+    def does_master_file_exist(self, master_file_path: str) -> bool:
+        return True
+
 
 def make_ifeq(a, b, body) -> str:
     return f"\nifeq ({a},{b})\n{body}\nendif\n"

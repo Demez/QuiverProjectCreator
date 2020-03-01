@@ -7,22 +7,16 @@ import os
 import sys
 
 from enum import Enum
-import qpc_hash
 import qpc_reader
 from qpc_generator_handler import GeneratorHandler
 from qpc_parser import Parser
 from qpc_args import args
 from qpc_base import BaseProjectGenerator, PLATFORM_DICT
+from qpc_hash import (check_hash, check_master_file_hash, write_project_hash, write_master_file_hash,
+                      get_project_dependencies, get_hash_file_path)
 
 if args.time:
     from time import perf_counter
-
-
-def SetProjectTypeMacros(base_macros, project_types_list):
-    for name in project_types_list:
-        base_macros["$" + name.name.upper()] = "1"
-        if args.verbose:
-            print('Set Macro: ${0} = "1"'.format(name.upper()))
 
 
 def get_platform_list() -> list:
@@ -103,12 +97,9 @@ def main():
     for project_def in info.project_list:
         for project_script in project_def.script_list:
             print()
-            # only run if the hash check fails or if the user force creates the _projects
-            # may look in the hash for where the project output directory is
-            if args.force or \
-                    not check_project_exists(project_script, generator_list) or \
-                    not qpc_hash.check_hash(project_script):
-
+            # only run if the hash check fails or if the user force creates projects
+            # may look in the hash for where the project output directory is in the future
+            if args.force or not check_project_exists(project_script, generator_list) or not check_hash(project_script):
                 project_dir = os.path.split(project_script)[0]
 
                 if project_dir != args.root_dir:
@@ -122,24 +113,27 @@ def main():
 
                 info.project_dependencies[project_script] = project.dependencies
 
-                qpc_hash.write_hash_file(project_script, project.out_dir, project.hash_dict,
-                                         dependencies=project.dependencies)
+                write_project_hash(project_script, project.out_dir, project.get_hashes(), project.dependencies)
             else:
-                info.project_dependencies[project_script] = qpc_hash.get_project_dependencies(project_script)
+                info.project_dependencies[project_script] = get_project_dependencies(project_script)
                 
-            info.project_hashes[qpc_hash.get_hash_file_path(project_script)] = project_script
+            info.project_hashes[project_script] = get_hash_file_path(project_script)
 
     if args.time:
-        print("\nFinished Parsing Projects" +
+        print("\nFinished Parsing Projects"
               "\n\tTime: " + str(round(perf_counter() - start_time, 4)) +
               "\n\tParse Count: " + str(parser.counter))
 
     if args.master_file:
         print()
         # TODO: this won't rebuild the master file if the project groups "includes" are changed
-
         for generator in generator_list:
-            generator.create_master_file(info, args.master_file)
+            if not generator.generates_master_file():
+                continue
+            file_path = generator.get_master_file_path(args.master_file)
+            if not os.path.isfile(file_path) or not check_master_file_hash(file_path, info, generator.uses_folders()):
+                generator.create_master_file(info, file_path)
+                write_master_file_hash(file_path, info, generator.get_supported_platforms(), generator.path)
 
 
 if __name__ == "__main__":
@@ -150,6 +144,6 @@ if __name__ == "__main__":
     
     main()
     
-    print("----------------------------------\n"
+    print("\n----------------------------------\n"
           " Finished\n"
           "----------------------------------\n")
