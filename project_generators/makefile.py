@@ -76,7 +76,10 @@ def gen_cflags(conf: Configuration, libs: bool = True, defs: bool = True, includ
 
 # TODO: add a non-gnu flag option (/ instead of --, etc)
 def gen_compile_exe(compiler, conf) -> str:
-    return f"@{compiler} -o $@ $(SOURCES) {gen_cflags(conf)}"
+    entry = ""
+    if not conf.linker.entry_point == "":
+        entry = "-Wl,--entry={conf.linker.entry_point}"
+    return f"@{compiler} -o $@ $(SOURCES) {entry} {gen_cflags(conf)}"
 
 
 def gen_compile_dyn(compiler, conf) -> str:
