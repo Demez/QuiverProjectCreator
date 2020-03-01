@@ -1,45 +1,37 @@
 import re
 import os.path
 
-include_pattern = re.compile(r"^[ \t]*#include[ \t]+[\"<]([a-zA-Z0-9\-_\.\/]+)[\">]")
+include_pattern = re.compile(br"^[ \t]*#include[ \t]+[\"<]([a-zA-Z0-9\-_\./\\]+)[>\"]")
+
+INCLUDE_DICT = {}
 
 
-# speeds up this function by an insane amount
-INCLUDE_DICT = {
-    # "file_path": ["include list"]
-}
-
-
-def decode(data) -> str:
+def get_includes(file_path: str, include_dirs: list = None) -> list:
     try:
-        return data.decode("UTF-8")
-    except UnicodeDecodeError:
-        try:
-            return data.decode("ASCII")
-        except UnicodeDecodeError:
-            return data.decode("ANSI")
-
-
-def get_includes(file_path: str) -> list:
-    try:
-        if file_path in INCLUDE_DICT:
-            return INCLUDE_DICT[file_path]
-        INCLUDE_DICT[file_path] = _get_includes(file_path)
         return INCLUDE_DICT[file_path]
-    except UnicodeDecodeError as F:
-        print("UnicodeDecodeError: " + str(F) +
-              "\nFile: " + file_path)
-        return []
+    except KeyError:
+        INCLUDE_DICT[file_path] = _get_includes(file_path, include_dirs)
+        return INCLUDE_DICT[file_path]
 
 
-def _get_includes(file_path: str) -> list:
+def _get_includes(file_path: str, include_dirs: list = None) -> list:
     includes = []
-    with open(file_path, 'rb') as f:
-        data = f.read()
-    text = decode(data)
-    lines = text.splitlines()
+    include_dirs = [] if include_dirs is None else include_dirs
+    
+    try:
+        with open(file_path, 'rb') as f:
+            lines = f.read().splitlines()
+    except FileNotFoundError:
+        print(f"Warning: File does not exist: {file_path}")
+        return []
+    
     for line in lines:
-        m = include_pattern.match(line)
-        if m and os.path.isfile(m.group(1)):
-            includes.append(m.group(1))
+        match = include_pattern.match(line)
+        if match:
+            header = match.group(1).decode()
+            for include_dir in include_dirs:
+                header_path = include_dir + "/" + header
+                if os.path.isfile(header_path):
+                    includes.append(header_path)
+                    break
     return includes

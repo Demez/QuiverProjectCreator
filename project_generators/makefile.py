@@ -47,7 +47,7 @@ class MakefileGenerator(BaseProjectGenerator):
     def create_master_file(self, info: BaseInfo, master_file_path: str) -> None:
         # do stuff with info.project_dependencies here
         pass
-
+    
 
 def make_ifeq(a, b, body) -> str:
     return f"\nifeq ({a},{b})\n{body}\nendif\n"
@@ -118,12 +118,12 @@ def gen_dependency_tree(objects, headers, conf: Configuration) -> str:
         pic = "-fPIC"
         
     for obj, path in objects.items():
-        makefile += f"\n{obj}: {path} {' '.join(cp.get_includes(path))}\n"
+        makefile += f"\n{obj}: {path} {' '.join(cp.get_includes(path, conf.general.include_directories))}\n"
         makefile += f"\t@echo '$(CYAN)Building Object {path}$(NC)'\n"
         makefile += f"\t@$(COMPILER) -c {pic} -o $@ {path} {gen_cflags(conf, libs=False)}\n"
     
     for h in headers:
-        makefile += f"\n{h}: {' '.join(cp.get_includes(h))}\n"
+        makefile += f"\n{h}: {' '.join(cp.get_includes(h, conf.general.include_directories))}\n"
     
     return makefile
 
