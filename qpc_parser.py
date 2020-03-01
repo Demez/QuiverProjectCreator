@@ -336,9 +336,10 @@ class Parser:
                     # Ah shit, here we go again.
                     include_path = project.replace_macros(project_block.values[0])
                     include_file = self._include_file(include_path, project, project_file.file_path, indent + "    ")
-                    self._parse_project(include_file, project, indent + "    ")
-                    if args.verbose:
-                        print(indent + "    " + "Finished Parsing")
+                    if include_file:
+                        self._parse_project(include_file, project, indent + "    ")
+                        if args.verbose:
+                            print(indent + "    " + "Finished Parsing")
             
                 elif not args.hide_warnings:
                     project_block.warning("Unknown key: ")
@@ -348,8 +349,8 @@ class Parser:
         include_file = self.read_file(include_path)
     
         if not include_file:
-            raise FileNotFoundError(
-                "File does not exist:\n\tScript: {0}\n\tFile: {1}".format(project_path, include_path))
+            print("File does not exist:\n\tScript: {0}\n\tFile: {1}".format(project_path, include_path))
+            return None
     
         if args.verbose:
             print(indent + "Parsing: " + include_path)
@@ -408,9 +409,12 @@ class Parser:
         if script_path in self.read_files:
             return self.read_files[script_path]
         else:
-            script = read_file(script_path)
-            self.read_files[script_path] = script
-            return script
+            try:
+                script = read_file(script_path)
+                self.read_files[script_path] = script
+                return script
+            except FileNotFoundError:
+                pass
     
     # awful
     @staticmethod
