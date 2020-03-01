@@ -29,9 +29,9 @@ def parse_args():
     cmd_parser.add_argument("--outdir", "-o", default="", dest="out_dir",
                             help="Output directory of qpc scripts with edited folder paths")
     
-    # TODO: remove this awful command and use a macro from the project instead
-    cmd_parser.add_argument("--project_dir", action="store_true",
-                            help="Output project files based on PROJECT_DIR macro, relative to master_file dir")
+    # TODO: test this
+    # cmd_parser.add_argument("--projectdir", action="store_true",
+    #                         help="Output project files based on PROJECT_DIR macro, relative to root dir probably")
 
     cmd_parser.add_argument("--time", "-t", action="store_true", help="Print the time taken to parse")
     cmd_parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose console output")
@@ -41,7 +41,7 @@ def parse_args():
     cmd_parser.add_argument("--checkfiles", "-c", dest="check_files", action="store_true", help="Check if any added file exists")
     
     cmd_parser.add_argument("--platforms", "-p", nargs="+", default=get_default_platforms(), choices=platforms,
-                            help="Select plaforms to generate for instead of default")
+                            help="Select platforms to generate for instead of the default")
     cmd_parser.add_argument("--generators", "-g", nargs="+", default=(), choices=PROJECT_GENERATORS, help="Project types to generate")
     cmd_parser.add_argument("--add", "-a", nargs="+", default=(), help="Add projects or groups to generate")
     cmd_parser.add_argument("--remove", "-r", default=(), nargs="+", help="Remove projects or groups from generating")

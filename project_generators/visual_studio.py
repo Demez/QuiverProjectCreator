@@ -209,6 +209,8 @@ def make_uuid():
 
 def get_out_dir(project) -> str:
     out_dir = ""  # os.path.split(project.project_path)[0]
+    # TODO: actually test this and see if it works just fine, it should
+    '''
     if args.project_dir:
         try:
             out_dir = posix_path(project.projects[0].macros["$PROJECT_DIR"])
@@ -216,6 +218,7 @@ def get_out_dir(project) -> str:
             #    out_dir += "/"
         except KeyError:
             pass
+    '''
     return out_dir
 
 
