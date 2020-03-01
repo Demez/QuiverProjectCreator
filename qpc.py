@@ -68,10 +68,19 @@ def get_generators(generator_handler: GeneratorHandler, platform: Enum) -> list:
     return generator_list
 
 
-def check_project_exists(project_script: str, generator_list: list) -> bool:
+def check_platforms(platform_list: list, generator_platforms: list) -> set:
+    has_valid_platforms = set()
+    for platform in platform_list:
+        # intersection is if any items in a set is in another set
+        has_valid_platforms.update(PLATFORM_DICT[platform].intersection(set(generator_platforms)))
+    return has_valid_platforms
+
+
+def check_project_exists(project_script: str, platforms: list, generator_list: list) -> bool:
     for generator in generator_list:
-        if not generator.does_project_exist(project_script):
-            return False
+        if check_platforms(platforms, generator.get_supported_platforms()):
+            if not generator.does_project_exist(project_script):
+                return False
     return True
 
 
@@ -99,7 +108,8 @@ def main():
             print()
             # only run if the hash check fails or if the user force creates projects
             # may look in the hash for where the project output directory is in the future
-            if args.force or not check_project_exists(project_script, generator_list) or not check_hash(project_script):
+            if args.force or not check_project_exists(project_script, project_def.platforms, generator_list) \
+                    or not check_hash(project_script):
                 project_dir = os.path.split(project_script)[0]
 
                 if project_dir != args.root_dir:
