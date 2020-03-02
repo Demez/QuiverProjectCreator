@@ -172,7 +172,7 @@ class QPCBlock(QPCBlockBase):
         return string
     
     def get_list(self) -> tuple:
-        return self.key, *self.values
+        return (self.key, *self.values)  # need parenthesis for python versions older than 3.8
     
     def solve_condition(self, macros: dict) -> int:
         return solve_condition(self.condition, macros)
