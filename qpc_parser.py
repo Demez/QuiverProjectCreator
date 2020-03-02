@@ -304,6 +304,7 @@ class Parser:
         project_container = ProjectContainer(project_name, project_script, info, project_def)
         
         for project_pass in project_container._passes:
+            project_pass.hash_list[project_filename] = qpc_hash.make_hash(project_filename)
             self._parse_project(project_block, project_pass)
             self.counter += 1
 
