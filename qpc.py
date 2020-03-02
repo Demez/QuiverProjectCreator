@@ -112,13 +112,13 @@ def main():
                     or not check_hash(project_script):
                 project_dir = os.path.split(project_script)[0]
 
-                if project_dir != args.root_dir:
+                if project_dir and project_dir != args.root_dir:
                     os.chdir(project_dir)
                 
                 project = parser.parse_project(project_def, project_script, info)
                 [generator.create_project(project) for generator in generator_list]
                 
-                if project_dir != args.root_dir:
+                if project_dir and project_dir != args.root_dir:
                     os.chdir(args.root_dir)
 
                 info.project_dependencies[project_script] = project.dependencies
