@@ -82,6 +82,8 @@ def _get_enum_from_name(enum_name: str, enum_list: EnumMeta) -> Enum:
 
 # convert stuff in args to the enum value
 def _convert_to_enum(arg_list: list, enum_list: EnumMeta) -> list:
+    if type(arg_list) == tuple:
+        return arg_list
     for index, value in enumerate(arg_list):
         arg_list[index] = _get_enum_from_name(value, enum_list)
     return arg_list
