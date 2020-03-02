@@ -5,7 +5,7 @@ import qpc_hash
 import lxml.etree as et
 from time import perf_counter
 from qpc_args import args
-from qpc_base import BaseProjectGenerator, add_dict_value, Platform, posix_path, PLATFORM_DICT, get_platform_name
+from qpc_base import BaseProjectGenerator, add_dict_value, Platform  # , posix_path, PLATFORM_DICT, get_platform_name
 from qpc_project import Compiler, PrecompiledHeader, ConfigType, Language, ProjectContainer, ProjectPass
 from qpc_parser import BaseInfo
 from enum import Enum
@@ -25,6 +25,8 @@ class VisualStudioGenerator(BaseProjectGenerator):
         self.project_folder_uuid = {}
         self.out_dir_dict = {}
 
+    # TODO: move most of this stuff to a vs_cpp file, so you can also do c# here
+    #  though you did have most of the cpp stuff in separate functions, so it should be easy to move and add C# support
     def create_project(self, project_list: ProjectContainer) -> None:
         project_passes = project_list.get_passes(self._platforms)
         if not project_passes:
@@ -496,13 +498,13 @@ def setup_item_definition_groups(vcxproj: et.Element, project_passes: list):
         # PreBuildEvent, PostBuildEvent PreLinkEvent
         
         if cfg.pre_build:
-            et.SubElement(et.SubElement(item_def_group, "PreBuildEvent"), "Command").text = ' '.join(cfg.pre_build)
+            et.SubElement(et.SubElement(item_def_group, "PreBuildEvent"), "Command").text = '\n'.join(cfg.pre_build)
 
         if cfg.post_build:
-            et.SubElement(et.SubElement(item_def_group, "PostBuildEvent"), "Command").text = ' '.join(cfg.post_build)
+            et.SubElement(et.SubElement(item_def_group, "PostBuildEvent"), "Command").text = '\n'.join(cfg.post_build)
 
         if cfg.pre_link:
-            et.SubElement(et.SubElement(item_def_group, "PreLinkEvent"), "Command").text = ' '.join(cfg.pre_link)
+            et.SubElement(et.SubElement(item_def_group, "PreLinkEvent"), "Command").text = '\n'.join(cfg.pre_link)
 
 
 # TODO: this needs to have some default visual studio info,

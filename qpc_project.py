@@ -359,7 +359,9 @@ class Configuration:
         self.post_build = []
         
     def add_build_event_options(self, group_block: QPCBlock, option_block: QPCBlock):
-        value = replace_macros(' '.join(option_block.values), self._project.macros)
+        value = replace_macros(option_block.key, self._project.macros)
+        if option_block.values:
+            value += " " + replace_macros(" ".join(option_block.values), self._project.macros)
         if value:
             # TODO: improve this, what if \\n is used in the file? it would just become \ and then new line, awful
             value = value.replace("\\n", "\n")
