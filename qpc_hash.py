@@ -1,8 +1,9 @@
 import hashlib
 import qpc_reader
-from qpc_args import args, PROJECT_GENERATORS
+from qpc_args import args
 from qpc_base import posix_path, get_platform_name, QPC_DIR, QPC_GENERATOR_DIR
 from qpc_reader import QPCBlockBase, QPCBlock
+from qpc_generator_handler import GENERATOR_PATHS, GENERATOR_LIST
 import os
 
 
@@ -56,8 +57,9 @@ QPC_GENERATOR_HASHES = {}
 for file in BASE_QPC_HASH_LIST:
     QPC_BASE_HASHES[QPC_DIR + file] = make_hash(QPC_DIR + file)
     
-for file in PROJECT_GENERATORS:
-    QPC_GENERATOR_HASHES[QPC_GENERATOR_DIR + file + ".py"] = make_hash(QPC_GENERATOR_DIR + file + ".py")
+for file in GENERATOR_LIST:
+    generator = f"{QPC_GENERATOR_DIR}/{file}/{file}.py"
+    QPC_GENERATOR_HASHES[generator] = make_hash(generator)
     
 QPC_HASHES = {**QPC_BASE_HASHES, **QPC_GENERATOR_HASHES}
 

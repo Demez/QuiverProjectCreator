@@ -7,9 +7,7 @@ from qpc_base import Platform, PlatformName, get_platform_name
 from qpc_project import ProjectContainer, ProjectPass, ProjectBase, ProjectDefinition, ProjectGroup, replace_macros
 import qpc_generator_handler
 from enum import EnumMeta, Enum, auto
-
-if args.time:
-    from time import perf_counter
+from time import perf_counter
 
 
 # unused, idk if this will ever be useful either
@@ -192,8 +190,6 @@ class Parser:
         return info
     
     def _parse_base_info_include(self, info: BaseInfoPlatform, base_file: QPCBlockBase) -> None:
-        # group_list = base_file.get_items("group")
-        # project_list = base_file.get_items("project")
         group_list = []
         project_list = []
         
@@ -240,9 +236,6 @@ class Parser:
 
             elif not args.hide_warnings:
                 project_block.warning("Unknown Key: ")
-                
-        # self._parse_base_groups(group_list, all_projects, info)
-        # self._parse_base_projects(project_list, all_projects, info)
             
     def _base_group_define(self, group_block: QPCBlock, info: BaseInfoPlatform):
         for group in group_block.values:
@@ -291,7 +284,8 @@ class Parser:
                 else:
                     project_group.add_project(item.key, folder_list, info.shared.unsorted_projects)
     
-    def parse_project(self, project_def: ProjectDefinition, project_script: str, info: BaseInfo) -> ProjectContainer:
+    def parse_project(self, project_def: ProjectDefinition, project_script: str,
+                      info: BaseInfo, generator_list: list) -> ProjectContainer:
         if args.time:
             start_time = perf_counter()
         else:
@@ -301,7 +295,7 @@ class Parser:
         project_block = self.read_file(project_filename)
 
         project_name = os.path.splitext(project_filename)[0]
-        project_container = ProjectContainer(project_name, project_script, info, project_def)
+        project_container = ProjectContainer(project_name, project_script, info, project_def, generator_list)
         
         for project_pass in project_container._passes:
             project_pass.hash_list[project_filename] = qpc_hash.make_hash(project_filename)

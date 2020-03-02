@@ -12,9 +12,7 @@ from qpc_reader import solve_condition, read_file, QPCBlock
 from qpc_args import args, get_arg_macros
 from qpc_base import posix_path, Platform, PlatformName, PLATFORM_DICT
 from enum import EnumMeta, Enum, auto
-
-if args.time:
-    from time import perf_counter
+from time import perf_counter
 
 
 # IDEA: be able to reference values from the configuration, like a macro
@@ -258,12 +256,25 @@ class ProjectBase:
 
 
 class ProjectPass(ProjectBase):
-    def __init__(self, container, config: str, platform_name: Enum, platform: Enum):
+    def __init__(self, container, config: str, platform_name: Enum, platform: Enum, gen_macro: str, gen_id: int):
         self.config_name = config
         self.platform = platform
         self.base_info = container.base_info.get_base_info_plat_name(platform_name)
         super().__init__(container)
         self.macros.update({**self.base_info.macros, "$" + config.upper(): "1", "$" + platform.name.upper(): "1"})
+        self.generators = set()
+        self.add_generator(gen_macro, gen_id)
+            
+    def check_pass(self, config: str, platform: Enum, generator_macro: str, gen_id: int) -> bool:
+        if self.config_name == config and self.platform == platform and gen_id in self.generators:
+            self.add_generator(generator_macro, gen_id)
+            return True
+        return False
+    
+    def add_generator(self, gen_macro: str, gen_id: int):
+        self.generators.add(gen_id)
+        if gen_macro:
+            self.macros.update({gen_macro: "1"})
 
     def _convert_dependency_path(self, key: str) -> str:
         if key in self.base_info.dependency_dict:
@@ -273,7 +284,7 @@ class ProjectPass(ProjectBase):
 
 class ProjectContainer:
     # base_info is BaseInfo from qpc_parser.py
-    def __init__(self, name: str, project_path: str, base_info, project_def: ProjectDefinition):
+    def __init__(self, name: str, project_path: str, base_info, project_def: ProjectDefinition, generator_list: list):
         self.file_name = name  # the actual file name
         self.project_path = project_path  # should use the macro instead tbh, might remove
         self.out_dir = os.path.split(project_path)[0]
@@ -286,14 +297,35 @@ class ProjectContainer:
         self.macros = {"$PROJECT_NAME": name, "$SCRIPT_NAME": name, **get_arg_macros()}
         
         self._passes = []
-        for plat_name in project_def.platforms:
-            for config in base_info.get_base_info_plat_name(plat_name).configurations:
-                for plat in PLATFORM_DICT[plat_name]:
-                    self._passes.append(ProjectPass(self, config, plat_name, plat))
+        generator_macros = {}
+        for generator in generator_list:
+            macro = generator.get_macro()
+            macro = "$" + macro if macro else macro
+            generator_macros[generator] = macro
+
+        for generator, macro in generator_macros.items():
+            generator_platforms = generator.get_supported_platforms()
+            for plat_name in project_def.platforms:
+                for config in base_info.get_base_info_plat_name(plat_name).configurations:
+                    for plat in PLATFORM_DICT[plat_name]:
+                        if plat in generator_platforms:
+                            self.add_pass(config, plat_name, plat, macro, generator.id)
+                            
         # self.shared = ProjectBase(self)
         
-    def get_passes(self, platforms) -> list:
+    def add_pass(self, config: str, plat_name: Enum, plat: Enum, macro: str, gen_id: int):
+        # if not any existing passes without a generator macro
+        if not any(proj_pass.check_pass(config, plat, macro, gen_id) for proj_pass in self._passes):
+            self._passes.append(ProjectPass(self, config, plat_name, plat, macro, gen_id))
+            
+    def get_all_passes(self) -> list:
+        return self._passes
+            
+    def get_passes_platform(self, platforms) -> list:
         return [project_pass for project_pass in self._passes if project_pass.platform in platforms]
+        
+    def get_passes(self, gen_id: int) -> list:
+        return [project_pass for project_pass in self._passes if gen_id in project_pass.generators]
     
     def get_hashes(self) -> dict:
         hash_dict = {}

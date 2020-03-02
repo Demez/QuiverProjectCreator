@@ -27,7 +27,7 @@ class MakefileGenerator(BaseProjectGenerator):
         self._set_generate_master_file(False)
 
     def create_project(self, project: ProjectContainer) -> None:
-        project_passes = project.get_passes(self._platforms)
+        project_passes = self._get_passes(project)
         if not project_passes:
             return
         
@@ -75,17 +75,20 @@ def gen_cflags(conf: Configuration, libs: bool = True, defs: bool = True, includ
 
 
 # TODO: add a non-gnu flag option (/ instead of --, etc)
-def gen_compile_exe(compiler, conf) -> str:
+def gen_compile_exe(compiler: str, conf: Configuration) -> str:
     entry = f"-Wl,--entry={conf.linker.entry_point}" if conf.linker.entry_point != "" else ""
-    return f"@{compiler} -o $@ $(SOURCES) {entry} {gen_cflags(conf)}"
+    options = " ".join(conf.compiler.options) + " " if conf.compiler.options else ""
+    return f"@{compiler} -o $@ $(SOURCES) {options}{entry} {gen_cflags(conf)}"
 
 
-def gen_compile_dyn(compiler, conf) -> str:
-    return f"@{compiler} -shared -fPIC -o $@ $(SOURCES) {gen_cflags(conf)}"
+def gen_compile_dyn(compiler: str, conf: Configuration) -> str:
+    options = " ".join(conf.compiler.options) + " " if conf.compiler.options else ""
+    return f"@{compiler} -shared -fPIC -o $@ $(SOURCES) {options}{gen_cflags(conf)}"
 
 
-def gen_compile_stat(compiler, conf) -> str:
-    return f"@ar rcs $@ $(OBJECTS)"
+def gen_compile_stat(compiler: str, conf: Configuration) -> str:
+    options = " ".join(conf.compiler.options) if conf.compiler.options else ""
+    return f"@ar rcs $@ $(OBJECTS) {options}"
 
 
 def gen_project_targets(conf) -> str:

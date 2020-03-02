@@ -4,17 +4,23 @@ from enum import Enum, auto, EnumMeta
 
 
 QPC_DIR = os.path.dirname(os.path.realpath(__file__)).replace("\\", "/") + "/"
-QPC_GENERATOR_DIR = QPC_DIR + "project_generators/"
+QPC_GENERATOR_DIR = QPC_DIR + "project_generators"
 
 
 class BaseProjectGenerator:
     def __init__(self, name: str):
         self.name = name
         self.path = None
+        self.id = None
         self._platforms = []
         self._compilers = []
         self._uses_folders = False
         self._uses_master_file = False
+        self._macro = ""
+        
+    # ProjectContainer from qpc_project.py
+    def _get_passes(self, project) -> list:
+        return project.get_passes(self.id)
     
     def _add_platform(self, platform: Enum) -> None:
         if platform not in Platform:
@@ -24,19 +30,26 @@ class BaseProjectGenerator:
             
     def _set_project_folders(self, uses_project_folders: bool) -> None:
         self._uses_folders = uses_project_folders if type(uses_project_folders) == bool else self._uses_folders
-        
-    def uses_folders(self) -> bool:
-        return self._uses_folders
     
     def _set_generate_master_file(self, use_master_file: bool) -> None:
         self._uses_master_file = use_master_file if type(use_master_file) == bool else self._uses_master_file
     
-    def generates_master_file(self) -> bool:
-        return self._uses_master_file
+    def _set_macro(self, macro: str) -> None:
+        self._macro = macro
     
     # will need to move Compiler enum class here
     def _add_compiler(self, compiler: Enum) -> None:
         pass
+
+    def get_macro(self) -> str:
+        # return {"$" + self._macro: "1"} if self._macro else {}
+        return self._macro
+
+    def uses_folders(self) -> bool:
+        return self._uses_folders
+    
+    def generates_master_file(self) -> bool:
+        return self._uses_master_file
     
     def get_supported_platforms(self) -> list:
         return self._platforms

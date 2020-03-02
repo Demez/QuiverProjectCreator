@@ -1,13 +1,23 @@
 import sys
 import os
-import qpc_hash
+# import qpc_hash
 from enum import Enum
-from qpc_args import args
-from qpc_base import BaseProjectGenerator
+from glob import glob
+# from qpc_args import args
+from qpc_base import BaseProjectGenerator, QPC_DIR, QPC_GENERATOR_DIR
 
 
-GENERATOR_PATH = os.path.dirname(__file__) + "/project_generators"
-generator_list = [module[:-3] for module in os.listdir(GENERATOR_PATH) if module[-3:] == '.py']
+GENERATOR_FOLDER = os.path.split(QPC_GENERATOR_DIR)[1]
+GENERATOR_PATH = QPC_GENERATOR_DIR + "/**"
+# GENERATOR_LIST = [module[:-3] for module in os.listdir(GENERATOR_PATH) if module[-3:] == '.py']
+GENERATOR_LIST = []
+GENERATOR_PATHS = []
+
+for generator_folder in glob(GENERATOR_PATH):
+    generator = generator_folder + os.sep + os.path.split(generator_folder)[1] + ".py"
+    if os.path.isfile(generator):
+        GENERATOR_LIST.append(os.path.basename(generator)[:-3])
+        GENERATOR_PATHS.append(generator)
 
 
 def str_to_class(class_name: str):
@@ -31,25 +41,32 @@ def inheritors(klass):
 class GeneratorHandler:
     def __init__(self):
         self.project_generator_modules = {}
-        for project_generator_name in args.generators:
-            if project_generator_name in generator_list:
-                __import__("project_generators." + project_generator_name, locals(), globals())
-                self.project_generator_modules[project_generator_name] = \
-                    str_to_class("project_generators." + project_generator_name)
-            else:
-                print("Warning: Invalid Generator: " + project_generator_name)
-            
         self.project_generators = []
-        for project_generator_type in inheritors(BaseProjectGenerator):
-            project_generator = project_generator_type()
-            for generator_module in self.project_generator_modules.values():
-                if project_generator_type in generator_module.__dict__.values():
-                    project_generator.path = generator_module.__file__.replace("\\", "/")
-                    break
-            self.project_generators.append(project_generator)
+        
+        [self._import_generator(name) for name in GENERATOR_LIST]
+        [self._init_generator(project_generator_type) for project_generator_type in inheritors(BaseProjectGenerator)]
+            
+    def _import_generator(self, name: str):
+        __import__(f"{GENERATOR_FOLDER}.{name}.{name}", locals(), globals())
+        self.project_generator_modules[name] = str_to_class(f"{GENERATOR_FOLDER}.{name}.{name}")
+        
+    def _init_generator(self, project_generator_type: type):
+        project_generator = project_generator_type()
+        for index, generator_module in enumerate(self.project_generator_modules.values()):
+            if project_generator_type in generator_module.__dict__.values():
+                project_generator.path = generator_module.__file__.replace("\\", "/")
+                project_generator.id = index
+                break
+        self.project_generators.append(project_generator)
             
     def get_generator_names(self) -> list:
         return [project_generator.output_type for project_generator in self.project_generators]
+    
+    def get_generator_args(self):
+        return [os.path.basename(project_generator.path)[:-3] for project_generator in self.project_generators]
+    
+    def get_generators(self, generator_names: list) -> list:
+        return [self.get_generator(name) for name in generator_names]
             
     def get_generator(self, generator_name: str) -> BaseProjectGenerator:
         for project_generator in self.project_generators:

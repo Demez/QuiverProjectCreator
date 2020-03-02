@@ -6,17 +6,16 @@
 import os
 import sys
 
+from time import perf_counter
 from enum import Enum
+
 import qpc_reader
 from qpc_generator_handler import GeneratorHandler
 from qpc_parser import Parser
-from qpc_args import args
+from qpc_args import args, parse_args
 from qpc_base import BaseProjectGenerator, PLATFORM_DICT
 from qpc_hash import (check_hash, check_master_file_hash, write_project_hash, write_master_file_hash,
                       get_project_dependencies, get_hash_file_path)
-
-if args.time:
-    from time import perf_counter
 
 
 def get_platform_list() -> list:
@@ -42,10 +41,10 @@ def get_platform_dict() -> dict:
     return platform_names
 
 
-def get_generators_all(generator_handler: GeneratorHandler, platform_list: list) -> list:
+def get_generators_all(platform_list: list) -> list:
     generator_list = []
     
-    for generator in generator_handler.project_generators:
+    for generator in GENERATOR_HANDLER.project_generators:
         platforms = generator.get_supported_platforms()
         for platform in platform_list:
             # intersection is if any items in a set is in another set
@@ -57,9 +56,9 @@ def get_generators_all(generator_handler: GeneratorHandler, platform_list: list)
     return generator_list
 
 
-def get_generators(generator_handler: GeneratorHandler, platform: Enum) -> list:
+def get_generators(platform: Enum) -> list:
     generator_list = []
-    for generator in generator_handler.project_generators:
+    for generator in GENERATOR_HANDLER.project_generators:
         platforms = generator.get_supported_platforms()
         # intersection is if any items in a set is in another set
         has_valid_platforms = PLATFORM_DICT[platform].intersection(set(platforms))
@@ -92,7 +91,6 @@ def check_valid_platforms(generator: BaseProjectGenerator, platform: Enum):
 def main():
     os.chdir(args.root_dir)
     
-    generator_handler = GeneratorHandler()
     parser = Parser()
     # loop PlatformNames -> BaseSettings, OutputTypes -> Configs -> Platforms
     if args.time:
@@ -101,7 +99,7 @@ def main():
     platform_dict = get_platform_dict()
     
     info = parser.parse_base_info(args.base_file, tuple(platform_dict.keys()))
-    generator_list = get_generators_all(generator_handler, info.platform_list)
+    generator_list = get_generators_all(info.platform_list)
     
     for project_def in info.project_list:
         for project_script in project_def.script_list:
@@ -115,7 +113,7 @@ def main():
                 if project_dir and project_dir != args.root_dir:
                     os.chdir(project_dir)
                 
-                project = parser.parse_project(project_def, project_script, info)
+                project = parser.parse_project(project_def, project_script, info, generator_list)
                 [generator.create_project(project) for generator in generator_list]
                 
                 if project_dir and project_dir != args.root_dir:
@@ -151,7 +149,10 @@ if __name__ == "__main__":
     print("----------------------------------------------------------------------------------\n"
           " Quiver Project Creator\n " + ' '.join(sys.argv[1:]) +
           "\n----------------------------------------------------------------------------------")
-    
+
+    # doing this so we only allow valid generator options
+    GENERATOR_HANDLER = GeneratorHandler()
+    parse_args(GENERATOR_HANDLER.get_generator_args())
     main()
     
     print("\n----------------------------------\n"

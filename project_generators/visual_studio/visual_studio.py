@@ -18,6 +18,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         self._add_platform(Platform.WIN64)
         self._set_project_folders(True)
         self._set_generate_master_file(True)
+        self._set_macro("VISUAL_STUDIO")
         
         self.cpp_uuid = "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}"
         self.filter_uuid = "{2150E333-8FDC-42A3-9474-1A3956D46DE8}"
@@ -27,34 +28,34 @@ class VisualStudioGenerator(BaseProjectGenerator):
 
     # TODO: move most of this stuff to a vs_cpp file, so you can also do c# here
     #  though you did have most of the cpp stuff in separate functions, so it should be easy to move and add C# support
-    def create_project(self, project_list: ProjectContainer) -> None:
-        project_passes = project_list.get_passes(self._platforms)
+    def create_project(self, project: ProjectContainer) -> None:
+        project_passes = self._get_passes(project)
         if not project_passes:
             return
         
-        out_dir = get_out_dir(project_list)
+        out_dir = get_out_dir(project)
 
         if args.time:
             start_time = perf_counter()
         else:
-            print("Creating: " + project_list.file_name + ".vcxproj")
+            print("Creating: " + project.file_name + ".vcxproj")
 
-        vcxproject, include_list, res_list, none_list = create_vcxproj(project_list, project_passes)
-
-        # this is a little slow due to AddFormattingToXML()
-        write_project(project_list, out_dir, vcxproject)
+        vcx_project, include_list, res_list, none_list = create_vcxproj(project, project_passes)
+        write_project(project, out_dir, vcx_project)
+        
         if args.time:
-            print(str(round(perf_counter() - start_time, 4)) + " - Created: " + project_list.file_name + ".vcxproj")
+            print(str(round(perf_counter() - start_time, 4)) + " - Created: " + project.file_name + ".vcxproj")
         
         if args.time:
             start_time = perf_counter()
         else:
-            print("Creating: " + project_list.file_name + ".vcxproj.filters")
-        vcxproject_filters = create_vcxproj_filters(project_list, project_passes, include_list, res_list, none_list)
-        write_project(project_list, out_dir, vcxproject_filters, True)
+            print("Creating: " + project.file_name + ".vcxproj.filters")
+            
+        vcxproject_filters = create_vcxproj_filters(project, project_passes, include_list, res_list, none_list)
+        write_project(project, out_dir, vcxproject_filters, True)
 
         if args.time:
-            print(str(round(perf_counter() - start_time, 4)) + " - Created: " + project_list.file_name + ".vcxproj.filters")
+            print(str(round(perf_counter() - start_time, 4)) + " - Created: " + project.file_name + ".vcxproj.filters")
         
         # return out_dir
     

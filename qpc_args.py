@@ -6,17 +6,13 @@ from enum import Enum, auto, EnumMeta
 import glob
 from qpc_base import Platform, get_default_platforms
 
-PROJECT_GENERATORS = []
-for f in glob.glob(os.path.join(os.path.dirname(__file__) + "/project_generators", "*.py")):
-    if os.path.isfile(f):
-        PROJECT_GENERATORS.append(os.path.basename(f)[:-3])
 
-
+args = argparse.Namespace()
 DEFAULT_BASEFILE = "_qpc_scripts/_default.qpc_base"
 
 
 # this is here so i can check arguments globally across files
-def parse_args():
+def parse_args(generators: list) -> None:
     platforms = [platform.name.lower() for platform in Platform]
 
     cmd_parser = argparse.ArgumentParser()
@@ -42,7 +38,7 @@ def parse_args():
     
     cmd_parser.add_argument("--platforms", "-p", nargs="+", default=get_default_platforms(), choices=platforms,
                             help="Select platforms to generate for instead of the default")
-    cmd_parser.add_argument("--generators", "-g", nargs="+", default=(), choices=PROJECT_GENERATORS, help="Project types to generate")
+    cmd_parser.add_argument("--generators", "-g", nargs="+", default=(), choices=generators, help="Project types to generate")
     cmd_parser.add_argument("--add", "-a", nargs="+", default=(), help="Add projects or groups to generate")
     cmd_parser.add_argument("--remove", "-r", default=(), nargs="+", help="Remove projects or groups from generating")
     cmd_parser.add_argument("--macros", "-m", nargs="+", default=(), help="Macros to define and set to '1' in projects")
@@ -56,21 +52,19 @@ def parse_args():
     cmd_parser.add_argument("--masterfile", "-mf", dest="master_file",
                             help='Create a master file for building all projects with')
 
-    return cmd_parser
+    global args
+    args.__dict__.update(cmd_parser.parse_args().__dict__)
 
+    args.root_dir = os.path.normpath(args.root_dir) if os.path.isabs(args.root_dir) else \
+        os.path.normpath(os.getcwd() + os.sep + args.root_dir)
 
-# global var
-arg_parser = parse_args()
-args = arg_parser.parse_args()
+    # args.base_file = os.path.normpath(args.base_file) if os.path.isabs(args.base_file) else \
+    #     os.path.normpath(args.root_dir + os.sep + args.base_file)
 
-args.root_dir = os.path.normpath(args.root_dir) if os.path.isabs(args.root_dir) else \
-    os.path.normpath(os.getcwd() + os.sep + args.root_dir)
+    args.out_dir = os.path.normpath(args.out_dir) if os.path.isabs(args.out_dir) else \
+        os.path.normpath(args.root_dir + os.sep + args.out_dir)
 
-# args.base_file = os.path.normpath(args.base_file) if os.path.isabs(args.base_file) else \
-#     os.path.normpath(args.root_dir + os.sep + args.base_file)
-
-args.out_dir = os.path.normpath(args.out_dir) if os.path.isabs(args.out_dir) else \
-    os.path.normpath(args.root_dir + os.sep + args.out_dir)
+    args.platforms = _convert_to_enum(args.platforms, Platform)
 
 
 # could just make a dictionary, where keys are enums and values are your mom?
@@ -87,9 +81,6 @@ def _convert_to_enum(arg_list: list, enum_list: EnumMeta) -> list:
     for index, value in enumerate(arg_list):
         arg_list[index] = _get_enum_from_name(value, enum_list)
     return arg_list
-
-
-args.platforms = _convert_to_enum(args.platforms, Platform)
 
 
 def get_arg_macros() -> dict:
