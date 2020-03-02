@@ -11,6 +11,10 @@ from qpc_parser import BaseInfo
 from enum import Enum
 
 
+def timer_diff(start_time: float) -> str:
+    return str(round(perf_counter() - start_time, 4))
+
+
 class VisualStudioGenerator(BaseProjectGenerator):
     def __init__(self):
         super().__init__("Visual Studio")
@@ -41,10 +45,10 @@ class VisualStudioGenerator(BaseProjectGenerator):
             print("Creating: " + project.file_name + ".vcxproj")
 
         vcx_project, include_list, res_list, none_list = create_vcxproj(project, project_passes)
-        write_project(project, out_dir, vcx_project)
+        write_project(project, out_dir, vcx_project, ".vcxproj")
         
         if args.time:
-            print(str(round(perf_counter() - start_time, 4)) + " - Created: " + project.file_name + ".vcxproj")
+            print(timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj")
         
         if args.time:
             start_time = perf_counter()
@@ -52,12 +56,30 @@ class VisualStudioGenerator(BaseProjectGenerator):
             print("Creating: " + project.file_name + ".vcxproj.filters")
             
         vcxproject_filters = create_vcxproj_filters(project, project_passes, include_list, res_list, none_list)
-        write_project(project, out_dir, vcxproject_filters, True)
+        write_project(project, out_dir, vcxproject_filters, ".vcxproj.filters")
 
         if args.time:
-            print(str(round(perf_counter() - start_time, 4)) + " - Created: " + project.file_name + ".vcxproj.filters")
+            print(timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj.filters")
+        
+        if self.has_debug_commands(project_passes):
+            if args.time:
+                start_time = perf_counter()
+            else:
+                print("Creating: " + project.file_name + ".vcxproj.user")
+                
+            vcxproject_user = create_vcxproj_user(project, project_passes)
+            write_project(project, out_dir, vcxproject_user, ".vcxproj.user")
+
+            if args.time:
+                print(timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj.user")
         
         # return out_dir
+        
+    def has_debug_commands(self, project_passes: list) -> bool:
+        for project in project_passes:
+            if bool(project.config.debug):
+                return True
+        return False
     
     def does_project_exist(self, project_out_dir: str) -> bool:
         # base_path = self._get_base_path(project_out_dir)
@@ -748,13 +770,10 @@ def create_directory(directory: str) -> None:
         pass
 
 
-def write_project(project: ProjectContainer, out_dir: str, xml_file: et.Element, filters: bool = False) -> None:
+def write_project(project: ProjectContainer, out_dir: str, xml_file: et.Element, ext: str) -> None:
     if out_dir and not out_dir.endswith("/"):
         out_dir += "/"
-    file_path = out_dir + os.path.splitext(project.file_name)[0] + ".vcxproj"
-    
-    if filters:
-        file_path += ".filters"
+    file_path = out_dir + os.path.splitext(project.file_name)[0] + ext
         
     # directory = os.path.split(file_path)
     create_directory(out_dir)
@@ -765,6 +784,66 @@ def write_project(project: ProjectContainer, out_dir: str, xml_file: et.Element,
 
 def xml_to_string(elem) -> str:
     return et.tostring(elem, pretty_print=True).decode("utf-8")
+
+
+# --------------------------------------------------------------------------------------------------
+
+
+def create_vcxproj_user(project: ProjectContainer, project_passes: list) -> et.Element:
+    file_path = os.path.splitext(project.file_name)[0] + ".vcxproj.user"
+    if os.path.isfile(file_path):
+        vcxproj = et.parse(file_path).getroot()
+    else:
+        vcxproj = et.Element("Project")
+        vcxproj.set("ToolsVersion", "Current")
+        vcxproj.set("xmlns", "http://schemas.microsoft.com/developer/msbuild/2003")
+    
+    for project_pass in project_passes:
+        condition = make_conf_plat_cond(project_pass.config_name, project_pass.platform)
+        create_debug_group(vcxproj, project_pass.config.debug, condition)
+    
+    return vcxproj
+
+
+# debug is Debug in qpc_project.py
+def create_debug_group(vcxproj: et.Element, debug, condition):
+    xmlns = "{http://schemas.microsoft.com/developer/msbuild/2003}"
+    
+    property_group_list = vcxproj.findall(xmlns + "PropertyGroup")
+    for property_group in property_group_list:
+        found_cond = property_group.get("Condition")
+        if found_cond == condition:
+            break
+    else:
+        property_group = et.SubElement(vcxproj, "PropertyGroup")
+        property_group.set("Condition", condition)
+
+    command = property_group.findall(xmlns + "LocalDebuggerCommand")
+    working_dir = property_group.findall(xmlns + "LocalDebuggerWorkingDirectory")
+    arguments = property_group.findall(xmlns + "LocalDebuggerCommandArguments")
+    debug_flavor = property_group.findall(xmlns + "DebuggerFlavor")
+    
+    if debug.command:
+        if command:
+            command[0].text = debug.command
+        else:
+            et.SubElement(property_group, "LocalDebuggerCommand").text = debug.command
+    
+    if debug.working_dir:
+        if working_dir:
+            working_dir[0].text = debug.working_dir
+        else:
+            et.SubElement(property_group, "LocalDebuggerWorkingDirectory").text = debug.working_dir
+        
+    if debug.arguments:
+        if arguments:
+            arguments[0].text = debug.arguments
+        else:
+            et.SubElement(property_group, "LocalDebuggerCommandArguments").text = debug.arguments
+        
+    # idk if this is even needed
+    if not debug_flavor:
+        et.SubElement(property_group, "DebuggerFlavor").text = "WindowsLocalDebugger"
 
 
 # --------------------------------------------------------------------------------------------------

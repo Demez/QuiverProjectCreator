@@ -379,7 +379,7 @@ class ProjectContainer:
 class Configuration:
     def __init__(self, project: ProjectBase):
         self._project = project
-        # self.debug = Debug()
+        self.debug = Debug()
         if "platform" in project.__dict__:
             self.general = General(project.platform)
         else:
@@ -417,6 +417,16 @@ class Debug:
         self.command = ""
         self.arguments = ""
         self.working_dir = ""
+        
+    def __bool__(self) -> bool:
+        return any(self.__dict__.values())
+
+    def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
+        if option_block.values:
+            if option_block.key == "arguments":
+                self.arguments = replace_macros(option_block.values[0], macros)
+            elif option_block.key in self.__dict__:
+                self.__dict__[option_block.key] = clean_path(option_block.values[0], macros)
 
 
 def clean_path(string: str, macros: dict) -> str:
