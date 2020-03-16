@@ -15,7 +15,18 @@ from qpc_parser import Parser
 from qpc_args import args, parse_args
 from qpc_base import BaseProjectGenerator, PLATFORM_DICT
 from qpc_hash import (check_hash, check_master_file_hash, write_project_hash, write_master_file_hash,
-                      get_project_dependencies, get_hash_file_path)
+                      get_project_dependencies, get_hash_file_path, QPC_HASH_DIR)
+
+
+def create_directory(directory):
+    try:
+        os.makedirs(directory)
+        if args.verbose:
+            print("Created Directory: " + directory)
+    except FileExistsError:
+        pass
+    except FileNotFoundError:
+        pass
 
 
 def get_platform_list() -> list:
@@ -89,6 +100,7 @@ def check_valid_platforms(generator: BaseProjectGenerator, platform: Enum):
 
 
 def main():
+    create_directory(QPC_HASH_DIR)
     os.chdir(args.root_dir)
     
     parser = Parser()

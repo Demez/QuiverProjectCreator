@@ -5,21 +5,9 @@ from qpc_base import posix_path, get_platform_name, QPC_DIR, QPC_GENERATOR_DIR
 from qpc_reader import QPCBlockBase, QPCBlock
 from qpc_generator_handler import GENERATOR_PATHS, GENERATOR_LIST
 import os
-
-
-def create_directory(directory):
-    try:
-        os.makedirs(directory)
-        if args.verbose:
-            print("Created Directory: " + directory)
-    except FileExistsError:
-        pass
-    except FileNotFoundError:
-        pass
     
 
 QPC_HASH_DIR = QPC_DIR + "hashes/"
-create_directory(QPC_HASH_DIR)
 
 
 # Source: https://bitbucket.org/prologic/tools/src/tip/md5sum
