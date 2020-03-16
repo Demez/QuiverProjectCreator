@@ -181,7 +181,10 @@ class Parser:
             print("\nReading: " + args.base_file)
             
         base_file = self.read_file(base_file_path)
-    
+        if not base_file:
+            print("Base File not found, Quitting: " + base_file_path)
+            quit(1)
+
         if args.verbose:
             print("\nParsing: " + args.base_file)
         
