@@ -211,7 +211,7 @@ class Parser:
                     if dependency.values and dependency.solve_condition(info.macros):
                         info.dependency_dict[dependency.key] = dependency.values[0]
 
-            if not project_block.values:
+            elif not project_block.values:
                 continue
 
             elif project_block.key == "project":
