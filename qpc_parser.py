@@ -193,9 +193,6 @@ class Parser:
         return info
     
     def _parse_base_info_include(self, info: BaseInfoPlatform, base_file: QPCBlockBase) -> None:
-        group_list = []
-        project_list = []
-        
         for project_block in base_file:
         
             if not project_block.solve_condition(info.macros):
