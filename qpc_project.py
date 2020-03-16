@@ -190,10 +190,10 @@ class ProjectBase:
         return key
 
     def add_dependency(self, qpc_path: str) -> None:
-        self.project.add_dependency(self._convert_dependency_path(qpc_path))
+        self.project.add_dependency(replace_macros(self._convert_dependency_path(qpc_path), self.macros))
 
     def remove_dependency(self, qpc_path: str) -> None:
-        self.project.remove_dependency(self._convert_dependency_path(qpc_path))
+        self.project.remove_dependency(replace_macros(self._convert_dependency_path(qpc_path), self.macros))
 
     def add_dependencies(self, *qpc_paths) -> None:
         [self.add_dependency(qpc_path) for qpc_path in qpc_paths]
