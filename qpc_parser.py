@@ -154,6 +154,11 @@ class BaseInfo:
             if base_info.platform == platform_name:
                 return base_info
 
+    def get_configs(self) -> list:
+        configurations = set()
+        [configurations.update(info.configurations) for info in self.info_list]
+        return list(configurations)
+
     # get all the _passes the user wants (this is probably the worst part in this whole project)
     def get_wanted_projects(self) -> tuple:
         self.project_list = dict()  # dict keeps order, set doesn't as of 3.8, both faster than lists

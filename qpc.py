@@ -115,17 +115,19 @@ def main():
     
     for project_def in info.project_list:
         for project_script in project_def.script_list:
-            print()
+            if not args.skip_projects:
+                print()
             # only run if the hash check fails or if the user force creates projects
             # may look in the hash for where the project output directory is in the future
-            if args.force or not check_project_exists(project_script, project_def.platforms, generator_list) \
-                    or not check_hash(project_script):
+            if not args.skip_projects and (args.force or not check_project_exists(project_script, project_def.platforms, generator_list) \
+                    or not check_hash(project_script)):
                 project_dir = os.path.split(project_script)[0]
 
                 if project_dir and project_dir != args.root_dir:
                     os.chdir(project_dir)
                 
                 project = parser.parse_project(project_def, project_script, info, generator_list, platform_dict)
+
                 [generator.create_project(project) for generator in generator_list]
                 
                 if project_dir and project_dir != args.root_dir:
@@ -151,8 +153,9 @@ def main():
             if not generator.generates_master_file():
                 continue
             file_path = generator.get_master_file_path(args.master_file)
-            if not os.path.isfile(file_path) or not check_master_file_hash(file_path, info, generator.uses_folders()):
-                generator.create_master_file(info, file_path)
+            if args.force_master or file_path and (
+                    not os.path.isfile(file_path) or not check_master_file_hash(file_path, info, generator.uses_folders())):
+                generator.create_master_file(info, file_path, platform_dict)
                 write_master_file_hash(file_path, info, generator.get_supported_platforms(), generator.path)
 
 

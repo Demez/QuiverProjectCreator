@@ -95,7 +95,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
     def get_master_file_path(self, master_file_path: str) -> str:
         return master_file_path + ".sln"
     
-    def create_master_file(self, info: BaseInfo, master_file_path: str) -> str:
+    def create_master_file(self, info: BaseInfo, master_file_path: str, platform_dict: dict) -> None:
         print("Creating Solution File: " + master_file_path + "\n")
     
         # slow?
@@ -179,8 +179,6 @@ class VisualStudioGenerator(BaseProjectGenerator):
         
             sln_write_section(self.solution_file, "NestedProjects", global_folder_uuid_dict, False)
             self.solution_file.write("EndGlobal\n")
-            
-        return master_file_path
 
     def sln_project_def_loop(self, project_def, info):
         for folder in project_def.folder_list:

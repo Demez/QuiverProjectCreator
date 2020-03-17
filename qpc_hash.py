@@ -369,6 +369,8 @@ def write_master_file_hash(project_path: str, base_info, platforms: list, genera
     
     info_list = set()
     [info_list.add(base_info.get_base_info(platform)) for platform in platforms]
+    if None in info_list:
+        info_list.remove(None)
     files = base_block.add_item("files", [])
     
     for info_platform in info_list:

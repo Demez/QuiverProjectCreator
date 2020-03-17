@@ -3,6 +3,7 @@ import os
 from enum import Enum
 
 # from qpc_args import args
+import qpc_hash
 from qpc_base import BaseProjectGenerator, Platform
 from qpc_project import Compiler, ConfigType, Language, ProjectContainer, ProjectPass, Configuration
 from qpc_parser import BaseInfo
@@ -18,20 +19,23 @@ header_extensions = [
 ]
 
 
+MAKEFILE_EXT = ".mak"
+
+
 class MakefileGenerator(BaseProjectGenerator):
     def __init__(self):
         super().__init__("Makefile")
         self._add_platform(Platform.LINUX32)
         self._add_platform(Platform.LINUX64)
         self._add_platform(Platform.MACOS)
-        self._set_generate_master_file(False)
+        self._set_generate_master_file(True)
 
     def create_project(self, project: ProjectContainer) -> None:
         project_passes = self._get_passes(project)
         if not project_passes:
             return
         
-        print("Creating: " + project.file_name + ".mak")
+        print("Creating: " + project.file_name + MAKEFILE_EXT)
         compiler = get_compiler(project_passes[0].config.general.compiler,
                                 project_passes[0].config.general.language)
         makefile = gen_defines(project, compiler, project.base_info.get_base_info(self._platforms[0]).configurations)
@@ -39,22 +43,81 @@ class MakefileGenerator(BaseProjectGenerator):
         for p in project_passes:
             makefile += gen_project_config_definitions(p)
         
-        with open(project.file_name + ".mak", "w", encoding="utf-8") as f:
+        with open(project.file_name + MAKEFILE_EXT, "w", encoding="utf-8") as f:
             f.write(makefile)
 
     def does_project_exist(self, project_out_dir: str) -> bool:
-        return os.path.isfile(os.path.splitext(project_out_dir)[0] + ".mak")
+        return os.path.isfile(os.path.splitext(project_out_dir)[0] + MAKEFILE_EXT)
 
     def get_master_file_path(self, master_file_path: str) -> str:
-        pass
+        return master_file_path + MAKEFILE_EXT
 
-    def create_master_file(self, info: BaseInfo, master_file_path: str) -> str:
-        # do stuff with info.project_dependencies here
-        # also return file name or abspath or whatever
-        pass
+    def create_master_file(self, info: BaseInfo, master_file_path: str, platform_dict: dict) -> None:
+        out_dir_dict = {}
+        for qpc_path, hash_path in info.project_hashes.items():
+            out_dir_dict[qpc_path] = os.path.relpath(qpc_hash.get_out_dir(hash_path))
+
+        # why
+        platform = None
+        for plat in [i for v in platform_dict.values() for i in v]:
+            if plat in self._platforms and (not platform or plat.name.endswith("64") and platform.name().endswith("32")):
+                platform = plat
+
+        master_file = f"""#!/usr/bin/make -f
+
+SETTINGS = PLATFORM={platform.name.lower()} CONFIG={info.get_configs()[0]}
+
+all:
+"""
+        # sort dict by most dependencies to least dependencies, 100% a flawed way of doing this
+        make_paths, make_files = self.order_dependencies(out_dir_dict, info.project_dependencies)
+
+        for index, path in enumerate(make_paths):
+            master_file += f"\tmake -C {path} -f {make_files[index]} $(SETTINGS)\n"
+
+        with open(master_file_path, "w") as master_file_w:
+            master_file_w.write(master_file + "\n")
     
     def does_master_file_exist(self, master_file_path: str) -> bool:
         return True
+
+    def order_dependencies(self, out_dir_dict: dict, dependency_dict: dict) -> tuple:
+        sorted_scripts = self.topological_sort(list(out_dir_dict.keys()), dependency_dict)
+        # completely avoids removing duplicate paths or file names, like if it was in a dict, no duplicate keys
+        make_paths, make_files = [], []
+        for script_path in sorted_scripts:
+            make_paths.append(out_dir_dict[script_path])
+            make_files.append(os.path.splitext(os.path.basename(script_path))[0] + MAKEFILE_EXT)
+        return (make_paths, make_files)
+
+    # https://www.geeksforgeeks.org/python-program-for-topological-sorting/
+    def topological_sort(self, script_list: list, dependency_dict: dict):
+        # Mark all the vertices as not visited
+        visited = {}
+        [visited.update({script_path: False}) for script_path in script_list]
+        stack = []
+
+        # Call the recursive helper function to store Topological
+        # Sort starting from all projects one by one
+        for i in dependency_dict:
+            if not visited[i]:
+                self.topological_sort_util(dependency_dict, i, visited, stack)
+        return stack
+
+    def topological_sort_util(self, dependency_dict: dict, v, visited, stack):
+        # Mark the current node as visited.
+        visited[v] = True
+
+        # Recur for all the projects adjacent to this project
+        for i in dependency_dict[v]:
+            try:
+                if not visited[i]:
+                    self.topological_sort_util(dependency_dict, i, visited, stack)
+            except KeyError as F:
+                pass  # project probably wasn't added to be generated
+
+        # Push current project to stack which stores result
+        stack.append(v)
 
 
 def make_ifeq(a, b, body) -> str:

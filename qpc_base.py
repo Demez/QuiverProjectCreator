@@ -68,10 +68,11 @@ class BaseProjectGenerator:
     def _get_base_path(project_out_dir: str) -> str:
         return os.path.split(project_out_dir)[0] + "/"
     
-    def get_master_file_path(self, master_file_path: str) -> str:
-        pass
+    def get_master_file_path(self, master_file_path: str) -> None:
+        print(f'Warning: Generator "{self.name}" doesn\'t override get_master_file_path but has _set_generate_master_file set to True')
+        return ""
     
-    def create_master_file(self, settings, master_file_path: str) -> str:
+    def create_master_file(self, settings, master_file_path: str, platform_dict: dict) -> str:
         # return file name or abspath or whatever
         pass
 
