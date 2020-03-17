@@ -53,6 +53,8 @@ class MakefileGenerator(BaseProjectGenerator):
         return master_file_path + MAKEFILE_EXT
 
     def create_master_file(self, info: BaseInfo, master_file_path: str, platform_dict: dict) -> None:
+        print("Creating Master File: " + master_file_path)
+
         out_dir_dict = {}
         for qpc_path, hash_path in info.project_hashes.items():
             out_dir_dict[qpc_path] = os.path.relpath(qpc_hash.get_out_dir(hash_path))
