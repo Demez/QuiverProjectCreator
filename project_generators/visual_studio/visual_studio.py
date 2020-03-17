@@ -417,7 +417,7 @@ def setup_general_properties(vcxproj, project_passes: list):
         out_dir.text = config.general.out_dir + os.sep
         
         int_dir = et.SubElement(property_group, "IntDir")
-        int_dir.text = config.general.int_dir + os.sep
+        int_dir.text = config.general.build_dir + os.sep
         
         target_name = et.SubElement(property_group, "TargetName")
         if config.general.out_name:

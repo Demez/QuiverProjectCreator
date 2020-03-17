@@ -442,7 +442,7 @@ def clean_path(string: str, macros: dict) -> str:
 class General:
     def __init__(self, platform: Enum):
         self.out_dir = None
-        self.int_dir = None
+        self.build_dir = None
         self.out_name = None
 
         # i want to make these configuration options unaffected by config and platform macros,
@@ -479,8 +479,12 @@ class General:
         if not option_block.values:
             return
             
-        if option_block.key in {"out_dir", "int_dir"}:
-            self.__dict__[option_block.key] = clean_path(option_block.values[0], macros)
+        if option_block.key in {"out_dir", "int_dir", "build_dir"}:
+            value = clean_path(option_block.values[0], macros)
+            if option_block.key in {"build_dir", "int_dir"}:
+                self.build_dir = value
+            else:
+                self.out_dir = value
             
         elif option_block.key == "out_name":
             self.out_name = replace_macros(option_block.values[0], macros)
