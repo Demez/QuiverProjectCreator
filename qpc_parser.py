@@ -285,7 +285,7 @@ class Parser:
                     project_group.add_project(item.key, folder_list, info.shared.unsorted_projects)
     
     def parse_project(self, project_def: ProjectDefinition, project_script: str,
-                      info: BaseInfo, generator_list: list) -> ProjectContainer:
+                      info: BaseInfo, generator_list: list, platform_dict: dict) -> ProjectContainer:
         if args.time:
             start_time = perf_counter()
         else:
@@ -295,7 +295,7 @@ class Parser:
         project_block = self.read_file(project_filename)
 
         project_name = os.path.splitext(project_filename)[0]
-        project_container = ProjectContainer(project_name, project_script, info, project_def, generator_list)
+        project_container = ProjectContainer(project_name, project_script, info, project_def, generator_list, platform_dict)
         
         for project_pass in project_container._passes:
             project_pass.hash_list[project_filename] = qpc_hash.make_hash(project_filename)

@@ -34,7 +34,7 @@ class MakefileGenerator(BaseProjectGenerator):
         print("Creating: " + project.file_name + ".mak")
         compiler = get_compiler(project_passes[0].config.general.compiler,
                                 project_passes[0].config.general.language)
-        makefile = gen_defines(compiler, project.base_info.get_base_info(self._platforms[0]).configurations)
+        makefile = gen_defines(project, compiler, project.base_info.get_base_info(self._platforms[0]).configurations)
         
         for p in project_passes:
             makefile += gen_project_config_definitions(p)
@@ -63,13 +63,17 @@ def make_ifeq(a, b, body) -> str:
 
 def gen_cflags(conf: Configuration, libs: bool = True, defs: bool = True, includes: bool = True) -> str:
     mk = ""
-    if len(conf.compiler.preprocessor_definitions) > 0 and defs:
+    if conf.compiler.options:
+        mk += " " + " ".join(conf.compiler.options)
+    if conf.linker.options:
+        mk += " " + " ".join(conf.linker.options)
+    if conf.compiler.preprocessor_definitions and defs:
         mk += ' -D ' + ' -D '.join(conf.compiler.preprocessor_definitions)
-    if len(conf.linker.libraries) > 0 and libs:
+    if conf.linker.libraries and libs:
         mk += ' -l' + ' -l'.join(['.'.join(i.split('.')[:-1]) for i in conf.linker.libraries])
-    if len(conf.general.library_directories) > 0 and libs:
+    if conf.general.library_directories and libs:
         mk += ' -L' + ' -L'.join(conf.general.library_directories)
-    if len(conf.general.include_directories) > 0 and includes:
+    if conf.general.include_directories and includes:
         mk += ' -I' + ' -I'.join(conf.general.include_directories)
     return mk
 
@@ -77,28 +81,20 @@ def gen_cflags(conf: Configuration, libs: bool = True, defs: bool = True, includ
 # TODO: add a non-gnu flag option (/ instead of --, etc)
 def gen_compile_exe(compiler: str, conf: Configuration) -> str:
     entry = f"-Wl,--entry={conf.linker.entry_point}" if conf.linker.entry_point != "" else ""
-    options = " ".join(conf.compiler.options) + " " if conf.compiler.options else ""
-    return f"@{compiler} -o $@ $(SOURCES) {options}{entry} {gen_cflags(conf)}"
+    return f"@{compiler} -o $@ $(SOURCES) {entry} {gen_cflags(conf)}"
 
 
 def gen_compile_dyn(compiler: str, conf: Configuration) -> str:
-    options = " ".join(conf.compiler.options) + " " if conf.compiler.options else ""
-    return f"@{compiler} -shared -fPIC -o $@ $(SOURCES) {options}{gen_cflags(conf)}"
+    return f"@{compiler} -shared -fPIC -o $@ $(SOURCES) {gen_cflags(conf)}"
 
 
 def gen_compile_stat(compiler: str, conf: Configuration) -> str:
-    options = " ".join(conf.compiler.options) if conf.compiler.options else ""
-    return f"@ar rcs $@ $(OBJECTS) {options}"
+    return f"@ar rcs $@ $(OBJECTS)"
 
 
 def gen_project_targets(conf) -> str:
     makefile = "\n\n# TARGETS\n\n"
-    target_name = ""
-    # theres got to be a better way to do this but im tired
-    if conf.linker.output_file:
-        target_name = conf.linker.output_file
-    else:
-        target_name = "$(OUTNAME)"
+    target_name = conf.linker.output_file if conf.linker.output_file else "$(OUTNAME)"
     
     # compiler = "g++" if conf.general.language == Language.CPP else "gcc"
     compiler = get_compiler(conf.general.compiler, conf.general.language)
@@ -130,12 +126,12 @@ def gen_dependency_tree(objects, headers, conf: Configuration) -> str:
         pic = "-fPIC"
         
     for obj, path in objects.items():
-        makefile += f"\n{obj}: {path} {' '.join(cp.get_includes(path, conf.general.include_directories))}\n"
+        makefile += f"\n{obj}: {path} {' '.join(cp.get_includes(path, conf.general.include_directories, headers))}\n"
         makefile += f"\t@echo '$(CYAN)Building Object {path}$(NC)'\n"
         makefile += f"\t@$(COMPILER) -c {pic} -o $@ {path} {gen_cflags(conf, libs=False)}\n"
     
     for h in headers:
-        makefile += f"\n{h}: {' '.join(cp.get_includes(h, conf.general.include_directories))}\n"
+        makefile += f"\n{h}: {' '.join(cp.get_includes(h, conf.general.include_directories, headers))}\n"
     
     return makefile
 
@@ -167,7 +163,6 @@ def gen_script_targets(conf: Configuration) -> str:
 # TODO: less shit name
 def gen_project_config_definitions(project: ProjectPass) -> str:
     objects = {}
-    project_dir = os.path.split(project.project.project_path)[0]
     for i in project.source_files:
         objects['.'.join(i.split('.')[:-1])
                     .replace('/', '\\/')
@@ -176,8 +171,19 @@ def gen_project_config_definitions(project: ProjectPass) -> str:
     
     headers = [i for i in project.files if i.split('.')[-1] in header_extensions]
     nonheader_files = [i for i in project.files if i not in headers]
+
+    create_dirs = []
+    if project.config.linker.output_file:
+        create_dirs.append(os.path.split(project.config.linker.output_file)[0])
+
+    if project.config.linker.output_file:
+        makefile = f"\n# CREATE BIN DIR\n$(shell mkdir -p {os.path.split(project.config.linker.output_file)[0]})"
+    elif project.config.general.out_dir:
+        makefile = f"\n# CREATE BIN DIR\n$(shell mkdir -p {project.config.general.out_dir})"
+    else:
+        makefile = ""
     
-    makefile = "\n# SOURCE FILES:\n\n"
+    makefile += "\n# SOURCE FILES:\n\n"
     makefile += "SOURCES = " + '\t\\\n\t'.join(project.source_files) + "\n"
     
     makefile += "\n#OBJECTS:\n\n"
@@ -188,10 +194,8 @@ def gen_project_config_definitions(project: ProjectPass) -> str:
     
     makefile += "\n# MACROS:\n\n"
 
-    if project.config.general.out_name:
-        makefile += "OUTNAME = " + project.config.general.out_name
-    else:
-        makefile += "OUTNAME = " + project.project.file_name
+    makefile += "OUTNAME = "
+    makefile += project.config.general.out_name if project.config.general.out_name else project.project.file_name
     
     makefile += gen_project_targets(project.config)
     
@@ -203,17 +207,15 @@ def gen_project_config_definitions(project: ProjectPass) -> str:
     makefile += gen_script_targets(project.config)
     
     return make_ifeq(project.config_name, "$(CONFIG)",
-                     make_ifeq(project.platform, "$(PLATFORM)", makefile))
+                     make_ifeq(project.platform.name.lower(), "$(PLATFORM)", makefile))
 
 
-def get_default_platform() -> str:
-    p = sys.platform
-    if sys.maxsize > 2 ** 32:
-        p += "64"
+def get_default_platform(project: ProjectContainer) -> str:
+    platforms = project.get_platforms()
+    if Platform.LINUX64 in platforms:
+        return "linux64"
     else:
-        p += "32"
-    
-    return p
+        return platforms[0].name.lower()
 
 
 def get_compiler(compiler: Enum, language: Enum) -> str:
@@ -227,7 +229,7 @@ def get_compiler(compiler: Enum, language: Enum) -> str:
     return "g++"
 
 
-def gen_defines(compiler: str, configs: list) -> str:
+def gen_defines(project: ProjectContainer, compiler: str, configs: list) -> str:
     return f"""#!/usr/bin/make -f
 
 
@@ -245,7 +247,7 @@ def gen_defines(compiler: str, configs: list) -> str:
 # / 　 づ  
 
 # don't mess with this, might break stuff
-PLATFORM = {get_default_platform()}
+PLATFORM = {get_default_platform(project)}
 # change the config with CONFIG=[{','.join(configs)}] to make
 CONFIG = {configs[0]}
 # edit this in your QPC script configuration/general/compiler

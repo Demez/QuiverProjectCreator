@@ -125,7 +125,7 @@ def main():
                 if project_dir and project_dir != args.root_dir:
                     os.chdir(project_dir)
                 
-                project = parser.parse_project(project_def, project_script, info, generator_list)
+                project = parser.parse_project(project_def, project_script, info, generator_list, platform_dict)
                 [generator.create_project(project) for generator in generator_list]
                 
                 if project_dir and project_dir != args.root_dir:

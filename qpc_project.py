@@ -284,7 +284,8 @@ class ProjectPass(ProjectBase):
 
 class ProjectContainer:
     # base_info is BaseInfo from qpc_parser.py
-    def __init__(self, name: str, project_path: str, base_info, project_def: ProjectDefinition, generator_list: list):
+    def __init__(self, name: str, project_path: str, base_info, project_def: ProjectDefinition,
+                 generator_list: list, platform_dict: dict):
         self.file_name = name  # the actual file name
         self.project_path = project_path  # should use the macro instead tbh, might remove
         self.out_dir = os.path.split(project_path)[0]
@@ -307,7 +308,7 @@ class ProjectContainer:
             generator_platforms = generator.get_supported_platforms()
             for plat_name in project_def.platforms:
                 for config in base_info.get_base_info_plat_name(plat_name).configurations:
-                    for plat in PLATFORM_DICT[plat_name]:
+                    for plat in platform_dict[plat_name]:
                         if plat in generator_platforms:
                             self.add_pass(config, plat_name, plat, macro, generator.id)
                             
@@ -326,6 +327,11 @@ class ProjectContainer:
         
     def get_passes(self, gen_id: int) -> list:
         return [project_pass for project_pass in self._passes if gen_id in project_pass.generators]
+
+    def get_platforms(self) -> list:
+        platforms = set()
+        [platforms.add(project_pass.platform) for project_pass in self._passes]
+        return list(platforms)
     
     def get_hashes(self) -> dict:
         hash_dict = {}
