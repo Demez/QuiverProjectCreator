@@ -10,13 +10,13 @@ from qpc_parser import BaseInfo
 
 import qpc_c_parser as cp
 
-header_extensions = [
+header_extensions = {
     'h',
     'hh',
     'hpp',
     'h++',
     'hxx'
-]
+}
 
 
 MAKEFILE_EXT = ".mak"
@@ -228,11 +228,10 @@ def gen_script_targets(conf: Configuration) -> str:
 # TODO: less shit name
 def gen_project_config_definitions(project: ProjectPass) -> str:
     objects = {}
+    build_dir = project.config.general.build_dir if project.config.general.build_dir else "build"
     for i in project.source_files:
-        objects['.'.join(i.split('.')[:-1])
-                    .replace('/', '\\/')
-                    .replace('..', ('\\.\\.')
-                             .replace(' ', '\\ ')) + '.o'] = i
+        objects[build_dir + "/" + '.'.join(
+            i.split('.')[:-1]).replace('/', '\\/').replace('..', ('\\.\\.').replace(' ', '\\ ')) + '.o'] = i
     
     headers = [i for i in project.files if i.split('.')[-1] in header_extensions]
     nonheader_files = [i for i in project.files if i not in headers]
@@ -242,11 +241,14 @@ def gen_project_config_definitions(project: ProjectPass) -> str:
         create_dirs.append(os.path.split(project.config.linker.output_file)[0])
 
     if project.config.linker.output_file:
-        makefile = f"\n# CREATE BIN DIR\n$(shell mkdir -p {os.path.split(project.config.linker.output_file)[0]})"
+        makefile = f"\n# CREATE BIN DIR\n$(shell mkdir -p {os.path.split(project.config.linker.output_file)[0]})\n"
     elif project.config.general.out_dir:
-        makefile = f"\n# CREATE BIN DIR\n$(shell mkdir -p {project.config.general.out_dir})"
+        makefile = f"\n# CREATE BIN DIR\n$(shell mkdir -p {project.config.general.out_dir})\n"
     else:
         makefile = ""
+
+    if build_dir:
+        makefile += f"\n# CREATE BUILD DIR\n$(shell mkdir -p {build_dir})\n"
     
     makefile += "\n# SOURCE FILES:\n\n"
     makefile += "SOURCES = " + '\t\\\n\t'.join(project.source_files) + "\n"
