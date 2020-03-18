@@ -62,7 +62,8 @@ class MakefileGenerator(BaseProjectGenerator):
         # why
         platform = None
         for plat in [i for v in platform_dict.values() for i in v]:
-            if plat in self._platforms and (not platform or plat.name.endswith("64") and platform.name().endswith("32")):
+            if plat in self._platforms and not platform or \
+                    plat.name.endswith("64") and platform and platform.name.endswith("32"):
                 platform = plat
 
         master_file = f"""#!/usr/bin/make -f
