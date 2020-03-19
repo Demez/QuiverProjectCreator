@@ -1,9 +1,11 @@
 # Reads QPC files and returns a list of QPCBlocks
 
 import os
-from pathlib import Path
 from re import compile
-from qpc_base import args, FixPathSeparator
+
+
+def posix_path(string: str) -> str:
+    return string.replace("\\", "/")
 
 
 COND_OPERATORS = compile('(\\(|\\)|\\|\\||\\&\\&|>=|<=|==|!=|>|<)')
@@ -13,105 +15,96 @@ class QPCBlockBase:
     def __init__(self, file_path: str = ""):
         self.file_path = file_path
         self.items = []
-
+    
     # temp stuff until i setup the rest for this later
     def __iter__(self):
         return self.items.__iter__()
-
+    
     def __getitem__(self, item):
         return self.items[item]
-
+    
     def extend(self, item):
         self.items.extend(item)
-
+    
     def append(self, item):
         self.items.append(item)
-
+    
     def remove(self, item):
         self.items.remove(item)
-
+    
     def index(self, item):
         self.items.index(item)
-
-    def ToString(self, depth=0, quote_keys=False, quote_values=False, break_multi_value=False, break_on_key=False):
+    
+    def to_string(self, quote_keys=False, quote_values=False, break_multi_value=False, break_on_key=False):
         final_string = ""
         for item in self.items:
-            final_string += item.ToString(depth, quote_keys) + "\n"
+            final_string += item.to_string(0, quote_keys, quote_values, break_multi_value, break_on_key) + "\n"
         return final_string
-        
-    def AddItem(self, key: str, values: list, condition: str = "", line_num: int = 0):
+    
+    def add_item(self, key: str, values: list, condition: str = "", line_num: int = 0):
+        if type(values) == str:
+            values = [values]
         sub_qpc = QPCBlock(self, key, values, condition, file_path=self.file_path, line_num=line_num)
         self.items.append(sub_qpc)
         return sub_qpc
-        
-    def AddItemAtIndex(self, index: int, key: str, values: list, condition: str = "", line_num: int = 0):
+    
+    def add_item_index(self, index: int, key: str, values: list, condition: str = "", line_num: int = 0):
         sub_qpc = QPCBlock(self, key, values, condition, file_path=self.file_path, line_num=line_num)
         self.items.insert(index, sub_qpc)
         return sub_qpc
-
-    def GetItem(self, item_key):
+    
+    def get_item(self, item_key):
         for item in self.items:
             if item.key == item_key:
                 return item
         return None
-
-    def GetItemValues(self, item_key):
+    
+    def get_item_values(self, item_key):
         for item in self.items:
             if item.key == item_key:
                 return item.values
         return None
-
-    def GetAllItems(self, item_key):
+    
+    def get_items(self, item_key):
         items = []
         for item in self.items:
             if item.key == item_key:
                 items.append(item)
         return items
-
+    
     # TODO: shorten these 4 function names?
-    def GetItemsThatPassCondition(self, macros: list):
+    def get_items_condition(self, macros: list):
         items = []
         for item in self.items:
-            if SolveCondition(item.condition, macros):
+            if solve_condition(item.condition, macros):
                 items.append(item)
         return items
     
-    def GetItemKeysThatPassCondition(self, macros: list):
+    def get_item_keys_condition(self, macros: list):
         items = []
         for item in self.items:
-            if SolveCondition(item.condition, macros):
+            if solve_condition(item.condition, macros):
                 items.append(item.key)
         return items
     
-    def GetItemValuesThatPassCondition(self, macros: list):
+    def get_item_values_condition(self, macros: list):
         items = []
         for item in self.items:
-            if SolveCondition(item.condition, macros):
+            if solve_condition(item.condition, macros):
                 items.extend(item.values)
         return items
     
-    # way too long
-    def GetItemKeyAndValuesThatPassCondition(self, macros: list):
+    def get_item_list_condition(self, macros: list):
         items = []
         for item in self.items:
-            if SolveCondition(item.condition, macros):
+            if solve_condition(item.condition, macros):
                 items.extend([item.key, *item.values])
         return items
-
-    # probably useless
-    def GetValuesOfAllItems(self, item_key):
-        items = []
-        for item in self.items:
-            if item.key == item_key:
-                items.append(item)
-        return items
     
-    def GetAllKeysInItems(self):
-        keys = []
-        [keys.append(value.key) for value in self.items]
-        return keys
+    def get_keys_in_items(self):
+        return [value.key for value in self.items]
     
-    def GetIndexOfItem(self, qpc_item):
+    def get_item_index(self, qpc_item):
         try:
             return self.items.index(qpc_item)
         except IndexError:
@@ -126,8 +119,8 @@ class QPCBlock(QPCBlockBase):
         self.values = values
         self.condition = condition
         self.line_num = line_num
-
-    def ToString(self, depth=0, quote_keys=False, quote_values=False, break_multi_value=False, break_on_key=False):
+    
+    def to_string(self, depth=0, quote_keys=False, quote_values=False, break_multi_value=False, break_on_key=False):
         indent = "{0}".format(depth * '\t')
         index = self.parent.items.index(self)
         
@@ -135,21 +128,23 @@ class QPCBlock(QPCBlockBase):
             string = "{0}\"{1}\"".format(indent, self.key)
         else:
             string = indent + self.key
-            
+        
         if break_on_key:
             key_indent = 0
         else:
             key_indent = len(self.key) - 1
-    
+        
         if self.values:
             for value_index, value in enumerate(self.values):
                 if quote_values:
-                    formatted_value = "{0}".format(value.replace("'", "\\'").replace('"', '\\"'))
+                    formatted_value = value.replace("'", "\\'").replace('"', '\\"')
                 else:
-                    formatted_value = "{0}".format(value.replace("'", "\\'"))
-                    formatted_value = "{0}".format(
-                        formatted_value[0] + formatted_value[1:-1].replace('"', '\\"') + formatted_value[-1])
-                    
+                    formatted_value = value.replace("'", "\\'")
+                    if formatted_value:
+                        formatted_value = formatted_value[0] + \
+                                          formatted_value[1:-1].replace('"', '\\"') + \
+                                          formatted_value[-1]
+                
                 if quote_values:
                     string += " \"{0}\"".format(formatted_value)
                 else:
@@ -157,74 +152,72 @@ class QPCBlock(QPCBlockBase):
                 # untested
                 if break_multi_value and value_index < len(self.values):
                     string += " \\\n{0}{1}".format(indent, " " * key_indent)
-    
+        
         if self.condition:
-            string += " [" + AddSpacingToCondition(self.condition) + "]"
-    
+            string += " [" + add_spacing_to_condition(self.condition) + "]"
+        
         if self.items:
             if 0 < index < len(self.parent.items):
                 if not self.parent.items[index - 1].items:
                     string = "\n" + string
-                    
+            
             string += "\n" + indent + "{\n"
             for item in self.items:
-                string += item.ToString(depth+1, quote_keys) + "\n"
+                string += item.to_string(depth + 1, quote_keys, quote_values, break_multi_value, break_on_key) + "\n"
             string += indent + "}"
             
             if index < len(self.parent.items) - 1:
                 string += "\n"
-    
+        
         return string
-
-    def GetKeyValues(self):
-        return [self.key, *self.values]
-
-    def SolveCondition(self, macros: dict) -> int:
-        return SolveCondition(self.condition, macros)
-
-    def InvalidOption(self, *valid_option_list):
-        if not args.hide_warnings:
-            print( "WARNING: Invalid Option" )
-            print( "\tValid Options:\n\t\t" + '\n\t\t'.join(valid_option_list) )
-            self.PrintInfo()
+    
+    def get_list(self) -> tuple:
+        return (self.key, *self.values)  # need parenthesis for python versions older than 3.8
+    
+    def solve_condition(self, macros: dict) -> int:
+        return solve_condition(self.condition, macros)
+    
+    def invalid_option(self, *valid_option_list):
+        print("WARNING: Invalid Option")
+        print("\tValid Options:\n\t\t" + '\n\t\t'.join(valid_option_list))
+        self.print_info()
     
     # would be cool if i could change the colors on this
-    def FatalError(self, message):
+    def fatal_error(self, message):
         print("FATAL ERROR: " + message)
-        self.PrintInfo()
+        self.print_info()
         quit()
     
     # should Error and FatalError be the same?
-    def Error(self, message):
+    def error(self, message):
         print("ERROR: " + message)
-        self.PrintInfo()
+        self.print_info()
     
-    def Warning(self, message):
-        if not args.hide_warnings:
-            print("WARNING: " + message)
-            self.PrintInfo()
+    def warning(self, message):
+        print("WARNING: " + message)
+        self.print_info()
     
-    def PrintInfo(self):
+    def print_info(self):
         # TODO: this path is relative to the current directory
         print("\tFile Path: " + self.file_path +
               "\n\tLine: " + str(self.line_num) +
               "\n\tKey: " + self.key)
-
+        
         if self.values:
             # if there is only one value, write it on the same line
             if len(self.values) == 1:
                 print("\tValues: " + self.values[0])
             else:
                 print("\tValues:\n\t\t" + '\n\t\t'.join(self.values))
-                
-            
+
+
 # maybe make a comment object so when you re-write the file, you don't lose comments
 class Comment:
     def __init__(self):
         pass
 
 
-def ReplaceMacrosCondition(split_string, macros):
+def replace_macros_condition(split_string, macros):
     # for macro, macro_value in macros.items():
     for index, item in enumerate(split_string):
         if item in macros or item[1:] in macros:
@@ -242,19 +235,19 @@ def ReplaceMacrosCondition(split_string, macros):
     return split_string
 
 
-def SolveCondition(condition, macros):
+def solve_condition(condition, macros):
     if not condition:
         return True
     
     # solve any sub conditionals first
     while "(" in condition:
         sub_cond_line = (condition.split('(')[1]).split(')')[0]
-        sub_cond_value = SolveCondition(sub_cond_line, macros)
+        sub_cond_value = solve_condition(sub_cond_line, macros)
         condition = condition.split('(', 1)[0] + str(sub_cond_value * 1) + condition.split(')', 1)[1]
     
     split_string = COND_OPERATORS.split(condition)
     
-    condition = ReplaceMacrosCondition(split_string, macros)
+    condition = replace_macros_condition(split_string, macros)
     
     if len(condition) == 1:
         try:
@@ -263,12 +256,12 @@ def SolveCondition(condition, macros):
             return 1
     
     while len(condition) > 1:
-        condition = SolveSingleCondition(condition)
+        condition = _solve_single_condition(condition)
     
     return condition[0]
 
 
-def SolveSingleCondition(cond):
+def _solve_single_condition(cond):
     index = 1
     result = 0
     # highest precedence order
@@ -323,7 +316,7 @@ def SolveSingleCondition(cond):
     return cond
 
 
-def AddSpacingToCondition(cond):
+def add_spacing_to_condition(cond):
     cond = cond.strip(" ")
     
     if ">=" not in cond:
@@ -335,61 +328,62 @@ def AddSpacingToCondition(cond):
         cond = cond.replace(operator, ' ' + operator + ' ')
     
     return cond
-    
-        
-def ReadFile(path, keep_quotes=False):
-    path = FixPathSeparator(path)
+
+
+def read_file(path, keep_quotes=False) -> QPCBlockBase:
+    path = posix_path(path)
     lexer = QPCLexer(path, keep_quotes)
     qpc_file = QPCBlockBase(path)
-    path = os.getcwd() + os.sep + path
-
-    while lexer.chari < lexer.file_len:
-        key, line_num = lexer.NextKey()
+    path = posix_path(os.getcwd() + "/" + path)
+    
+    while lexer.char_num < lexer.file_len:
+        key, line_num = lexer.next_key()
         
         if not key:
             break  # end of file
         
-        values = lexer.NextValueList()
-        condition = lexer.NextCondition()
-
-        block = qpc_file.AddItem(key, values, condition, line_num)
+        values = lexer.next_value_list()
+        condition = lexer.next_condition()
         
-        if lexer.NextSymbol() == "{":
-            CreateSubBlock(lexer, block, path)
+        block = qpc_file.add_item(key, values, condition, line_num)
+        
+        if lexer.next_symbol() == "{":
+            _create_sub_block(lexer, block, path)
             pass
     
     return qpc_file
 
 
-def CreateSubBlock(lexer, block, path):
-    while lexer.chari < lexer.file_len - 1:
-        key, line_num = lexer.NextKey()
+def _create_sub_block(lexer, block, path):
+    while lexer.char_num < lexer.file_len - 1:
+        key, line_num = lexer.next_key()
         
         if not key:
-            if lexer.NextSymbol() == "}":
+            if lexer.next_symbol() == "}":
                 return
-            print( "uhhhhhhh" )
+            print("empty key? might work, who knows")
+            block.print_info()
         
-        # line_num = lexer.linei
-        values = lexer.NextValueList()
-        condition = lexer.NextCondition()
-
-        sub_block = block.AddItem(key, values, condition, line_num)
-    
-        next_symbol = lexer.NextSymbol()
+        # line_num = lexer.line_num
+        values = lexer.next_value_list()
+        condition = lexer.next_condition()
+        
+        sub_block = block.add_item(key, values, condition, line_num)
+        
+        next_symbol = lexer.next_symbol()
         if next_symbol == "{":
-            CreateSubBlock(lexer, sub_block, path)
+            _create_sub_block(lexer, sub_block, path)
         elif next_symbol == "}":
             return
-        
-    
+
+
 class QPCLexer:
     def __init__(self, path, keep_quotes=False):
-        self.chari = 0
-        self.linei = 1
+        self.char_num = 0
+        self.line_num = 1
         self.path = path
         self.keep_quotes = keep_quotes
-
+        
         with open(path, mode="r", encoding="utf-8") as file:
             self.file = file.read()
         self.file_len = len(self.file) - 1
@@ -400,218 +394,217 @@ class QPCLexer:
         self.chars_cond = {'[', ']'}
         self.chars_space = {' ', '\t'}
         self.chars_quote = {'"', '\''}
-        
-    def NextValueList(self):
+    
+    def next_value_list(self):
         values = []
         current_value = ''
-        while self.chari < self.file_len:
-            char = self.file[self.chari]
-
+        while self.char_num < self.file_len:
+            char = self.file[self.char_num]
+            
             if char in self.chars_item:
                 break
-                
+            
             if char in self.chars_space:
                 if current_value:
                     if current_value != '\\':
                         values.append(current_value)
                         current_value = ''
-                self.chari += 1
+                self.char_num += 1
                 continue
-    
+            
             if char in {'"', '\''}:
-                values.append(self.ReadQuote(char))
+                values.append(self.read_quote(char))
                 current_value = ""
                 continue
-    
+            
             # skip escape
-            if char == '\\' and self.NextChar() in self.chars_escape:
-                self.chari += 2
-                current_value += self.file[self.chari]
-                # char = self.file[self.chari]
-    
+            if char == '\\' and self.next_char() in self.chars_escape:
+                self.char_num += 2
+                current_value += self.file[self.char_num]
+                # char = self.file[self.char_num]
+            
             elif char == '\n':
-                # self.linei += 1
+                # self.line_num += 1
                 if not current_value.endswith("\\"):
                     if current_value and not current_value.startswith('[') and not current_value.endswith(']'):
                         values.append(current_value)
-                    # self.chari += 1
+                    # self.char_num += 1
                     break
                 else:
-                    self.linei += 1
-
-            elif char == '/' and self.NextChar() in self.chars_comment:
-                self.SkipComment()
-                self.chari -= 1  # shut
-    
+                    self.line_num += 1
+            
+            elif char == '/' and self.next_char() in self.chars_comment:
+                self.skip_comment()
+                self.char_num -= 1  # shut
+            
             else:
-                if self.file[self.chari] in self.chars_cond:
+                if self.file[self.char_num] in self.chars_cond:
                     break
                 if current_value == '\\':
                     current_value = ''
-                current_value += self.file[self.chari]
-    
-            self.chari += 1
+                current_value += self.file[self.char_num]
+            
+            self.char_num += 1
         
         return values
-
-    def NextChar(self):
-        if self.chari + 1 >= self.file_len:
+    
+    def next_char(self):
+        if self.char_num + 1 >= self.file_len:
             return None
-        return self.file[self.chari + 1]
-
+        return self.file[self.char_num + 1]
+    
     # used to be NextString, but i only used it for keys
-    def NextKey(self):
-        string = ''
+    def next_key(self):
+        string = ""
         line_num = 0
         skip_list = {' ', '\t', '\n'}
         
-        while self.chari < self.file_len:
-            char = self.file[self.chari]
+        while self.char_num < self.file_len:
+            char = self.file[self.char_num]
             
             if char in self.chars_item:
-                line_num = self.linei
+                line_num = self.line_num
                 break
-
+            
             elif char in self.chars_space:
                 if string:
-                    line_num = self.linei
+                    line_num = self.line_num
                     break
-
+            
             elif char in self.chars_quote:
-                string = self.ReadQuote(char)
-                line_num = self.linei
+                string = self.read_quote(char)
+                line_num = self.line_num
                 break
             
             # skip escape
-            elif char == '\\' and self.NextChar() in self.chars_escape:
-                self.chari += 2
-                string += self.file[self.chari]
-                # char = self.file[self.chari]
+            elif char == '\\' and self.next_char() in self.chars_escape:
+                self.char_num += 2
+                string += self.file[self.char_num]
+                # char = self.file[self.char_num]
             
             elif char in skip_list:
                 if string:
-                    # self.chari += 1
-                    line_num = self.linei
+                    # self.char_num += 1
+                    line_num = self.line_num
                     # if char == '\n':
-                    #     self.linei += 1
+                    #     self.line_num += 1
                     break
                 if char == '\n':
-                    self.linei += 1
-                
-            elif char == '/' and self.NextChar() in self.chars_comment:
-                self.SkipComment()
-                
-            else:
-                string += self.file[self.chari]
-
-            self.chari += 1
+                    self.line_num += 1
             
+            elif char == '/' and self.next_char() in self.chars_comment:
+                self.skip_comment()
+            
+            else:
+                string += self.file[self.char_num]
+            
+            self.char_num += 1
+        
         return string, line_num
-
-    def NextSymbol(self):
-        while self.chari < self.file_len:
-            char = self.file[self.chari]
-
+    
+    def next_symbol(self):
+        while self.char_num < self.file_len:
+            char = self.file[self.char_num]
+            
             if char in self.chars_item:
-                self.chari += 1
+                self.char_num += 1
                 return char
             
             # skip escape
-            elif char == '\\' and self.NextChar() in self.chars_escape:
-                self.chari += 2
+            elif char == '\\' and self.next_char() in self.chars_escape:
+                self.char_num += 2
             
-            elif char == '/' and self.NextChar() in self.chars_comment:
-                self.SkipComment()
-                
+            elif char == '/' and self.next_char() in self.chars_comment:
+                self.skip_comment()
+            
             elif char == '\n':
-                self.linei += 1
-                
+                self.line_num += 1
+            
             elif char not in self.chars_space:
                 break
-
-            self.chari += 1
             
-        return None
-
-    def NextCondition(self):
-        condition = ''
-        while self.chari < self.file_len:
-            char = self.file[self.chari]
+            self.char_num += 1
         
+        return None
+    
+    def next_condition(self):
+        condition = ''
+        while self.char_num < self.file_len:
+            char = self.file[self.char_num]
+            
             if char in self.chars_item:
                 break
-        
-            elif char == '[':
-                self.chari += 1
-                continue
-        
-            elif char == ']':
-                self.chari += 1
-                break
-        
-            elif char in {' ', '\t'}:
-                self.chari += 1
-                continue
-        
-            elif char == '\n':
-                self.linei += 1
-                self.chari += 1
-                break
-        
-            elif char == '/' and self.NextChar() in self.chars_comment:
-                self.SkipComment()
-        
-            else:
-                condition += self.file[self.chari]
-        
-            self.chari += 1
             
+            elif char == '[':
+                self.char_num += 1
+                continue
+            
+            elif char == ']':
+                self.char_num += 1
+                break
+            
+            elif char in self.chars_space:
+                self.char_num += 1
+                continue
+            
+            elif char == '\n':
+                self.line_num += 1
+                self.char_num += 1
+                break
+            
+            elif char == '/' and self.next_char() in self.chars_comment:
+                self.skip_comment()
+            
+            else:
+                condition += self.file[self.char_num]
+            
+            self.char_num += 1
+        
         return condition
     
-    def SkipComment(self):
-        self.chari += 1
-        char = self.file[self.chari]
+    def skip_comment(self):
+        self.char_num += 1
+        char = self.file[self.char_num]
         if char == '/':
             # keep going until \n
             while True:
-                self.chari += 1
-                if self.file[self.chari] == "\n":
-                    self.linei += 1
+                self.char_num += 1
+                if self.file[self.char_num] == "\n":
+                    self.line_num += 1
                     break
-    
+        
         elif char == '*':
             while True:
-                char = self.file[self.chari]
-            
-                if char == '*' and self.NextChar() == '/':
-                    self.chari += 1
+                char = self.file[self.char_num]
+                
+                if char == '*' and self.next_char() == '/':
+                    self.char_num += 1
                     break
-            
+                
                 if char == "\n":
-                    self.linei += 1
-            
-                self.chari += 1
-
-    def ReadQuote(self, qchar):
+                    self.line_num += 1
+                
+                self.char_num += 1
+    
+    def read_quote(self, quote_char):
         if self.keep_quotes:
-            quote = qchar
+            quote = quote_char
         else:
             quote = ''
-    
-        while self.chari < self.file_len:
-            self.chari += 1
-            char = self.file[self.chari]
         
-            if char == '\\' and self.NextChar() in self.chars_escape:
-                quote += self.NextChar()
-                self.chari += 1
-            elif char == qchar:
+        while self.char_num < self.file_len:
+            self.char_num += 1
+            char = self.file[self.char_num]
+            
+            if char == '\\' and self.next_char() in self.chars_escape:
+                quote += self.next_char()
+                self.char_num += 1
+            elif char == quote_char:
                 if self.keep_quotes:
                     quote += char
                 break
             else:
                 quote += char
-    
-        self.chari += 1
+        
+        self.char_num += 1
         return quote
-

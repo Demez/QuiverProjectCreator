@@ -6,257 +6,157 @@
 import os
 import sys
 
-from qpc_base import args, PosixPath
-import qpc_hash
+from time import perf_counter
+from enum import Enum
+
 import qpc_reader
-import qpc_parser
-import qpc_writer
-
-if args.time:
-    from time import perf_counter
-
-
-def GetBaseMacros():
-    # OS Specific Defines
-    arg_macros = {}
-    for macro in args.macros:
-        arg_macros["$" + macro.upper()] = "1"
-    
-    if sys.platform == "win32":
-        return {
-            "$WINDOWS": "1",
-            "$_BIN_EXT": ".dll",
-            "$_STATICLIB_EXT": ".lib",
-            "$_IMPLIB_EXT": ".lib",
-            "$_APP_EXT": ".exe",
-            # "$_DBG_EXT": ".pdb",
-            **arg_macros,
-        }
-    
-    elif sys.platform.startswith("linux"):
-        return {
-            "$POSIX": "1",
-            "$LINUX": "1",
-            "$_BIN_EXT": ".so",
-            "$_STATICLIB_EXT": ".a",
-            "$_IMPLIB_EXT": ".so",
-            "$_APP_EXT": "",
-            # "$_DBG_EXT": ".dbg",
-            **arg_macros,
-        }
-    
-    # TODO: finish setting up MacOS stuff here
-    elif sys.platform == "darwin":
-        return {
-            "$POSIX": "1",
-            "$MACOS": "1",
-            "$_BIN_EXT": ".dylib",
-            "$_STATICLIB_EXT": ".a",
-            "$_IMPLIB_EXT": ".so",
-            "$_APP_EXT": "",
-            # "$_DBG_EXT": ".dbg",
-        }
+from qpc_generator_handler import GeneratorHandler
+from qpc_parser import Parser
+from qpc_args import args, parse_args
+from qpc_base import BaseProjectGenerator, PLATFORM_DICT
+from qpc_hash import (check_hash, check_master_file_hash, write_project_hash, write_master_file_hash,
+                      get_project_dependencies, get_hash_file_path, QPC_HASH_DIR)
 
 
-def VPCConvert():
-    import qpc_vpc_converter as vpc_converter
-    print("\nConverting VPC Scripts to QPC Scripts")
-    
-    print("Finding All VPC and VGC Scripts")
-    vgc_path_list, vpc_path_list = vpc_converter.GetAllVPCScripts(args.root_dir)
-    
-    if vgc_path_list:
-        print("\nConverting VGC Scripts")
-        for vgc_path in vgc_path_list:
-            print("Converting: " + vgc_path)
-            read_vgc, vgc_dir, vgc_name = vpc_converter.GetVPCFileDirName(vgc_path)
-            vpc_converter.ConvertVGC(vgc_dir, vgc_name, read_vgc)
-    
-    if vpc_path_list:
-        print("\nConverting VPC Scripts")
-        
-        for vpc_path in vpc_path_list:
-            # TODO: maybe make a keep comments option in ReadFile()? otherwise, commented out files won't be kept
-            print("Converting: " + vpc_path)
-            read_vpc, vpc_dir, vpc_name = vpc_converter.GetVPCFileDirName(vpc_path)
-            vpc_converter.ConvertVPC(vpc_dir, vpc_name, read_vpc)
-
-
-def GetAllProjects(all_groups, all_projects):
-    project_def_list = []
-    
-    unwanted_projects = {}
-    for removed_item in args.remove:
-        if removed_item in all_groups:
-            for project in all_groups[removed_item].projects:
-                if project.name not in unwanted_projects:
-                    unwanted_projects[project.name] = project
-        
-        else:
-            for project in all_projects:
-                if project.name == removed_item:
-                    unwanted_projects[project.name] = project
-                    break
-    
-    # TODO: clean up this mess
-    if args.add:
-        for added_item in args.add:
-            if added_item in all_groups:
-                if added_item not in args.remove:
-                    
-                    # TODO: move to another function
-                    for project in all_groups[added_item].projects:
-                        if project.name not in unwanted_projects:
-                            for added_project in project_def_list:
-                                if added_project.name == project.name:
-                                    break
-                            else:
-                                project_def_list.append(project)
-                                continue
-            
-            else:
-                if added_item not in args.remove:
-                    for project in all_projects:
-                        if added_item == project.name:
-                            for added_project in project_def_list:
-                                if added_project.name == project.name:
-                                    break
-                            else:
-                                project_def_list.append(project)
-                                continue
-                # else:
-                # print("hey this item doesn't exist: " + added_item)
-    else:
-        raise Exception("No projects were added to generate for")
-    
-    return project_def_list
-
-
-def GetPlatforms():
-    if sys.platform == "win32":
-        return ["win32", "win64"]
-    
-    elif sys.platform.startswith("linux"):
-        return ["linux32", "linux64"]
-    
-    elif sys.platform == "darwin":
-        return ["macos"]
-
-
-def SetProjectTypeMacros(base_macros, project_types_list):
-    for name in project_types_list:
-        base_macros["$" + name.upper()] = "1"
+def create_directory(directory):
+    try:
+        os.makedirs(directory)
         if args.verbose:
-            print('Set Macro: ${0} = "1"'.format(name.upper()))
+            print("Created Directory: " + directory)
+    except FileExistsError:
+        pass
+    except FileNotFoundError:
+        pass
 
 
-def Main():
-    base_macros = GetBaseMacros()
+def get_platform_list() -> list:
+    platform_names = []
+    for platform in args.platforms:
+        for platform_name in PLATFORM_DICT:
+            if platform in PLATFORM_DICT[platform_name] and platform_name not in platform_names:
+                platform_names.append(platform_name)
+                break
+    return platform_names
+
+
+def get_platform_dict() -> dict:
+    platform_names = {}
+    for platform in args.platforms:
+        for platform_name in PLATFORM_DICT:
+            if platform in PLATFORM_DICT[platform_name]:
+                if platform_name not in platform_names:
+                    platform_names[platform_name] = [platform]
+                else:
+                    platform_names[platform_name].append(platform)
+                break
+    return platform_names
+
+
+def get_generators_all(platform_list: list) -> list:
+    generator_list = []
     
-    if args.verbose:
-        print()
-        for macro_name, macro_value in base_macros.items():
-            print('Set Macro: {0} = "{1}"'.format(macro_name, macro_value))
-    
-    SetProjectTypeMacros(base_macros, args.types)
-    
+    for generator in GENERATOR_HANDLER.project_generators:
+        platforms = generator.get_supported_platforms()
+        for platform in platform_list:
+            # intersection is if any items in a set is in another set
+            has_valid_platforms = PLATFORM_DICT[platform].intersection(set(platforms))
+            if has_valid_platforms and generator not in generator_list:
+                generator_list.append(generator)
+                break
+                
+    return generator_list
+
+
+def get_generators(platform: Enum) -> list:
+    generator_list = []
+    for generator in GENERATOR_HANDLER.project_generators:
+        platforms = generator.get_supported_platforms()
+        # intersection is if any items in a set is in another set
+        has_valid_platforms = PLATFORM_DICT[platform].intersection(set(platforms))
+        if has_valid_platforms and generator not in generator_list:
+            generator_list.append(generator)
+    return generator_list
+
+
+def check_platforms(platform_list: list, generator_platforms: list) -> set:
+    has_valid_platforms = set()
+    for platform in platform_list:
+        # intersection is if any items in a set is in another set
+        has_valid_platforms.update(PLATFORM_DICT[platform].intersection(set(generator_platforms)))
+    return has_valid_platforms
+
+
+def check_project_exists(project_script: str, platforms: list, generator_list: list) -> bool:
+    for generator in generator_list:
+        if check_platforms(platforms, generator.get_supported_platforms()):
+            if not generator.does_project_exist(project_script):
+                return False
+    return True
+
+
+def check_valid_platforms(generator: BaseProjectGenerator, platform: Enum):
+    platforms = generator.get_supported_platforms()
+    return PLATFORM_DICT[platform].intersection(set(platforms))
+
+
+def main():
+    create_directory(QPC_HASH_DIR)
     os.chdir(args.root_dir)
     
-    if "vpc_convert" in args.types:
-        VPCConvert()
-        return
-    
-    if args.verbose:
-        print("\nReading: " + args.base_file)
-    
-    base_file = qpc_reader.ReadFile(args.base_file)
-    
-    all_groups = {}
-    all_projects = []
-    configurations, dependency_dict = qpc_parser.ParseBaseFile(base_file, base_macros, all_projects, all_groups)
-    
-    # --------------------------------------------------------------------------------------
-    
-    # get all the projects the user wants (this is probably the worst part in this whole project)
-    project_def_list = GetAllProjects(all_groups, all_projects)
-    print()
-    platforms = GetPlatforms()
-    project_pass = 0
-    
+    parser = Parser()
+    # loop PlatformNames -> BaseSettings, OutputTypes -> Configs -> Platforms
     if args.time:
         start_time = perf_counter()
+        
+    platform_dict = get_platform_dict()
+    
+    info = parser.parse_base_info(args.base_file, tuple(platform_dict.keys()))
+    generator_list = get_generators_all(info.platform_list)
+    
+    for project_def in info.project_list:
+        for project_script in project_def.script_list:
+            if not args.skip_projects:
+                print()
+            # only run if the hash check fails or if the user force creates projects
+            # may look in the hash for where the project output directory is in the future
+            if not args.skip_projects and (args.force or not check_project_exists(project_script, project_def.platforms, generator_list) \
+                    or not check_hash(project_script)):
+                project_dir = os.path.split(project_script)[0]
 
-    project_hash_list = {}
-    project_out_dirs = {}
-    project_dependencies = {}
-
-    for project_def in project_def_list:
-        for project_path in project_def.script_list:
-            
-            # only run if the hash check fails or if the user force creates the projects
-            if args.force or not qpc_writer.FindProject(project_path) or not qpc_hash.CheckHash(project_path):
-                
-                project_dir, project_name = os.path.split(project_path)
-                
-                # change to the project directory if needed
-                if project_dir:
+                if project_dir and project_dir != args.root_dir:
                     os.chdir(project_dir)
                 
-                # TODO: maybe make this multi-threaded?
-                #  would speed it up a bit now that you're reading it multiple times
-                project_list, project_pass = qpc_parser.ParseProject(
-                    project_dir, project_name, base_macros, configurations, platforms, project_pass, dependency_dict)
-                
-                if args.verbose:
-                    print("Parsed: " + project_list.macros["$PROJECT_NAME"])
-                
-                out_dir = qpc_writer.CreateProject(project_list)
+                project = parser.parse_project(project_def, project_script, info, generator_list, platform_dict)
 
-                # TODO: move dependencies out of the loop
-                #  qpc's project looping just seems really awful to me
-                #  though i don't know how i would do it better,
-                #  besides having a small part that is parsed once before looping
-                project_dependency_list = set()
-                for project in project_list.projects:
-                    project_dependency_list.update(project.dependencies)
-                    
-                # can't have it depend on itself
-                posix_proj_path = PosixPath(project_path)
-                if posix_proj_path in project_dependency_list:
-                    project_dependency_list.remove(posix_proj_path)
-
-                # i know this is bad but i want the types to be consistent
-                project_dependency_list = tuple(project_dependency_list)
-                    
-                qpc_hash.WriteHashFile(project_path, out_dir, project_list.hash_dict,
-                                       dependencies=project_dependency_list)
-                project_dependencies[project_path] = project_dependency_list
+                [generator.create_project(project) for generator in generator_list]
                 
-                del project_list
-                print("")
-                
-                # change back to the root_dir if needed:
-                if project_dir:
+                if project_dir and project_dir != args.root_dir:
                     os.chdir(args.root_dir)
-            
-            # TODO: make a function called "GetProjectDependencies", and use that here
-            else:
-                project_dependencies[project_path] = tuple(qpc_hash.GetProjectDependencies(project_path))
 
-            project_hash_list[qpc_hash.GetHashFilePath(project_path)] = project_path
-    
+                info.project_dependencies[project_script] = project.dependencies
+
+                write_project_hash(project_script, project.out_dir, project.get_hashes(), project.dependencies)
+            else:
+                info.project_dependencies[project_script] = get_project_dependencies(project_script)
+                
+            info.project_hashes[project_script] = get_hash_file_path(project_script)
+
     if args.time:
-        print("Finished Parsing Projects"
-              "\n\tTime: " + str(perf_counter() - start_time) +
-              "\n\tPasses: " + str(project_pass))
-    
+        print("\nFinished Parsing Projects"
+              "\n\tTime: " + str(round(perf_counter() - start_time, 4)) +
+              "\n\tParse Count: " + str(parser.counter))
+
     if args.master_file:
+        print()
         # TODO: this won't rebuild the master file if the project groups "includes" are changed
-        qpc_writer.MakeMasterFile(project_def_list, project_hash_list, args.master_file,
-                                  configurations, platforms, project_dependencies)
-    
-    # would be cool to add a timer here that would be running on another thread
-    # if the cmd option "/benchmark" was specified, though that might be used as a conditional
+        for generator in generator_list:
+            if not generator.generates_master_file():
+                continue
+            file_path = generator.get_master_file_path(args.master_file)
+            if args.force_master or file_path and (
+                    not os.path.isfile(file_path) or not check_master_file_hash(file_path, info, generator.uses_folders())):
+                generator.create_master_file(info, file_path, platform_dict)
+                write_master_file_hash(file_path, info, generator.get_supported_platforms(), generator.path)
 
 
 if __name__ == "__main__":
@@ -264,9 +164,12 @@ if __name__ == "__main__":
     print("----------------------------------------------------------------------------------\n"
           " Quiver Project Creator\n " + ' '.join(sys.argv[1:]) +
           "\n----------------------------------------------------------------------------------")
+
+    # doing this so we only allow valid generator options
+    GENERATOR_HANDLER = GeneratorHandler()
+    parse_args(GENERATOR_HANDLER.get_generator_args())
+    main()
     
-    Main()
-    
-    print("----------------------------------\n"
+    print("\n----------------------------------\n"
           " Finished\n"
           "----------------------------------\n")

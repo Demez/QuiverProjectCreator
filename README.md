@@ -23,39 +23,39 @@ Will support many project types to generate and many platforms
 
 -w  --hidewarnings      Suppress all warnings
 
--mf --masterfile NAME   Create a master file to build all projects with (ex. visual studio solution)
+-mf --masterfile NAME   Create a master file to build all projects with (ex. vstudio solution)
+
+-p  --platforms []      Pick specific platforms to build for instead of the default
 ```
 
 ### Adding and removing projects:
 
 ```
--a  --add [projects/groups]       Add groups or projects
+-a  --add [projects/groups]     Add groups or projects
 
--r  --remove [projects/groups]    Don't use these projects or groups
+-r  --remove [projects/groups]  Don't use these projects or groups
 ```
 
 ### Setting Macros in the command line:
 
 ```
--m  --macros [names]     Set macros with these names to 1 to use in projects
+-m  --macros [names]    Set macros with these names to 1 to use in projects
 ```
 
-### Project Types Supported:
+### Project Generators:
 
-Setting a project type is done with adding any valid project type name into the input list here
-
-```
--t  --types [types]      Project types to generate
-```
-
-This will loop through each option and set a macro to "1" to use in projects
-
-Valid Project Types:
+Choosing project generators to use is done with adding any valid generator name into the input list here
 
 ```
-vstudio       Create Visual Studio Projects
-
-makefile      Create Makefiles for every project
-
-vpc_convert   Convert all vpc scripts in the root directory to qpc scripts, different from all the others
+-g  --generators [generators]     Project types to generate
 ```
+
+Current Project Generators:
+
+```
+visual_studio   Create Visual Studio Projects
+
+makefile        Create Makefiles for every project
+```
+
+You can make your own project generator by looking at [this page on the wiki](https://github.com/quiverteam/QuiverProjectCreator/wiki/Creating-your-own-generator)

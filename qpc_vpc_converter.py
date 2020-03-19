@@ -1,6 +1,7 @@
 import os
 import qpc_base as base
 import qpc_reader as reader
+import argparse
 
 # this file is awful, good luck adding to it
 # some random notes:
@@ -51,7 +52,7 @@ OPTION_NAME_CONVERT_DICT = {
     
     "$additionaldependencies": "libraries",
     "$compileas": "language",
-    "$platformtoolset": "toolset_version",
+    "$platformtoolset": "compiler",
     
     "$preprocessordefinitions": "preprocessor_definitions",
     "$characterset": "preprocessor_definitions",
@@ -353,14 +354,14 @@ VS_BOOL_CONVERT = {
 
 
 # idfk what to call this function
-def GetVPCFileDirName(project_script_path):
+def prepare_vpc_file(project_script_path):
     project_dir, project_filename = os.path.split(project_script_path)
     project_name = os.path.splitext(project_filename)[0]
-    project_file = reader.ReadFile(project_script_path)
+    project_file = reader.read_file(project_script_path)
     return project_file, project_dir, project_name
 
 
-def GetAllVPCScripts(root_dir):
+def get_vpc_scripts(root_dir):
     vpc_paths = []
     vgc_paths = []
     for subdir, dirs, files in os.walk(root_dir):
@@ -375,7 +376,7 @@ def GetAllVPCScripts(root_dir):
 
 # you could just read it and then replace the keys directly probably,
 # would keep all comments that way at least
-def ConvertVGC(vgc_dir, vgc_filename, vgc_project):
+def convert_vgc(vgc_dir, vgc_filename, vgc_project):
     qpc_project_path = vgc_dir + os.sep + vgc_filename + ".qpc"
     qpc_base_file = []
     
@@ -424,7 +425,7 @@ def ConvertVGC(vgc_dir, vgc_filename, vgc_project):
         elif key in {"$games"}:
             pass
         else:
-            project_block.Warning("Unknown Key:")
+            project_block.warning("Unknown Key:")
             
     # add configurations block
     qpc_base_file.extend(
@@ -457,9 +458,20 @@ def ConvertSubVGCBlock(depth, block_items, qpc_base_file):
     return
 
 
+def CreateDirectory(directory: str):
+    try:
+        os.makedirs(directory)
+        if args.verbose:
+            print("Created Directory: " + directory)
+    except FileExistsError:
+        pass
+    except FileNotFoundError:
+        pass
+
+
 def WriteProject(directory, filename, project_lines, base_file=False):
     directory = directory.replace("vpc_scripts", "_qpc_scripts")
-    base.CreateDirectory(directory)
+    CreateDirectory(directory)
     
     abs_path = os.path.normpath(directory + os.sep + filename + ".qpc")
     if base_file:
@@ -482,7 +494,7 @@ class Configuration:
             ConfigOption("int_dir"),
             ConfigOption("configuration_type"),
             ConfigOption("language"),
-            ConfigOption("toolset_version"),
+            ConfigOption("compiler"),
             ConfigOption("include_directories", True),
             ConfigOption("library_directories", True),
             ConfigOption("options", True),
@@ -665,7 +677,7 @@ def ConvertMacroCasing(string):
     return string
 
 
-def ConvertVPC(vpc_dir, vpc_filename, vpc_project):
+def convert_vpc(vpc_dir, vpc_filename, vpc_project):
     qpc_project_list = []
     config = Configuration()
     libraries = []
@@ -709,7 +721,7 @@ def ConvertVPC(vpc_dir, vpc_filename, vpc_project):
             pass
         
         else:
-            project_block.Warning("Unknown Key: ")
+            project_block.warning("Unknown Key: ")
     
     if libraries:
         # if not qpc_project_list[-1].endswith("\n") and qpc_project_list[-1] != "":
@@ -961,7 +973,7 @@ def WriteFile(file_block, qpc_project, indent):
             qpc_project = WriteConfiguration(file_config, indent + "\t", qpc_project)
             qpc_project.append(indent + "}")
     else:
-        file_block.Warning("Unknown Key: ")
+        file_block.warning("Unknown Key: ")
     return qpc_project
 
 
@@ -1089,7 +1101,7 @@ def ParseConfiguration(vpc_config, qpc_config):
         config_group_name = ConvertConfigGroupName(config_group.key)
         
         if not config_group_name:
-            config_group.Warning("Unknown config group: ")
+            config_group.warning("Unknown config group: ")
             continue
         
         for option_block in config_group.items:
@@ -1109,7 +1121,7 @@ def ParseConfiguration(vpc_config, qpc_config):
                 option_value = ConvertVPCOptionToQPCOption(option_block.values)
                 
                 if not option_value:
-                    option_block.Warning("Unknown config option: ")
+                    option_block.warning("Unknown config option: ")
                     continue
                 else:
                     option_name = "options"
@@ -1228,7 +1240,7 @@ def WriteConfigOption(indent, option):
             option_lines = []
             cond_values = {}
             for value_obj in option.value:
-                base.CreateNewDictValue(cond_values, value_obj.condition, "list")
+                base.add_dict_value(cond_values, value_obj.condition, "list")
                 cond_values[value_obj.condition].append(value_obj.value)
                 # option_lines.append(indent + "\t\t\t" + value_obj.value + '')
                 # WriteCondition( value_obj.condition, option_lines )
@@ -1339,3 +1351,39 @@ def WriteConfiguration(config, indent, qpc_project_list):
             qpc_project_list = config_lines
     
     return qpc_project_list
+
+
+def parse_args():
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("-d", "--directory")
+    arg_parser.add_argument("-o", "--output")
+    arg_parser.add_argument("-v", "--verbose")
+    return arg_parser.parse_args()
+
+
+def main():
+    print("\nConverting VPC Scripts to QPC Scripts")
+    
+    print("Finding All VPC and VGC Scripts")
+    vgc_path_list, vpc_path_list = get_vpc_scripts(args.directory)
+    
+    if vgc_path_list:
+        print("\nConverting VGC Scripts")
+        for vgc_path in vgc_path_list:
+            print("Converting: " + vgc_path)
+            read_vgc, vgc_dir, vgc_name = prepare_vpc_file(vgc_path)
+            convert_vgc(vgc_dir, vgc_name, read_vgc)
+    
+    if vpc_path_list:
+        print("\nConverting VPC Scripts")
+        
+        for vpc_path in vpc_path_list:
+            # TODO: maybe make a keep comments option in ReadFile()? otherwise, commented out files won't be kept
+            print("Converting: " + vpc_path)
+            read_vpc, vpc_dir, vpc_name = prepare_vpc_file(vpc_path)
+            convert_vpc(vpc_dir, vpc_name, read_vpc)
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    main()
