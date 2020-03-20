@@ -372,7 +372,7 @@ class Parser:
                         self._parse_files(block, project, folder_list)
                         folder_list.remove(block.values[0])
                     elif block.key == "-":
-                        project.remove_file(block)
+                        project.remove_file(folder_list, block)
                     else:
                         project.add_file(folder_list, block)
                     
@@ -388,10 +388,10 @@ class Parser:
                                     if config_block.solve_condition(project.macros):
                                     
                                         if config_block.key == "configuration":
-                                            if not args.hide_warnings:
-                                                config_block.warning("Legacy Source File compiler info syntax\n"
-                                                                     "Remove \"configuration { compiler {\", "
-                                                                     "no need for it anymore")
+                                            # if not args.hide_warnings:
+                                            #     config_block.warning("Legacy Source File compiler info syntax\n"
+                                            #                          "Remove \"configuration { compiler {\", "
+                                            #                          "no need for it anymore")
                                             for group_block in config_block.items:
                                             
                                                 if group_block.key != "compiler":

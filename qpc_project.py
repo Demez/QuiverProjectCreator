@@ -5,10 +5,9 @@
 # it would probably slow it down as well
 
 import os
-import re
+import glob
 import qpc_hash
 from qpc_reader import solve_condition, read_file, QPCBlock
-# from os import sep, path
 from qpc_args import args, get_arg_macros
 from qpc_base import posix_path, Platform, PlatformName, PLATFORM_DICT
 from enum import EnumMeta, Enum, auto
@@ -149,43 +148,61 @@ class ProjectBase:
     def add_file(self, folder_list: list, file_block: QPCBlock) -> None:
         for file_path in file_block.get_list():
             file_path = self.replace_macros(file_path)
-            if os.path.splitext(file_path)[1] in EXTS_C:
-                if file_path in self.source_files:
-                    if not args.hide_warnings:
-                        file_block.warning("File already added")
-                else:
-                    check_if_file_exists(file_path, file_block.warning)
-                    self.source_files[file_path] = SourceFile(folder_list)
+            if self._check_file_path_glob(file_path):
+                self._add_file_glob(folder_list, file_path, file_block)
             else:
-                if file_path in self.files:
-                    if not args.hide_warnings:
-                        file_block.warning("File already added")
-                else:
-                    check_if_file_exists(file_path, file_block.warning)
-                    self.files[file_path] = "/".join(folder_list)
+                self._add_file_internal(folder_list, file_path, file_block)
     
-    def remove_file(self, file_block: QPCBlock) -> None:
+    def remove_file(self, folder_list: list, file_block: QPCBlock) -> None:
         for file_path in file_block.values:
             file_path = self.replace_macros(file_path)
-            if os.path.splitext(file_path)[1] in EXTS_C:
-                if file_path in self.source_files:
-                    del self.source_files[file_path]
-                elif not args.hide_warnings:
-                    file_block.warning("Trying to remove a file that hasn't been added yet")
+
+            if self._check_file_path_glob(file_path):
+                self._remove_file_glob(folder_list, file_path, file_block)
             else:
-                if file_path in self.files:
-                    del self.files[file_path]
-                elif not args.hide_warnings:
-                    file_block.warning("Trying to remove a file that hasn't been added yet")
+                self._remove_file_internal(folder_list, file_path, file_block)
 
-    def add_file_glob(self, folder_list, file_block: QPCBlock) -> None:
-        # use glob to search
-        pass
+    @staticmethod
+    def _check_file_path_glob(file_path: str) -> bool:
+        return "*" in file_path or ("[" in file_path and "]" in file_path) or "?" in file_path
 
-    def remove_file_glob(self, folder_list, file_block: QPCBlock) -> None:
-        # use glob to search
-        pass
-    
+    def _add_file_glob(self, folder_list: list, file_path: str, file_block: QPCBlock) -> None:
+        [self._add_file_internal(folder_list, found_file, file_block) for found_file in glob.glob(file_path)]
+
+    def _remove_file_glob(self, folder_list: list, file_path: str, file_block: QPCBlock) -> None:
+        [self._remove_file_internal(folder_list, found_file, file_block) for found_file in glob.glob(file_path)]
+
+    def _add_file_internal(self, folder_list: list, file_path: str, file_block: QPCBlock):
+        if os.path.splitext(file_path)[1] in EXTS_C:
+            if file_path in self.source_files:
+                if not args.hide_warnings:
+                    file_block.warning("File already added: " + file_path)
+            else:
+                check_if_file_exists(file_path, file_block.warning)
+                self.source_files[file_path] = SourceFile(folder_list)
+        else:
+            if file_path in self.files:
+                if not args.hide_warnings:
+                    file_block.warning("File already added: " + file_path)
+            else:
+                check_if_file_exists(file_path, file_block.warning)
+                self.files[file_path] = "/".join(folder_list)
+
+    def _remove_file_internal(self, folder_list: list, file_path: str, file_block: QPCBlock):
+        if os.path.splitext(file_path)[1] in EXTS_C:
+            if file_path in self.source_files:
+                # if self.source_files[file_path].folder == "/".join(folder_list):
+                del self.source_files[file_path]
+            elif not args.hide_warnings:
+                file_block.warning("Trying to remove a file that hasn't been added yet: " + file_path)
+        else:
+            if file_path in self.files:
+                # is this even a good idea? might just be annoying
+                # if self.files[file_path] == "/".join(folder_list):
+                del self.files[file_path]
+            elif not args.hide_warnings:
+                file_block.warning("Trying to remove a file that hasn't been added yet: " + file_path)
+
     def _convert_dependency_path(self, key: str) -> str:
         return key
 
