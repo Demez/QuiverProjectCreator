@@ -127,7 +127,7 @@ def _get_includes(file_path: str, include_dirs: list) -> list:
                         # adding it to this so we don't waste time checking the disk
                         # for if the file exists, since we know it doesn't
                         INVALID_PATHS.add(header_path_abs)
-                    else:
-                        if not args.hide_warnings:
-                            print("File doesn't exist: " + found_header)
+                    # else:
+                    #     if not args.hide_warnings:
+                    #         print("File doesn't exist: " + found_header)
     return includes
