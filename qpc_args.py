@@ -20,7 +20,7 @@ def parse_args(generators: list) -> None:
     # maybe change to path? meh
     cmd_parser.add_argument("--rootdir", "-d", default=os.getcwd(), dest="root_dir",
                             help="Set the root directory of the script")
-    cmd_parser.add_argument("--basefile", "-b", default=DEFAULT_BASEFILE, dest="base_file", nargs="+",
+    cmd_parser.add_argument("--basefile", "-b", dest="base_file",  # nargs="+",
                             help="Set the root directory of the script")
     cmd_parser.add_argument("--outdir", "-o", default="", dest="out_dir",
                             help="Output directory of qpc scripts with edited folder paths")
@@ -34,9 +34,10 @@ def parse_args(generators: list) -> None:
     cmd_parser.add_argument("--force", "-f", action="store_true", help="Force recreate all projects")
     cmd_parser.add_argument("--force_master", "-fm", action="store_true", help="Force recreate master file")
     cmd_parser.add_argument("--hidewarnings", "-w", dest="hide_warnings", action="store_true", help="Suppress all warnings")
-    cmd_parser.add_argument("--checkfiles", "-c", dest="check_files", action="store_true", help="Check if any added file exists")
+    cmd_parser.add_argument("--checkfiles", "-cf", dest="check_files", action="store_true", help="Check if any added file exists")
     cmd_parser.add_argument("--skipprojects", "-sp", dest="skip_projects", action="store_true", help="Don't generate projects")
 
+    cmd_parser.add_argument("--configs", "-c", nargs="+", help="Select configurations, added to configs set in base files")
     cmd_parser.add_argument("--platforms", "-p", nargs="+", default=get_default_platforms(), choices=platforms,
                             help="Select platforms to generate for instead of the default")
     cmd_parser.add_argument("--generators", "-g", nargs="+", default=(), choices=generators, help="Project types to generate")

@@ -136,6 +136,10 @@ def posix_path(string: str) -> str:
     return string.replace("\\", "/")
 
 
+def check_file_path_glob(file_path: str) -> bool:
+    return "*" in file_path or "[" in file_path and "]" in file_path or "?" in file_path
+
+
 def add_dict_value(dictionary: dict, key, value_type: type):
     try:
         dictionary[key]

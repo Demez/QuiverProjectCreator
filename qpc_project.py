@@ -9,7 +9,7 @@ import glob
 import qpc_hash
 from qpc_reader import solve_condition, read_file, QPCBlock
 from qpc_args import args, get_arg_macros
-from qpc_base import posix_path, Platform, PlatformName, PLATFORM_DICT
+from qpc_base import posix_path, Platform, check_file_path_glob
 from enum import EnumMeta, Enum, auto
 from time import perf_counter
 
@@ -148,7 +148,7 @@ class ProjectBase:
     def add_file(self, folder_list: list, file_block: QPCBlock) -> None:
         for file_path in file_block.get_list():
             file_path = self.replace_macros(file_path)
-            if self._check_file_path_glob(file_path):
+            if check_file_path_glob(file_path):
                 self._add_file_glob(folder_list, file_path, file_block)
             else:
                 self._add_file_internal(folder_list, file_path, file_block)
@@ -157,14 +157,10 @@ class ProjectBase:
         for file_path in file_block.values:
             file_path = self.replace_macros(file_path)
 
-            if self._check_file_path_glob(file_path):
+            if check_file_path_glob(file_path):
                 self._remove_file_glob(folder_list, file_path, file_block)
             else:
                 self._remove_file_internal(folder_list, file_path, file_block)
-
-    @staticmethod
-    def _check_file_path_glob(file_path: str) -> bool:
-        return "*" in file_path or ("[" in file_path and "]" in file_path) or "?" in file_path
 
     def _add_file_glob(self, folder_list: list, file_path: str, file_block: QPCBlock) -> None:
         [self._add_file_internal(folder_list, found_file, file_block) for found_file in glob.glob(file_path)]

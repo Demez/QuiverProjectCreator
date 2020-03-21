@@ -18,6 +18,9 @@ from qpc_hash import (check_hash, check_master_file_hash, write_project_hash, wr
                       get_project_dependencies, get_hash_file_path, QPC_HASH_DIR)
 
 
+PRINT_LINE = "------------------------------------------------------------------------"
+
+
 def create_directory(directory):
     try:
         os.makedirs(directory)
@@ -121,21 +124,28 @@ def main():
             # may look in the hash for where the project output directory is in the future
             if not args.skip_projects and (args.force or not check_project_exists(project_script, project_def.platforms, generator_list) \
                     or not check_hash(project_script)):
-                project_dir = os.path.split(project_script)[0]
 
-                if project_dir and project_dir != args.root_dir:
-                    os.chdir(project_dir)
-                
-                project = parser.parse_project(project_def, project_script, info, generator_list, platform_dict)
+                if os.path.isfile(project_script):
+                    project_dir = os.path.split(project_script)[0]
 
-                [generator.create_project(project) for generator in generator_list]
-                
-                if project_dir and project_dir != args.root_dir:
-                    os.chdir(args.root_dir)
+                    if project_dir and project_dir != args.root_dir:
+                        os.chdir(project_dir)
 
-                info.project_dependencies[project_script] = project.dependencies
+                    project = parser.parse_project(project_def, project_script, info, generator_list, platform_dict)
+                    if not project:
+                        continue
 
-                write_project_hash(project_script, project.out_dir, project.get_hashes(), project.dependencies)
+                    [generator.create_project(project) for generator in generator_list]
+
+                    if project_dir and project_dir != args.root_dir:
+                        os.chdir(args.root_dir)
+
+                    info.project_dependencies[project_script] = project.dependencies
+
+                    write_project_hash(project_script, project.out_dir, project.get_hashes(), project.dependencies)
+
+                else:
+                    print("Script does not exist: " + project_script)
             else:
                 info.project_dependencies[project_script] = get_project_dependencies(project_script)
                 
@@ -147,7 +157,7 @@ def main():
               "\n\tParse Count: " + str(parser.counter))
 
     if args.master_file:
-        print()
+        print(PRINT_LINE)
         # TODO: this won't rebuild the master file if the project groups "includes" are changed
         for generator in generator_list:
             if not generator.generates_master_file():
@@ -161,15 +171,15 @@ def main():
 
 if __name__ == "__main__":
     # TODO: maybe print more info here if verbose?
-    print("----------------------------------------------------------------------------------\n"
+    print(PRINT_LINE + "\n"
           " Quiver Project Creator\n " + ' '.join(sys.argv[1:]) +
-          "\n----------------------------------------------------------------------------------")
+          "\n" + PRINT_LINE)
 
     # doing this so we only allow valid generator options
     GENERATOR_HANDLER = GeneratorHandler()
     parse_args(GENERATOR_HANDLER.get_generator_args())
     main()
     
-    print("\n----------------------------------\n"
-          " Finished\n"
-          "----------------------------------\n")
+    print("" + PRINT_LINE + "\n"
+          " Finished\n" +
+          PRINT_LINE)
