@@ -142,7 +142,7 @@ def main():
 
                     info.project_dependencies[project_script] = project.dependencies
 
-                    write_project_hash(project_script, project.out_dir, project.get_hashes(), project.dependencies)
+                    write_project_hash(project_script, project.out_dir, project.get_hashes(), project.dependencies, project.get_glob_files())
 
                 else:
                     print("Script does not exist: " + project_script)

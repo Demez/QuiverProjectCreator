@@ -121,6 +121,7 @@ class ProjectBase:
         self.files = {}
         self.hash_list = {}
         self.macros = project.macros.copy()
+        self._glob_files = set()
     
     def add_macro(self, macro_name: str, macro_value: str = "") -> None:
         key_name = "$" + macro_name.upper()
@@ -163,9 +164,11 @@ class ProjectBase:
                 self._remove_file_internal(folder_list, file_path, file_block)
 
     def _add_file_glob(self, folder_list: list, file_path: str, file_block: QPCBlock) -> None:
+        self._glob_files.add(file_path)
         [self._add_file_internal(folder_list, found_file, file_block) for found_file in glob.glob(file_path)]
 
     def _remove_file_glob(self, folder_list: list, file_path: str, file_block: QPCBlock) -> None:
+        self._glob_files.add(file_path)
         [self._remove_file_internal(folder_list, found_file, file_block) for found_file in glob.glob(file_path)]
 
     def _add_file_internal(self, folder_list: list, file_path: str, file_block: QPCBlock):
@@ -266,6 +269,9 @@ class ProjectBase:
             return self.source_files[self.replace_macros(file_path)]
         except KeyError:
             pass
+        
+    def get_glob_files(self) -> set:
+        return self._glob_files
 
 
 class ProjectPass(ProjectBase):
@@ -350,6 +356,11 @@ class ProjectContainer:
         hash_dict = {}
         [hash_dict.update(**project_pass.hash_list) for project_pass in self._passes]
         return hash_dict
+    
+    def get_glob_files(self) -> list:
+        glob_files = set()
+        [glob_files.update(project.get_glob_files()) for project in self._passes]
+        return list(glob_files)
 
     @staticmethod
     def _add_dependency_ext(qpc_path: str) -> str:

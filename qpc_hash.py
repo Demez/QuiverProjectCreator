@@ -4,6 +4,7 @@ from qpc_args import args
 from qpc_base import posix_path, get_platform_name, QPC_DIR, QPC_GENERATOR_DIR
 from qpc_reader import QPCBlockBase, QPCBlock
 from qpc_generator_handler import GENERATOR_PATHS, GENERATOR_LIST
+import glob
 import os
     
 
@@ -57,7 +58,7 @@ QPC_HASHES = {**QPC_BASE_HASHES, **QPC_GENERATOR_HASHES}
 def check_hash(project_path: str) -> bool:
     project_hash_file_path = get_hash_file_path(project_path)
     project_dir = os.path.split(project_path)[0]
-    total_blocks = sorted(("commands", "hashes"))
+    total_blocks = sorted(("commands", "hashes", "glob_files"))
     blocks_found = []
     
     if os.path.isfile(project_hash_file_path):
@@ -79,6 +80,11 @@ def check_hash(project_path: str) -> bool:
 
             elif block.key == "dependencies":
                 pass
+
+            elif block.key == "glob_files":
+                blocks_found.append(block.key)
+                if not _check_glob_files(project_dir, block.items):
+                    return False
                 
             else:
                 # how would this happen
@@ -294,6 +300,25 @@ def _check_files(project_dir, hash_file_list, file_list, project_def_list: tuple
             return False
             
     return True
+
+
+def _check_glob_files(project_dir: str, file_list: list) -> bool:
+    for file_block in file_list:
+        file_hash = file_block.key
+        file_glob = file_block.values[0]
+        
+        glob_list = glob.glob(project_dir + "/" + file_glob)
+        for index, path in enumerate(glob_list):
+            glob_list[index] = posix_path(path)
+            
+        glob_list.sort()
+
+        if file_hash != hash_from_string(' '.join(glob_list)):
+            if args.verbose:
+                print("Files found are different: " + file_glob)
+            return False
+        
+    return True
     
     
 def get_hash_file_path(project_path) -> str:
@@ -338,7 +363,7 @@ def get_project_dependencies(project_path: str, recurse: bool = False) -> list:
     return list(dep_list)
 
 
-def write_project_hash(project_path: str, out_dir: str, hash_list: dict, dependencies: dict) -> None:
+def write_project_hash(project_path: str, out_dir: str, hash_list: dict, dependencies: dict, glob_files: list) -> None:
     base_block = QPCBlockBase(project_path)
     
     _write_hash_commands(base_block, out_dir)
@@ -347,6 +372,14 @@ def write_project_hash(project_path: str, out_dir: str, hash_list: dict, depende
     [hashes.add_item(hash_value, script_path) for script_path, hash_value in QPC_HASHES.items()]
     if hash_list:
         [hashes.add_item(hash_value, script_path) for script_path, hash_value in hash_list.items()]
+        
+    glob_files_block = base_block.add_item("glob_files", [])
+    for path in glob_files:
+        found_files = glob.glob(os.path.split(project_path)[0] + "/" + path)
+        for index, _path in enumerate(found_files):
+            found_files[index] = posix_path(_path)
+        found_files.sort()
+        glob_files_block.add_item(hash_from_string(' '.join(found_files)), path)
 
     if dependencies:
         dependencies_block = base_block.add_item("dependencies", [])
