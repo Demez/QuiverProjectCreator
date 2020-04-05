@@ -4,7 +4,7 @@ import qpc_hash
 from qpc_reader import read_file, QPCBlock, QPCBlockBase
 from qpc_args import args, get_arg_macros
 from qpc_base import Platform, PlatformName, get_platform_name, check_file_path_glob
-from qpc_project import ProjectContainer, ProjectPass, ProjectBase, ProjectDefinition, ProjectGroup, replace_macros
+from qpc_project import ProjectContainer, ProjectBase, ProjectDefinition, ProjectGroup, SourceFile, replace_macros
 from enum import Enum
 from time import perf_counter
 
@@ -447,47 +447,57 @@ class Parser:
     def _parse_files(self, files_block: QPCBlock, project: ProjectBase, folder_list: list) -> None:
         if files_block.solve_condition(project.macros):
             for block in files_block.items:
-                if block.solve_condition(project.macros):
+                if not block.solve_condition(project.macros):
+                    continue
                 
-                    if block.key == "folder":
-                        folder_list.append(block.values[0])
-                        self._parse_files(block, project, folder_list)
-                        folder_list.remove(block.values[0])
-                    elif block.key == "-":
-                        project.remove_file(folder_list, block)
-                    else:
-                        project.add_file(folder_list, block)
+                if block.key == "folder":
+                    folder_list.append(block.values[0])
+                    self._parse_files(block, project, folder_list)
+                    folder_list.remove(block.values[0])
+                elif block.key == "-":
+                    project.remove_file(folder_list, block)
+                else:
+                    project.add_file(folder_list, block)
+                
+                    if block.items:
+                        for file_path in block.get_list():
+                            # TODO: this doesn't work with wildcards
+                            if check_file_path_glob(file_path):
+                                [self._source_file(block, project, found_file) for found_file in glob.glob(file_path)]
+                            else:
+                                self._source_file(block, project, file_path)
+                       
+    @staticmethod
+    def _source_file(files_block: QPCBlock, project: ProjectBase, file_path: str):
+        source_file = project.get_source_file(file_path)
+        if not source_file:
+            return
+    
+        # TODO: set this to directly edit the configuration options
+        #  remove need to write out configuration {}
+        #  also this is messy
+    
+        for config_block in files_block.items:
+            if config_block.solve_condition(project.macros):
+            
+                if config_block.key == "configuration":
+                    # if not args.hide_warnings:
+                    #     config_block.warning("Legacy Source File compiler info syntax\n"
+                    #                          "Remove \"configuration { compiler {\", ")
+                    for group_block in config_block.items:
                     
-                        if block.items:
-                            for file_path in block.get_list():
-                                source_file = project.get_source_file(file_path)
-                            
-                                # TODO: set this to directly edit the configuration options
-                                #  remove need to write out configuration {}
-                                #  also this is messy
-                            
-                                for config_block in block.items:
-                                    if config_block.solve_condition(project.macros):
-                                    
-                                        if config_block.key == "configuration":
-                                            # if not args.hide_warnings:
-                                            #     config_block.warning("Legacy Source File compiler info syntax\n"
-                                            #                          "Remove \"configuration { compiler {\", "
-                                            #                          "no need for it anymore")
-                                            for group_block in config_block.items:
-                                            
-                                                if group_block.key != "compiler":
-                                                    group_block.error("Invalid Group, can only use compiler")
-                                                    continue
-                                            
-                                                if group_block.solve_condition(project.macros):
-                                                    for option_block in group_block.items:
-                                                        if option_block.solve_condition(project.macros):
-                                                            source_file.compiler.parse_option(project.macros,
-                                                                                              option_block)
-                                        else:
-                                            # new, cleaner way, just assume it's compiler
-                                            source_file.compiler.parse_option(project.macros, config_block)
+                        if group_block.key != "compiler":
+                            group_block.error("Invalid Group, can only use compiler")
+                            continue
+                    
+                        if group_block.solve_condition(project.macros):
+                            for option_block in group_block.items:
+                                if option_block.solve_condition(project.macros):
+                                    source_file.compiler.parse_option(project.macros,
+                                                                      option_block)
+                else:
+                    # new, cleaner way, just assume it's compiler
+                    source_file.compiler.parse_option(project.macros, config_block)
     
     def get_parsed_projects(self) -> list:
         pass
