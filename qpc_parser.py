@@ -272,7 +272,7 @@ class Parser:
         if not info.configurations:
             info.configurations.append("Default")
     
-    def _parse_base_info_include(self, info: BaseInfoPlatform, base_file: QPCBlockBase) -> None:
+    def _parse_base_info_include(self, info: BaseInfoPlatform, base_file: QPCBlockBase, include_dir: str = "") -> None:
         for project_block in base_file:
         
             if not project_block.solve_condition(info.macros):
@@ -287,15 +287,16 @@ class Parser:
         
             # very rushed thing that could of been done with macros tbh
             elif project_block.key == "dependency_paths":
+                temp_dir = include_dir + "/" if include_dir else ""
                 for dependency in project_block.items:
                     if dependency.values and dependency.solve_condition(info.macros):
-                        info.dependency_dict[dependency.key] = dependency.values[0]
+                        info.dependency_dict[dependency.key] = temp_dir + dependency.values[0]
 
             elif not project_block.values:
                 continue
 
             elif project_block.key == "project":
-                self._base_project_define(project_block, info)
+                self._base_project_define(project_block, info, include_dir)
 
             elif project_block.key == "group":
                 self._base_group_define(project_block, info)
@@ -303,16 +304,29 @@ class Parser:
             elif project_block.key == "include":
                 # "Ah shit, here we go again."
                 file_path = os.path.normpath(replace_macros(project_block.values[0], info.macros))
-            
+                new_include_dir = include_dir
+                
+                if len(project_block.values) == 2:
+                    new_include_dir += "/" + project_block.values[1] if include_dir else project_block.values[1]
+                    current_dir = os.getcwd()
+                    if os.path.isdir(new_include_dir):
+                        os.chdir(new_include_dir)
+                
                 if args.verbose:
                     print("Reading: " + file_path)
             
-                include_file = read_file(file_path)
+                try:
+                    include_file = read_file(file_path)
             
-                if args.verbose:
-                    print("Parsing... ")
-            
-                self._parse_base_info_include(info, include_file)
+                    if args.verbose:
+                        print("Parsing... ")
+                
+                    self._parse_base_info_include(info, include_file, new_include_dir)
+                except FileNotFoundError:
+                    project_block.warning("File Does Not Exist: ")
+                    
+                if len(project_block.values) == 2:
+                    os.chdir(current_dir)
 
             elif not args.hide_warnings:
                 project_block.warning("Unknown Key: ")
@@ -344,9 +358,11 @@ class Parser:
 
         info.add_project(project_def)
                 
-    def _base_project_define(self, block: QPCBlock, info: BaseInfoPlatform):
-        scripts = [replace_macros(item.key, info.macros) for item in block.items if item.solve_condition(info.macros)]
-        scripts += [replace_macros(script, info.macros) for script in block.values[1:]]
+    def _base_project_define(self, block: QPCBlock, info: BaseInfoPlatform, include_dir: str = ""):
+        if include_dir:
+            include_dir += "/"
+        scripts = [include_dir + replace_macros(item.key, info.macros) for item in block.items if item.solve_condition(info.macros)]
+        scripts += [include_dir + replace_macros(script, info.macros) for script in block.values[1:]]
         self._add_project_base(info, block.values[0], *scripts)
 
     @staticmethod
