@@ -118,7 +118,7 @@ def main():
     
     for project_def in info.project_list:
         for project_script in project_def.script_list:
-            if not args.skip_projects:
+            if not args.skip_projects and parser.counter > 0:
                 print()
             # only run if the hash check fails or if the user force creates projects
             # may look in the hash for where the project output directory is in the future
