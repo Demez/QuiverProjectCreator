@@ -727,7 +727,7 @@ def create_vcxproj_filters(project_list: ProjectContainer, project_passes: list,
 
 
 def create_folder_filters(proj_filters, project_list):
-    folder_list = project_list.get_editor_folders()
+    folder_list = project_list.get_editor_folders("\\")
     if folder_list:
         item_group = et.SubElement(proj_filters, "ItemGroup")
         for folder in folder_list:
@@ -744,7 +744,7 @@ def create_source_file_item_group_filters(proj_filters, files_dict, filter_name)
         elem_file.set("Include", file_path)
         if source_file.folder:
             folder = et.SubElement(elem_file, "Filter")
-            folder.text = source_file.folder
+            folder.text = source_file.folder.replace("/", "\\")
 
 
 def create_item_group_filters(proj_filters, files_dict, filter_name):
@@ -754,7 +754,7 @@ def create_item_group_filters(proj_filters, files_dict, filter_name):
         elem_file.set("Include", file_path)
         if folder_path:
             folder = et.SubElement(elem_file, "Filter")
-            folder.text = folder_path
+            folder.text = folder_path.replace("/", "\\")
 
 
 def create_directory(directory: str) -> None:

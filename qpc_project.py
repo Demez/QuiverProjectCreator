@@ -219,7 +219,7 @@ class ProjectBase:
     
     # Gets every single folder in the project, splitting each one as well
     # this function is awful
-    def get_editor_folders(self) -> set:
+    def get_editor_folders(self, sep: str = "/") -> set:
         folder_paths = set()
         # TODO: is there a better way to do this?
         [folder_paths.add(file_path) for file_path in self.files.values()]
@@ -234,7 +234,7 @@ class ProjectBase:
             folder_list = [current_path[0]]
             del current_path[0]
             for folder in current_path:
-                folder_list.append(folder_list[-1] + "/" + folder)
+                folder_list.append(folder_list[-1] + sep + folder)
             full_folder_paths.update(folder_list)
         
         return full_folder_paths
@@ -388,9 +388,9 @@ class ProjectContainer:
         map(self.remove_dependency, qpc_paths)
         # [self.remove_dependency(qpc_path) for qpc_path in qpc_paths]
     
-    def get_editor_folders(self) -> set:
+    def get_editor_folders(self, sep: str = "/") -> set:
         folder_paths = set()
-        [folder_paths.update(project.get_editor_folders()) for project in self._passes]
+        [folder_paths.update(project.get_editor_folders(sep)) for project in self._passes]
         return folder_paths
     
     def get_folders(self) -> set:
