@@ -9,7 +9,7 @@ import glob
 import qpc_hash
 from qpc_reader import solve_condition, read_file, QPCBlock
 from qpc_args import args, get_arg_macros
-from qpc_base import posix_path, Platform, check_file_path_glob
+from qpc_base import posix_path, norm_path, join_path, join_path_list, Platform, check_file_path_glob
 from enum import EnumMeta, Enum, auto
 from time import perf_counter
 
@@ -266,7 +266,7 @@ class ProjectBase:
     
     def get_source_file(self, file_path) -> SourceFile:
         try:
-            return self.source_files[self.replace_macros(file_path)]
+            return self.source_files[norm_path(self.replace_macros(file_path))]
         except KeyError:
             pass
         
@@ -296,9 +296,7 @@ class ProjectPass(ProjectBase):
             self.macros.update({gen_macro: "1"})
 
     def _convert_dependency_path(self, key: str) -> str:
-        if key in self.base_info.dependency_dict:
-            return self.base_info.dependency_dict[key]
-        return key
+        return self.base_info.get_dependency_path(key)
 
 
 class ProjectContainer:
@@ -366,17 +364,15 @@ class ProjectContainer:
     def _add_dependency_ext(qpc_path: str) -> str:
         if not qpc_path.endswith(".qpc"):
             qpc_path = os.path.splitext(qpc_path)[0] + ".qpc"
-        return qpc_path
+        return posix_path(qpc_path)
 
-    # IDEA: maybe we can use the dependency paths block to look if there's any libs with the same name
-    #  and add the dependency for that automatically
     def add_dependency(self, qpc_path: str) -> None:
-        qpc_path = posix_path(self._add_dependency_ext(qpc_path))
+        qpc_path = self._add_dependency_ext(qpc_path)
         if qpc_path != self.project_path:
             self.dependencies.add(qpc_path)
 
     def remove_dependency(self, qpc_path: str) -> None:
-        qpc_path = posix_path(self._add_dependency_ext(qpc_path))
+        qpc_path = self._add_dependency_ext(qpc_path)
         if qpc_path in self.dependencies:
             self.dependencies.remove(qpc_path)
 
@@ -457,6 +453,8 @@ class Debug:
                 self.arguments = replace_macros(option_block.values[0], macros)
             elif option_block.key in self.__dict__:
                 self.__dict__[option_block.key] = clean_path(option_block.values[0], macros)
+            else:
+                option_block.warning("Invalid Debug Option: ")
 
 
 def clean_path(string: str, macros: dict) -> str:
@@ -502,7 +500,7 @@ class General:
 
         if not option_block.values:
             return
-            
+        
         if option_block.key in {"out_dir", "int_dir", "build_dir"}:
             value = clean_path(option_block.values[0], macros)
             if option_block.key in {"build_dir", "int_dir"}:
@@ -623,8 +621,8 @@ class Linker:
     # actually do you even need the extension?
     @staticmethod
     def _fix_lib_path_and_ext(macros: dict, lib_path: str) -> str:
-        lib_path = replace_macros(lib_path, macros)
-        return os.path.splitext(posix_path(os.path.normpath(lib_path)))[0] + macros["$_STATICLIB_EXT"]
+        lib_path = clean_path(lib_path, macros)
+        return os.path.splitext(lib_path)[0] + macros["$_STATICLIB_EXT"]
     
     
 def convert_bool_option(old_value: bool, option_block: QPCBlock) -> bool:

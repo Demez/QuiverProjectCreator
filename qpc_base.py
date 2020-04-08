@@ -136,6 +136,25 @@ def posix_path(string: str) -> str:
     return string.replace("\\", "/")
 
 
+def norm_path(path: str) -> str:
+    return posix_path(os.path.normpath(path))
+
+
+def join_path(*paths) -> str:
+    paths = list(paths)
+    if len(paths) > 1:
+        if "" in paths:
+            paths.remove("")
+        return posix_path(os.path.normpath("/".join(paths)))
+    return posix_path(paths[0])
+
+
+def join_path_list(include_dir: str, *paths: str) -> list:
+    if include_dir:
+        return [norm_path(include_dir + "/" + path) for path in paths]
+    return [posix_path(path) for path in paths]
+
+
 def check_file_path_glob(file_path: str) -> bool:
     return "*" in file_path or "[" in file_path and "]" in file_path or "?" in file_path
 

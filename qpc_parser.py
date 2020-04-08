@@ -71,6 +71,7 @@ class BaseInfoPlatform:
         self.all_projects = []
         self.undef_projects = {}
         self.dependency_dict = {}
+        self.dependency_dict_unfixed = {}
         self.configurations = []
         self.projects_to_use = []
 
@@ -103,6 +104,13 @@ class BaseInfoPlatform:
         for project in self.all_projects:
             if project.name == project_name or project_name in project.script_list:
                 return project
+            
+    def get_dependency_path(self, key: str):
+        if key in self.dependency_dict_unfixed:
+            return self.dependency_dict[self.dependency_dict_unfixed[key]]
+        elif key in self.dependency_dict:
+            return self.dependency_dict[key]
+        return key
 
     def _use_project(self, project: ProjectDefinition, unwanted_projects: dict):
         if self.platform in project.platforms and project.name not in unwanted_projects:
@@ -291,6 +299,8 @@ class Parser:
                 for dependency in project_block.items:
                     if dependency.values and dependency.solve_condition(info.macros):
                         info.dependency_dict[dependency.key] = temp_dir + dependency.values[0]
+                        if temp_dir:
+                            info.dependency_dict_unfixed[dependency.values[0]] = dependency.key
 
             elif not project_block.values:
                 continue
@@ -306,8 +316,9 @@ class Parser:
                 file_path = os.path.normpath(replace_macros(project_block.values[0], info.macros))
                 new_include_dir = include_dir
                 
-                if len(project_block.values) == 2:
+                if len(project_block.values) >= 2:
                     new_include_dir += "/" + project_block.values[1] if include_dir else project_block.values[1]
+                    new_include_dir = replace_macros(new_include_dir, info.macros)
                     current_dir = os.getcwd()
                     if os.path.isdir(new_include_dir):
                         os.chdir(new_include_dir)
@@ -325,7 +336,7 @@ class Parser:
                 except FileNotFoundError:
                     project_block.warning("File Does Not Exist: ")
                     
-                if len(project_block.values) == 2:
+                if len(project_block.values) >= 2:
                     os.chdir(current_dir)
 
             elif not args.hide_warnings:
@@ -443,7 +454,7 @@ class Parser:
                         self._parse_project(include_file, project, indent + "    ")
                         if args.verbose:
                             print(indent + "    " + "Finished Parsing")
-            
+                    
                 elif not args.hide_warnings:
                     project_block.warning("Unknown key: ")
     
@@ -477,7 +488,6 @@ class Parser:
                 
                     if block.items:
                         for file_path in block.get_list():
-                            # TODO: this doesn't work with wildcards
                             if check_file_path_glob(file_path):
                                 [self._source_file(block, project, found_file) for found_file in glob.glob(file_path)]
                             else:
@@ -488,10 +498,6 @@ class Parser:
         source_file = project.get_source_file(file_path)
         if not source_file:
             return
-    
-        # TODO: set this to directly edit the configuration options
-        #  remove need to write out configuration {}
-        #  also this is messy
     
         for config_block in files_block.items:
             if config_block.solve_condition(project.macros):
