@@ -34,6 +34,8 @@ class Compiler(Enum):
 
     CLANG_9 = auto(),
     CLANG_8 = auto(),
+    
+    CLANG_CL = auto(),  # vstudio junk, ClangCL is different from the clang versions above
 
     # GCC_10 = auto(),
     GCC_9 = auto(),
