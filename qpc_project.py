@@ -399,6 +399,20 @@ class ProjectContainer:
     def get_display_name(self) -> str:
         return self._passes[0].macros["$PROJECT_NAME"]
 
+    def get_out_dir(self) -> str:
+        out_dir = ""  # os.path.split(project.project_path)[0]
+        # TODO: actually test this and see if it works just fine, it should
+        '''
+        if args.project_dir:
+            try:
+                out_dir = posix_path(self.projects[0].macros["$PROJECT_DIR"])
+                # if not out_dir.endswith("/"):
+                #    out_dir += "/"
+            except KeyError:
+                pass
+        '''
+        return out_dir
+
 
 # TODO: maybe add some enums for options with specific values?
 #  though how would writers get all the available values? maybe a seperate file

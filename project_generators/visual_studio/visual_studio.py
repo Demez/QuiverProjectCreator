@@ -37,7 +37,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         if not project_passes:
             return
         
-        out_dir = get_out_dir(project)
+        out_dir = project.get_out_dir()
 
         if args.time:
             start_time = perf_counter()
@@ -228,21 +228,6 @@ def convert_platform(platform: Enum) -> str:
 
 def make_uuid():
     return f"{{{uuid.uuid4()}}}".upper()
-
-
-def get_out_dir(project) -> str:
-    out_dir = ""  # os.path.split(project.project_path)[0]
-    # TODO: actually test this and see if it works just fine, it should
-    '''
-    if args.project_dir:
-        try:
-            out_dir = posix_path(project.projects[0].macros["$PROJECT_DIR"])
-            # if not out_dir.endswith("/"):
-            #    out_dir += "/"
-        except KeyError:
-            pass
-    '''
-    return out_dir
 
 
 def make_conf_plat_cond(config: str, platform: Enum) -> str:
