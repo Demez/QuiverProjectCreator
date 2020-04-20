@@ -346,6 +346,8 @@ COMPILER_DICT = {
     Compiler.MSVC_140: "v140",
     Compiler.MSVC_120: "v120",
     Compiler.MSVC_100: "v100",
+    Compiler.CLANG_9: "ClangCL",
+    Compiler.CLANG_8: "ClangCL",
 }
 
 
