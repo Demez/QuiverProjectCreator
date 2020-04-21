@@ -52,31 +52,42 @@ for file in GENERATOR_LIST:
     
 QPC_HASHES = {**QPC_BASE_HASHES, **QPC_GENERATOR_HASHES}
 
+CHECKED_HASHES = {}
+
 
 # could make these functions into a class as a namespace
 # probably a class, to store hashes of files we've checked before
-def check_hash(project_path: str) -> bool:
+def check_hash(project_path: str, print_valid: bool = True) -> bool:
+    if project_path in CHECKED_HASHES:
+        return CHECKED_HASHES[project_path]
+    
     project_hash_file_path = get_hash_file_path(project_path)
     project_dir = os.path.split(project_path)[0]
     total_blocks = sorted(("commands", "hashes", "glob_files"))
     blocks_found = []
+    result = True
     
     if os.path.isfile(project_hash_file_path):
         hash_file = qpc_reader.read_file(project_hash_file_path)
         
         if not hash_file:
+            CHECKED_HASHES[project_path] = False
             return False
         
         for block in hash_file:
+            if not result:
+                CHECKED_HASHES[project_path] = False
+                return False
+            
             if block.key == "commands":
                 blocks_found.append(block.key)
                 if not _check_commands(project_dir, block.items):
-                    return False
+                    result = False
                 
             elif block.key == "hashes":
                 blocks_found.append(block.key)
                 if not _check_file_hash(project_dir, block.items):
-                    return False
+                    result = False
 
             elif block.key == "dependencies":
                 pass
@@ -84,19 +95,23 @@ def check_hash(project_path: str) -> bool:
             elif block.key == "glob_files":
                 blocks_found.append(block.key)
                 if not _check_glob_files(project_dir, block.items):
-                    return False
+                    result = False
                 
-            else:
+            elif print_valid:
                 # how would this happen
                 block.warning("Unknown Key in Hash: ")
 
         if total_blocks == sorted(blocks_found):
-            print("Valid: " + project_path + get_hash_file_ext(project_path))
+            if print_valid:
+                print("Valid: " + project_path + get_hash_file_ext(project_path))
+            CHECKED_HASHES[project_path] = True
             return True
+        CHECKED_HASHES[project_path] = False
         return False
     else:
-        if args.verbose:
+        if args.verbose and print_valid:
             print("Hash File does not exist")
+        CHECKED_HASHES[project_path] = False
         return False
     
     
@@ -174,7 +189,7 @@ def _check_commands(project_dir: str, command_list, master_file: bool = False) -
     for command_block in command_list:
         if command_block.key == "working_dir":
             commands_found += 1
-            directory = os.getcwd()
+            directory = args.root_dir
             if project_dir:
                 directory += "/" + project_dir
             # something just breaks here i use PosixPath in the if statement
@@ -221,9 +236,9 @@ def _check_commands(project_dir: str, command_list, master_file: bool = False) -
 def _check_file_hash(project_dir: str, hash_list) -> bool:
     for hash_block in hash_list:
         if os.path.isabs(hash_block.values[0]) or not project_dir:
-            project_file_path = os.path.normpath(hash_block.values[0])
+            project_file_path = posix_path(os.path.normpath(hash_block.values[0]))
         else:
-            project_file_path = os.path.normpath(project_dir + "/" + hash_block.values[0])
+            project_file_path = posix_path(os.path.normpath(project_dir + "/" + hash_block.values[0]))
         
         if hash_block.key != make_hash(project_file_path):
             if args.verbose:

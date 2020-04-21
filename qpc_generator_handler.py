@@ -3,8 +3,8 @@ import os
 # import qpc_hash
 from enum import Enum
 from glob import glob
-# from qpc_args import args
-from qpc_base import BaseProjectGenerator, QPC_DIR, QPC_GENERATOR_DIR
+from qpc_args import args
+from qpc_base import BaseProjectGenerator, QPC_DIR, QPC_GENERATOR_DIR, post_args_init
 
 
 GENERATOR_FOLDER = os.path.split(QPC_GENERATOR_DIR)[1]
@@ -14,10 +14,10 @@ GENERATOR_LIST = []
 GENERATOR_PATHS = []
 
 for generator_folder in glob(GENERATOR_PATH):
-    generator = generator_folder + os.sep + os.path.split(generator_folder)[1] + ".py"
-    if os.path.isfile(generator):
-        GENERATOR_LIST.append(os.path.basename(generator)[:-3])
-        GENERATOR_PATHS.append(generator)
+    __generator = generator_folder + os.sep + os.path.split(generator_folder)[1] + ".py"
+    if os.path.isfile(__generator):
+        GENERATOR_LIST.append(os.path.basename(__generator)[:-3])
+        GENERATOR_PATHS.append(__generator)
 
 
 def str_to_class(class_name: str):
@@ -41,6 +41,7 @@ def inheritors(klass):
 class GeneratorHandler:
     def __init__(self):
         self.project_generator_modules = {}
+        self.project_generators_all = []
         self.project_generators = []
         
         [self._import_generator(name) for name in GENERATOR_LIST]
@@ -55,15 +56,23 @@ class GeneratorHandler:
         for index, generator_module in enumerate(self.project_generator_modules.values()):
             if project_generator_type in generator_module.__dict__.values():
                 project_generator.path = generator_module.__file__.replace("\\", "/")
+                project_generator.filename = os.path.basename(project_generator.path)[:-3]
                 project_generator.id = index
                 break
-        self.project_generators.append(project_generator)
+        self.project_generators_all.append(project_generator)
+        
+    def post_args_init(self):
+        post_args_init()
+        for generator in self.project_generators_all:
+            if generator.filename in args.generators:
+                self.project_generators.append(generator)
+        [generator.post_args_init() for generator in self.project_generators]
             
     def get_generator_names(self) -> list:
         return [project_generator.output_type for project_generator in self.project_generators]
     
     def get_generator_args(self):
-        return [os.path.basename(project_generator.path)[:-3] for project_generator in self.project_generators]
+        return [project_generator.filename for project_generator in self.project_generators_all]
     
     def get_generators(self, generator_names: list) -> list:
         return [self.get_generator(name) for name in generator_names]

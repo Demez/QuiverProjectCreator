@@ -13,23 +13,12 @@ import qpc_reader
 from qpc_generator_handler import GeneratorHandler
 from qpc_parser import Parser
 from qpc_args import args, parse_args
-from qpc_base import BaseProjectGenerator, PLATFORM_DICT
+from qpc_base import BaseProjectGenerator, PLATFORM_DICT, create_directory
 from qpc_hash import (check_hash, check_master_file_hash, write_project_hash, write_master_file_hash,
                       get_project_dependencies, get_hash_file_path, QPC_HASH_DIR)
 
 
 PRINT_LINE = "------------------------------------------------------------------------"
-
-
-def create_directory(directory):
-    try:
-        os.makedirs(directory)
-        if args.verbose:
-            print("Created Directory: " + directory)
-    except FileExistsError:
-        pass
-    except FileNotFoundError:
-        pass
 
 
 def get_platform_list() -> list:
@@ -89,11 +78,18 @@ def check_platforms(platform_list: list, generator_platforms: list) -> set:
     return has_valid_platforms
 
 
-def check_project_exists(project_script: str, platforms: list, generator_list: list) -> bool:
+def check_project_exists_all(project_script: str, platforms: list, generator_list: list) -> bool:
     for generator in generator_list:
         if check_platforms(platforms, generator.get_supported_platforms()):
             if not generator.does_project_exist(project_script):
                 return False
+    return True
+
+
+def check_project_exists(project_script: str, platforms: list, generator: BaseProjectGenerator) -> bool:
+    if check_platforms(platforms, generator.get_supported_platforms()):
+        if not generator.does_project_exist(project_script):
+            return False
     return True
 
 
@@ -122,11 +118,13 @@ def main():
                 print()
             # only run if the hash check fails or if the user force creates projects
             # may look in the hash for where the project output directory is in the future
-            if not args.skip_projects and (args.force or not check_project_exists(project_script, project_def.platforms, generator_list) \
+            if not args.skip_projects and (args.force or not check_project_exists_all(project_script, project_def.platforms, generator_list) \
                     or not check_hash(project_script)):
 
+                hash_result = check_hash(project_script, False)
+
                 if os.path.isfile(project_script):
-                    project_dir = os.path.split(project_script)[0]
+                    project_dir, project_filename = os.path.split(project_script)
 
                     if project_dir and project_dir != args.root_dir:
                         os.chdir(project_dir)
@@ -135,7 +133,10 @@ def main():
                     if not project:
                         continue
 
-                    [generator.create_project(project) for generator in generator_list]
+                    for generator in generator_list:
+                        if args.force or not check_project_exists(project_filename, project_def.platforms, generator) \
+                                or not hash_result:
+                            generator.create_project(project)
 
                     if project_dir and project_dir != args.root_dir:
                         os.chdir(args.root_dir)
@@ -155,6 +156,8 @@ def main():
         print("\nFinished Parsing Projects"
               "\n\tTime: " + str(round(perf_counter() - start_time, 4)) +
               "\n\tParse Count: " + str(parser.counter))
+
+    [generator.projects_finished() for generator in generator_list]
 
     if args.master_file:
         print(PRINT_LINE)
@@ -178,6 +181,7 @@ if __name__ == "__main__":
     # doing this so we only allow valid generator options
     GENERATOR_HANDLER = GeneratorHandler()
     parse_args(GENERATOR_HANDLER.get_generator_args())
+    GENERATOR_HANDLER.post_args_init()
     main()
     
     print("" + PRINT_LINE + "\n"

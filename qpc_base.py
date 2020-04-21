@@ -1,15 +1,30 @@
 import sys
 import os
 from enum import Enum, auto, EnumMeta
+from time import perf_counter
+
+global args
 
 
 QPC_DIR = os.path.dirname(os.path.realpath(__file__)).replace("\\", "/") + "/"
 QPC_GENERATOR_DIR = QPC_DIR + "project_generators"
 
 
+def timer_diff(start_time: float) -> str:
+    return str(round(perf_counter() - start_time, 4))
+
+
+# header files like c/c++ would really be nice right about now
+# this is to avoid circular imports, but still be able to use arguments here
+def post_args_init():
+    global args
+    from qpc_args import args
+
+
 class BaseProjectGenerator:
     def __init__(self, name: str):
         self.name = name
+        self.filename = None
         self.path = None
         self.id = None
         self._platforms = []
@@ -17,6 +32,29 @@ class BaseProjectGenerator:
         self._uses_folders = False
         self._uses_master_file = False
         self._macro = ""
+        
+        self._start_time = None
+        self._current_build = None
+        
+    # use this for anything that needs to be set after arguments are parsed/initialized
+    def post_args_init(self):
+        pass
+    
+    # finished parsing all projects, override function
+    def projects_finished(self):
+        pass
+    
+    def _print_creating(self, output_name: str):
+        if args.time:
+            self._start_time = perf_counter()
+        else:
+            print("Creating: " + output_name)
+        self._current_build = output_name
+    
+    def _print_finished(self):
+        if args.time and self._current_build:
+            print(timer_diff(self._start_time) + " - Created: " + self._current_build)
+        self._current_build = None
         
     # ProjectContainer from qpc_project.py
     def _get_passes(self, project) -> list:
@@ -157,6 +195,17 @@ def join_path_list(include_dir: str, *paths: str) -> list:
 
 def check_file_path_glob(file_path: str) -> bool:
     return "*" in file_path or "[" in file_path and "]" in file_path or "?" in file_path
+
+
+def create_directory(directory: str):
+    try:
+        os.makedirs(directory)
+        if args.verbose:
+            print("Created Directory: " + directory)
+    except FileExistsError:
+        pass
+    except FileNotFoundError:
+        pass
 
 
 def add_dict_value(dictionary: dict, key, value_type: type):

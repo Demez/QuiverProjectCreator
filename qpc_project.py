@@ -314,7 +314,7 @@ class ProjectContainer:
         # self.dependency_convert = dependency_dict
         self.dependencies = set()
         # shared across configs, used as a base for them
-        self.macros = {"$PROJECT_NAME": name, "$SCRIPT_NAME": name, **get_arg_macros()}
+        self.macros = {"$PROJECT_NAME": name, "$SCRIPT_NAME": name, "$_ROOT_DIR": args.root_dir, **get_arg_macros()}
         
         self._passes = []
         generator_macros = {}
@@ -412,6 +412,16 @@ class ProjectContainer:
                 pass
         '''
         return out_dir
+    
+    def get_all_source_files(self) -> set:
+        all_files = set()
+        [all_files.update(project.source_files) for project in self._passes]
+        return all_files
+    
+    def get_all_files(self) -> set:
+        all_files = set()
+        [all_files.update(project.files) for project in self._passes]
+        return all_files
 
 
 # TODO: maybe add some enums for options with specific values?
