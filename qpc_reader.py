@@ -109,6 +109,9 @@ class QPCBlockBase:
             return self.items.index(qpc_item)
         except IndexError:
             return None
+        
+    def print_info(self):
+        print("unfinished qpc_reader.py QPCBlockBase.print_info()")
 
 
 class QPCBlock(QPCBlockBase):
@@ -330,31 +333,16 @@ def add_spacing_to_condition(cond):
     return cond
 
 
-def read_file(path, keep_quotes=False) -> QPCBlockBase:
+def read_file(path: str, keep_quotes: bool = False, allow_escapes: bool = True, multiline_quotes: bool = True) -> QPCBlockBase:
     path = posix_path(path)
-    lexer = QPCLexer(path, keep_quotes)
+    lexer = QPCLexer(path, keep_quotes, allow_escapes, multiline_quotes)
     qpc_file = QPCBlockBase(path)
     path = posix_path(os.getcwd() + "/" + path)
-    
-    while lexer.char_num < lexer.file_len:
-        key, line_num = lexer.next_key()
-        
-        if not key:
-            break  # end of file
-        
-        values = lexer.next_value_list()
-        condition = lexer.next_condition()
-        
-        block = qpc_file.add_item(key, values, condition, line_num)
-        
-        if lexer.next_symbol() == "{":
-            _create_sub_block(lexer, block, path)
-            pass
-    
+    parse_recursive(lexer, qpc_file, path)
     return qpc_file
 
 
-def _create_sub_block(lexer, block, path):
+def parse_recursive(lexer, block, path):
     while lexer.char_num < lexer.file_len - 1:
         key, line_num = lexer.next_key()
         
@@ -372,20 +360,27 @@ def _create_sub_block(lexer, block, path):
         
         next_symbol = lexer.next_symbol()
         if next_symbol == "{":
-            _create_sub_block(lexer, sub_block, path)
+            parse_recursive(lexer, sub_block, path)
         elif next_symbol == "}":
             return
 
 
 class QPCLexer:
-    def __init__(self, path, keep_quotes=False):
+    def __init__(self, path: str, keep_quotes: bool = False, allow_escapes: bool = True, multiline_quotes: bool = True):
         self.char_num = 0
         self.line_num = 1
         self.path = path
         self.keep_quotes = keep_quotes
+        self.allow_escapes = allow_escapes
+        self.multiline_quotes = multiline_quotes
         
-        with open(path, mode="r", encoding="utf-8") as file:
-            self.file = file.read()
+        try:
+            with open(path, mode="r", encoding="utf-8") as file:
+                self.file = file.read()
+        except UnicodeDecodeError:
+            with open(path, mode="r", encoding="ansi") as file:
+                self.file = file.read()
+            
         self.file_len = len(self.file) - 1
         
         self.chars_escape = {'\'', '"', '\\'}
@@ -596,12 +591,14 @@ class QPCLexer:
             self.char_num += 1
             char = self.file[self.char_num]
             
-            if char == '\\' and self.next_char() in self.chars_escape:
+            if char == '\\' and self.next_char() in self.chars_escape and self.allow_escapes:
                 quote += self.next_char()
                 self.char_num += 1
             elif char == quote_char:
                 if self.keep_quotes:
                     quote += char
+                break
+            elif char == "\n" and not self.multiline_quotes:
                 break
             else:
                 quote += char
