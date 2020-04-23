@@ -355,9 +355,10 @@ VS_BOOL_CONVERT = {
 
 # idfk what to call this function
 def prepare_vpc_file(project_script_path):
+    project_script_path = project_script_path.replace("\\", "/")
     project_dir, project_filename = os.path.split(project_script_path)
     project_name = os.path.splitext(project_filename)[0]
-    project_file = reader.read_file(project_script_path)
+    project_file = reader.read_file(project_script_path, False, False, False)
     return project_file, project_dir, project_name
 
 
@@ -470,15 +471,15 @@ def CreateDirectory(directory: str):
 
 
 def WriteProject(directory, filename, project_lines, base_file=False):
-    directory = directory.replace("vpc_scripts", "_qpc_scripts")
-    CreateDirectory(directory)
+    out_dir = args.output + directory.split(args.directory)[1].replace("vpc_scripts", "_qpc_scripts")
+    CreateDirectory(out_dir)
     
-    abs_path = os.path.normpath(directory + os.sep + filename + ".qpc")
+    abs_path = os.path.normpath(out_dir + os.sep + filename + ".qpc")
     if base_file:
         abs_path += "_base"
     
     with open(abs_path, mode="w", encoding="utf-8") as project_file:
-        WriteTopComment(project_file)
+        WriteTopComment(project_file, filename)
         project_file.write('\n'.join(project_lines) + "\n")
     return
 
@@ -492,21 +493,21 @@ class Configuration:
             ConfigOption("out_name"),
             ConfigOption("out_dir"),
             ConfigOption("int_dir"),
-            ConfigOption("configuration_type"),
+            ConfigOption("configuration_type", False, False),
             ConfigOption("language"),
             ConfigOption("compiler"),
             ConfigOption("include_directories", True),
             ConfigOption("library_directories", True),
-            ConfigOption("options", True),
+            ConfigOption("options", True, False),
         ]
         
         compiler = ConfigGroup("compiler")
         compiler.options = [
-            ConfigOption("preprocessor_definitions", True),
+            ConfigOption("preprocessor_definitions", True, False),
             ConfigOption("precompiled_header"),
             ConfigOption("precompiled_header_file"),
             ConfigOption("precompiled_header_out_file"),
-            ConfigOption("options", True),
+            ConfigOption("options", True, False),
         ]
         
         linker = ConfigGroup("linker")
@@ -517,7 +518,7 @@ class Configuration:
             ConfigOption("ignore_import_library"),
             ConfigOption("libraries", True),
             ConfigOption("ignore_libraries", True),
-            ConfigOption("options", True),
+            ConfigOption("options", True, False),
         ]
         
         self.groups = {
@@ -527,9 +528,9 @@ class Configuration:
         }
         
         self.options = {
-            "pre_build": ConfigOption("pre_build", True),
-            "pre_link": ConfigOption("pre_link", True),
-            "post_build": ConfigOption("post_build", True),
+            "pre_build": ConfigOption("pre_build", True, False),
+            "pre_link": ConfigOption("pre_link", True, False),
+            "post_build": ConfigOption("post_build", True, False),
         }
 
 
@@ -561,9 +562,10 @@ class ConfigGroup:
         
         
 class ConfigOption:
-    def __init__(self, name, is_list=False):
+    def __init__(self, name: str, is_list: bool = False, replace_path_sep: bool = True):
         self.name = name
         self.is_list = is_list
+        self.replace_path_sep = replace_path_sep
         self.condition = None
         self.value = []
     
@@ -576,7 +578,7 @@ class ConfigOption:
                 # wrap each value in quotes (maybe add an input option here for we should wrap in quotes or not?)
                 values = list('"' + value + '"' for value in values)
             
-            if self.name not in ("preprocessor_definitions", "options"):
+            if self.replace_path_sep:
                 for index, value in enumerate(values):
                     if value != "\\n":
                         values[index] = value.replace("\\", "/")
@@ -609,7 +611,7 @@ class ConfigOption:
             value = '"' + ''.join(values) + '"'
             value = value.replace("$PLATSUBDIR", "$PLATFORM")
             
-            if self.name != "configuration_type":
+            if self.replace_path_sep:
                 value = value.replace("\\", "/")
             
             # get rid of any file extension and add the quote back onto the end if it changed
@@ -732,6 +734,10 @@ def convert_vpc(vpc_dir, vpc_filename, vpc_project):
         # config = MergeConfigurations(config_list)
     qpc_project_list = WriteConfiguration(config, "", qpc_project_list)
     
+    # empty vpc script
+    if not qpc_project_list:
+        return
+    
     # gap between anything before files and files
     if qpc_project_list[-1] != "":
         qpc_project_list.append("")
@@ -744,11 +750,11 @@ def convert_vpc(vpc_dir, vpc_filename, vpc_project):
     return
 
 
-def WriteTopComment(qpc_project):
+def WriteTopComment(qpc_project, filename: str):
     qpc_project.write(
-        "// ---------------------------------------------------------------\n" +
-        "// Auto Generated QPC Script - Fix if needed before using\n" +
-        "// ---------------------------------------------------------------\n")
+        f"// ---------------------------------------------------------------\n" +
+        f"// {filename}.qpc\n" +
+        f"// ---------------------------------------------------------------\n")
 
 
 def NormalizePlatformConditions(cond):
@@ -910,7 +916,7 @@ def WriteFilesBlock(vpc_files, qpc_project, indent):
     libraries = []
     for file_block in vpc_files.items:
         
-        if file_block.key.casefold() == "$folder" and not file_block.values[0] == "Link Libraries":
+        if file_block.key.casefold() == "$folder" and not file_block.values[0].casefold() == "link libraries":
             
             # if "}" in qpc_project[-1]:
             if "{" not in qpc_project[-1]:
@@ -1240,7 +1246,7 @@ def WriteConfigOption(indent, option):
             option_lines = []
             cond_values = {}
             for value_obj in option.value:
-                base.add_dict_value(cond_values, value_obj.condition, "list")
+                base.add_dict_value(cond_values, value_obj.condition, list)
                 cond_values[value_obj.condition].append(value_obj.value)
                 # option_lines.append(indent + "\t\t\t" + value_obj.value + '')
                 # WriteCondition( value_obj.condition, option_lines )
@@ -1386,4 +1392,6 @@ def main():
 
 if __name__ == "__main__":
     args = parse_args()
+    args.directory = args.directory.replace("\\", "/")
+    args.output = args.output.replace("\\", "/")
     main()
