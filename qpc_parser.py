@@ -236,6 +236,18 @@ class BaseInfo:
                     self.project_list[project] = None
         self.project_list = tuple(self.project_list.keys())
         return self.project_list
+    
+    def get_wanted_projects_plat_name(self, *platforms) -> tuple:
+        project_list = {}  # dict keeps order, set doesn't as of 3.8, both faster than lists
+        for base_info in self.info_list:
+            if base_info.platform not in platforms:
+                continue
+            base_info.setup_wanted_projects()
+            for project in base_info.projects_to_use:
+                if project not in project_list:
+                    project_list[project] = None
+        project_list = tuple(project_list.keys())
+        return project_list
 
 
 class Parser:
