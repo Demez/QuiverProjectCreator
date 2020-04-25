@@ -5,7 +5,7 @@ import qpc_hash
 import lxml.etree as et
 from time import perf_counter
 from qpc_args import args
-from qpc_base import BaseProjectGenerator, add_dict_value, Platform  # , posix_path, PLATFORM_DICT, get_platform_name
+from qpc_base import BaseProjectGenerator, add_dict_value, Platform, PlatformName
 from qpc_project import Compiler, PrecompiledHeader, ConfigType, Language, ProjectContainer, ProjectPass
 from qpc_parser import BaseInfo
 from enum import Enum
@@ -29,6 +29,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         self.project_uuid_dict = {}
         self.project_folder_uuid = {}
         self.out_dir_dict = {}
+        self.solution_file = None
 
     # TODO: move most of this stuff to a vs_cpp file, so you can also do c# here
     #  though you did have most of the cpp stuff in separate functions, so it should be easy to move and add C# support
@@ -101,7 +102,10 @@ class VisualStudioGenerator(BaseProjectGenerator):
         # slow?
         self.out_dir_dict = {}
         for qpc_path, hash_path in info.project_hashes.items():
-            self.out_dir_dict[qpc_path] = qpc_hash.get_out_dir(hash_path)
+            if qpc_path in info.project_dependencies:
+                self.out_dir_dict[qpc_path] = qpc_hash.get_out_dir(hash_path)
+                
+        info_win = info.get_base_info_plat_name(PlatformName.WINDOWS)
     
         with open(master_file_path, "w", encoding="utf-8") as self.solution_file:
             write_solution_header(self.solution_file)
@@ -109,7 +113,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
             self.project_uuid_dict = {}
             self.project_folder_uuid = {}
             
-            [self.sln_project_def_loop(project_def, info) for project_def in info.project_list]
+            [self.sln_project_def_loop(project_def, info) for project_def in info_win.projects_to_use]
         
             # Write the folders as base_info because vstudio dumb
             # might have to make this a project def, idk
@@ -189,10 +193,13 @@ class VisualStudioGenerator(BaseProjectGenerator):
             try:
                 out_dir = self.out_dir_dict[script_path]
             except KeyError:
-                print("Project script is not in container? wtf")
+                continue
+            except Exception as F:
+                print(F)
                 continue
             if out_dir is None:
-                print()
+                continue
+                
             vcxproj_path = out_dir + "/" + os.path.splitext(os.path.basename(script_path))[0] + ".vcxproj"
             
             if not os.path.isfile(vcxproj_path):
@@ -331,6 +338,8 @@ COMPILER_DICT = {
     Compiler.MSVC_140: "v140",
     Compiler.MSVC_120: "v120",
     Compiler.MSVC_100: "v100",
+    Compiler.MSVC_140_XP: "v140_xp",
+    Compiler.MSVC_120_XP: "v120_xp",
     Compiler.CLANG_CL: "ClangCL",
 }
 
@@ -910,6 +919,10 @@ def get_project_dependencies(project_dict: dict, project_dependency_paths: set) 
                 vcxproj_abspath = os.path.normpath(vcxproj_path)
             else:
                 vcxproj_abspath = os.path.normpath(args.root_dir + os.sep + vcxproj_path)
+                
+            if not os.path.isfile(vcxproj_abspath):
+                # probably was not built for this platform
+                continue
     
             try:
                 vcxproj = et.parse(vcxproj_abspath).getroot()
@@ -919,5 +932,7 @@ def get_project_dependencies(project_dict: dict, project_dependency_paths: set) 
                 project_dependencies[project_uuid] = project_uuid
             except FileNotFoundError as F:
                 print(str(F))
+            except Exception as F:
+                print(F)
 
     return project_dependencies
