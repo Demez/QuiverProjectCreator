@@ -72,6 +72,7 @@ class BaseInfoPlatform:
         self.undef_projects = {}
         self.dependency_dict = {}
         self.dependency_dict_unfixed = {}
+        self.project_dependencies = {}
         self.configurations = []
         self.projects_to_use = []
 
@@ -237,7 +238,7 @@ class BaseInfo:
         self.project_list = tuple(self.project_list.keys())
         return self.project_list
     
-    def get_wanted_projects_plat_name(self, *platforms) -> tuple:
+    def get_wanted_projects_plat(self, *platforms) -> tuple:
         project_list = {}  # dict keeps order, set doesn't as of 3.8, both faster than lists
         for base_info in self.info_list:
             if base_info.platform not in platforms:
@@ -248,6 +249,19 @@ class BaseInfo:
                     project_list[project] = None
         project_list = tuple(project_list.keys())
         return project_list
+    
+    def add_project_dependencies(self, project_script: str, platform_list: list, dependencies: list):
+        self.project_dependencies[project_script] = dependencies  # might remove
+        for base_info in self.info_list:
+            if base_info.platform in platform_list:
+                base_info.project_dependencies[project_script] = dependencies
+    
+    def get_project_dependencies_plat(self, *platforms) -> dict:
+        all_dependencies = {}
+        for base_info in self.info_list:
+            if base_info.platform in platforms:
+                all_dependencies.update(base_info.project_dependencies)
+        return all_dependencies
 
 
 class Parser:
@@ -365,7 +379,7 @@ class Parser:
             self._parse_project_group_items(project_group, info, group_block, [])
 
     @staticmethod
-    def _add_project_base(info: BaseInfoPlatform, project_name: str, *project_paths) -> None:
+    def _add_project_base(info: BaseInfoPlatform, project_name: str, warning_func, *project_paths) -> None:
         # TODO: check if script path is already used
         if project_name in info.shared.unsorted_projects:
             project_def = info.shared.unsorted_projects[project_name]
@@ -377,7 +391,9 @@ class Parser:
         # could have values next to it as well now
         for script_path in project_paths:
             script_path = replace_macros(script_path, info.macros)
-            project_def.add_script(script_path)
+            if not project_def.add_script(script_path) and not args.hide_warnings:
+                # warning_func("Script does not exist: " + script_path)
+                print("Script does not exist: " + script_path)
 
         info.add_project(project_def)
                 
@@ -386,7 +402,7 @@ class Parser:
             include_dir += "/"
         scripts = [include_dir + replace_macros(item.key, info.macros) for item in block.items if item.solve_condition(info.macros)]
         scripts += [include_dir + replace_macros(script, info.macros) for script in block.values[1:]]
-        self._add_project_base(info, block.values[0], *scripts)
+        self._add_project_base(info, block.values[0], block.warning, *scripts)
 
     @staticmethod
     def _check_plat_condition(condition: str) -> bool:
