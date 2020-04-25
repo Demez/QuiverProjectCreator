@@ -4,7 +4,7 @@ from enum import Enum
 
 # from qpc_args import args
 import qpc_hash
-from qpc_base import BaseProjectGenerator, Platform
+from qpc_base import BaseProjectGenerator, Platform, PlatformName
 from qpc_project import Compiler, ConfigType, Language, ProjectContainer, ProjectPass, Configuration
 from qpc_parser import BaseInfo
 
@@ -56,8 +56,14 @@ class MakefileGenerator(BaseProjectGenerator):
         print("Creating Master File: " + master_file_path)
 
         out_dir_dict = {}
-        for qpc_path, hash_path in info.project_hashes.items():
-            out_dir_dict[qpc_path] = os.path.relpath(qpc_hash.get_out_dir(hash_path))
+        dependency_dict = {}
+        wanted_projects = info.get_wanted_projects_plat(PlatformName.LINUX, PlatformName.MACOS)
+        for project_def in wanted_projects:
+            for qpc_path in project_def.script_list:
+                out_dir = qpc_hash.get_out_dir(info.project_hashes[qpc_path])
+                if out_dir:
+                    out_dir_dict[qpc_path] = os.path.relpath(out_dir)
+                    dependency_dict[qpc_path] = info.project_dependencies[qpc_path]
 
         # why
         platform = None
@@ -73,7 +79,7 @@ SETTINGS = PLATFORM={platform.name.lower()} CONFIG={info.get_configs()[0]}
 all:
 """
         # sort dict by most dependencies to least dependencies, 100% a flawed way of doing this
-        make_paths, make_files = self.order_dependencies(out_dir_dict, info.project_dependencies)
+        make_paths, make_files = self.order_dependencies(out_dir_dict, dependency_dict)
 
         for index, path in enumerate(make_paths):
             master_file += f"\tmake -C {path} -f {make_files[index]} $(SETTINGS)\n"
