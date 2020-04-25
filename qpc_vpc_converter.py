@@ -18,8 +18,78 @@ import argparse
 # TODO: add dependencies here, they will have to be hard coded, but i could care less
 
 
-# Global Variables
+def debug_assert(result: bool):
+    if result:
+        print("put breakpoint here")
+
+
+# Conversion stuff
 EVENTS = {"pre_link", "pre_build", "post_build"}
+
+
+# HARDCODING
+# shut up i know hardcoded bad, but i really don't feel like adding something to read from a file right now for this
+# that can be done later, without changing any code below
+# -----------------------------------------
+# check if any libraries are in this list
+# if so, add the name here to dependencies
+# also all the paths are wrriten to whatever file is called default.qpc
+LIBS_TO_DEPENDENCIES_LAZY = {
+    "tier0":                    "tier0/tier0.qpc",
+    "tier1":                    "tier1/tier1.qpc",
+    "tier2":                    "tier2/tier2.qpc",
+    "tier3":                    "tier3/tier3.qpc",
+    "vstdlib":                  "vstdlib/vstdlib.qpc",
+    
+    "jpeglib":                  "thirdparty/jpeglib/jpeglib.qpc",
+    "bzip2":                    "thirdparty/bzip2/bzip2.qpc",
+    "lzma":                     "thirdparty/lzma/lzma.qpc",
+    "lua":                      "thirdparty/lua-5.1.1/lua.qpc",
+    "libspeex":                 "thirdparty/libspeex/libspeex.qpc",
+    
+    "vgui_controls":            "vgui2/vgui_controls/vgui_controls.qpc",
+    "vgui_surfacelib":          "vgui2/vgui_surfacelib/vgui_surfacelib.qpc",
+    "matsys_controls":          "vgui2/matsys_controls/matsys_controls.qpc",
+    "dme_controls":             "vgui2/dme_controls/dme_controls.qpc",
+    
+    "mxtoolkitwin32":           "utils/mxtk/mxtoolkitwin32.qpc",
+    "nvtristriplib":            "utils/nvtristriplib/nvtristriplib.qpc",
+    "nvtristrip":               "utils/nvtristriplib/nvtristriplib.qpc",
+    "vmpi":                     "utils/vmpi/vmpi.qpc",
+    "libmad":                   "utils/libmad/libmad.qpc",
+    
+    "bitmap":                   "bitmap/bitmap.qpc",
+    "bitmap_byteswap":          "bitmap/bitmap_byteswap.qpc",
+    "shaderlib":                "materialsystem/shaderlib/shaderlib.qpc",
+    "mathlib":                  "mathlib/mathlib.qpc",
+    "mathlib_extended":         "mathlib/mathlib_extended.qpc",
+    "fgdlib":                   "fgdlib/fgdlib.qpc",
+    "raytrace":                 "raytrace/raytrace.qpc",
+    "appframework":             "appframework/appframework.qpc",
+    "movieobjects":             "movieobjects/movieobjects.qpc",
+    "dmserializers":            "dmserializers/dmserializers.qpc",
+    "datamodel":                "datamodel/datamodel.qpc",
+    "choreoobjects":            "choreoobjects/choreoobjects.qpc",
+    "unitlib":                  "unitlib/unitlib.qpc",
+    "dmxloader":                "dmxloader/dmxloader.qpc",
+    "particles":                "particles/particles.qpc",
+    "vtf":                      "vtf/vtf.qpc",
+    
+    "bonesetup":                "bonesetup/bonesetup.qpc",
+    "toolutils":                "toolutils/toolutils.qpc",
+    "togl":                     "togl/togl.qpc",
+    "vpklib":                   "vpklib/vpklib.qpc",
+    "mdlobjects":               "mdlobjects/mdlobjects.qpc",
+    "fow":                      "fow/fow.qpc",
+    "videocfg":                 "videocfg/videocfg.qpc",
+    "resourcefile":             "resourcefile/resourcefile.qpc",
+    "responserules_runtime":    "responserules/runtime/responserules_runtime.qpc",
+    "materialobjects":          "materialobjects/materialobjects.qpc",
+    "matchmakingbase":          "matchmaking/matchmaking_base.qpc",
+    "matchmakingbase_ds":       "matchmaking/matchmaking_base_ds.qpc",
+    "zlib":                     "thirdparty/zlib-1.2.5/zlib.vpc",
+}
+
 
 MACRO_CONVERT = {
     "SRCDIR": "SRC_DIR",
@@ -28,29 +98,60 @@ MACRO_CONVERT = {
     "OUTLIBDIR": "OUT_LIB_DIR",
     "OUTLIBNAME": "OUT_LIB_NAME",
     "PROJECTNAME": "PROJECT_NAME",
-    "LOADADDRESS_DEVELOPMENT": "LOAD_ADDRESS_DEVELOPMENT",
-    "LOADADDRESS_RETAIL": "LOAD_ADDRESS_RETAIL",
+    "LOADADDRESS_DEVELOPMENT": "LOADADDRESS_DEVELOPMENT",
+    "LOADADDRESS_RETAIL": "LOADADDRESS_RETAIL",
     "PLATSUBDIR": "PLATFORM",
 }
 
-VPC_CONFIG_IGNORE_LIST = [
-    "$additionalprojectdependencies",
+IGNORE_CONFIG_GROUPS = {
+    "$custombuildstep",
+    "$snccompiler",
+    "$snclinker",
+    "$gcccompiler",
+    "$gcclinker",
+    "$xbox360imageconversion",
+    "$consoledeployment",
+    "$manifesttool",
+    "$xmldocumentgenerator",
+    "$browseinformation",
+    "$resources",
+    "$excludedfrombuild",  # i don't like this
+    "$debugging",  # i could convert this, but nothing is ever setup for it, idc right now
+}
+
+IGNORE_CONFIG_KEYS = {
     "$entrypoint",
     "$version",
     
+    "$description",
+    
+    "$forcedusingfiles",
+    "$moduledefinitionfile",
+    "$additionaloutputfiles",
+    "$gameoutputfile",
+    "$warninglevel",
+    "$useofmfc",
+    "$useofatl",
+    "$baseaddress",
+    
     # posix stuff
     "$symbolvisibility",
-]
+}
 
 OPTION_NAME_CONVERT_DICT = {
+    "$targetname": "out_name",
     "$outputdirectory": "out_dir",
     "$intermediatedirectory": "int_dir",
     "$configurationtype": "configuration_type",
     
     "$additionalincludedirectories": "include_directories",
     "$additionallibrarydirectories": "library_directories",
+    "$additionalprojectdependencies": "dependencies",
     
     "$additionaldependencies": "libraries",
+    "$systemframeworks": "libraries",
+    "$systemlibraries": "libraries",
+    
     "$compileas": "language",
     "$platformtoolset": "compiler",
     
@@ -85,6 +186,16 @@ OPTION_NAME_CONVERT_DICT = {
     "enablec++exceptions": "options",
     "randomizedbaseaddress": "options",
     "basicruntimechecks": "options",
+    "$enableenhancedinstructionset": "options",
+    "$enablelargeaddresses": "options",
+    "$fixedbaseaddress": "options",
+    "$enablec++exceptions": "options",
+    "$enableruntimetypeinfo": "options",
+    "$enablecomdatfolding": "options",
+    "$floatingpointmodel": "options",
+    
+    # special child
+    "$forceincludes": "options",
     
     # posix stuff:
     "$optimizerlevel": "options",  # idk if this will work, need to test
@@ -111,24 +222,24 @@ OPTION_VALUE_CONVERT_DICT = {
     
     "TRUE": "true",
     "True": "true",
-    "False": "false",
     "Yes": "true",
+    
+    "False": "false",
     "No": "false",
     
-    "v90": "msvc_v90",
-    "v100": "msvc_v100",
-    "v110": "msvc_v110",
-    "v120": "msvc_v120",
-    "v140": "msvc_v140",
-    "v141": "msvc_v141",
-    "v142": "msvc_v142",
+    "v100": "msvc_100",
+    "v110": "msvc_110",
+    "v120": "msvc_120",
+    "v140": "msvc_140",
+    "v141": "msvc_141",
+    "v142": "msvc_142",
+    
+    "v120_xp": "msvc_120_xp",
+    "v140_xp": "msvc_140_xp",
     
     # preprocessor defs
     "Use Multi-Byte Character Set": "MBCS",
     "Use Unicode Character Set": "_MBCS",
-    
-    # maybe move to somewhere else? this is WAY too general
-    # "True": "/MP",
 }
 
 # TODO: do the same here in vstudio, but convert the other way around to vs2019 options
@@ -158,9 +269,11 @@ CMD_CONVERT = {
     "No (/WX-)": "/WX-",
     "Yes (/WX)": "/WX",  # TODO: check if this is correct
     
+    "Yes (/INCREMENTAL)": "/INCREMENTAL",
     "No (/INCREMENTAL:NO)": "/INCREMENTAL:NO",
     
     "Yes (/NOLOGO)": "/NOLOGO",
+    "Yes (/nologo)": "/nologo",
     "Yes (/Gy)": "/Gy",
     "Yes (/GF)": "/GF",
     "Yes (/Gm)": "/Gm",
@@ -194,6 +307,11 @@ CMD_CONVERT = {
     "Yes With SEH Exceptions (/EHa)": "/EHa",
     "Yes (/EHsc)": "/EHsc",
     "Yes with Extern C functions (/EHs)": "/EHs",
+    
+    "Yes (/RELEASE)": "/RELEASE",
+    "Yes (/GS)": "/GS",
+    "Yes (/MAPINFO:EXPORTS)": "/MAPINFO:EXPORTS",
+    "Yes (/FC)": "/FC",
     
     "Stack Frames (/RTCs)": "/RTCs",
     "Uninitialized Variables (/RTCu)": "/RTCu",
@@ -301,6 +419,7 @@ CMD_CONVERT = {
     "No (/OPT:NOICF)": "/OPT:NOICF",
     "Remove Redundant COMDATs (/OPT:ICF)": "/OPT:ICF",
     "Yes (/OPT:ICF)": "/OPT:ICF",
+    "Eliminate Unreferenced Data (/OPT:REF)": "/OPT:REF",
     
     "Use Link Time Code Generation": "/ltcg",
     "Use Link Time Code Generation (/ltcg)": "/ltcg",
@@ -325,7 +444,8 @@ CMD_CONVERT = {
     "Disabled (/CLRSupportLastError:NO)": "/CLRSupportLastError:NO",
     "System Dlls Only (/CLRSupportLastError:SYSTEMDLL)": "/CLRSupportLastError:SYSTEMDLL",
     
-    # "aaaaaaaa": "/aaaaaaaa",
+    "Call profiler within function calls. (/callcap)": "/callcap",
+    "Call profiler around function calls. (/fastcap)": "/fastcap",
     
     "Default image type": "",
     "No Listing": "",
@@ -335,6 +455,7 @@ CMD_CONVERT = {
     "Neither": "",
     "Default": "",
     "No Common Language RunTime Support": "",
+    "No Whole Program Optimization": "",
 }
 
 CONFIG_GROUP_CONVERT_DICT = {
@@ -343,6 +464,7 @@ CONFIG_GROUP_CONVERT_DICT = {
     "$additionallibrarydirectories": "general",
     
     "$characterset": "compiler",
+    "$outputfile": "linker",
 }
 
 VS_BOOL_CONVERT = {
@@ -350,6 +472,43 @@ VS_BOOL_CONVERT = {
         "true": "/SAFESEH",
         "false": "/SAFESEH:NO",
     },
+}
+
+OPTION_PREFIX_ADD = {
+    "$forceincludes": "/FI",
+}
+
+
+FILE_KEYS = {"$file", "$dynamicfile", "-$file", "$filepattern"}
+
+
+MACRO_KEYS = {
+    "$macro",
+    "$macrorequired",
+    "$macrorequiredallowempty",
+    "$macroemptystring",
+    "$conditional",
+}
+
+
+# vpc sucks
+SPECIAL_FILE_KEYS = {
+    "$dynamicfile_nopch", "$file_nopch", "$file_createpch", "$shaders",
+    "$qtfile", "$qtschemafile", "$schemafile", "$schemaincludefile",
+    "$sharedlib", "-$sharedlib"
+}
+
+IGNORE_ROOT_KEYS = {
+    "$linux",
+    "$ignoreredundancywarning",
+    
+    "$loadaddressmacro",
+    "$loadaddressmacroauto",
+    "$loadaddressmacroauto_padded",
+    "$loadaddressmacroalias",
+    
+    # "$custombuildstep",
+    # "$custombuildscript",
 }
 
 
@@ -378,10 +537,9 @@ def get_vpc_scripts(root_dir):
 # you could just read it and then replace the keys directly probably,
 # would keep all comments that way at least
 def convert_vgc(vgc_dir, vgc_filename, vgc_project):
-    qpc_project_path = vgc_dir + os.sep + vgc_filename + ".qpc"
     qpc_base_file = []
     
-    def AddSpace(string):
+    def add_space(string):
         if qpc_base_file:
             if (not qpc_base_file[-1].startswith(string) or qpc_base_file[-1] == "}") and qpc_base_file[-1] != "":
                 qpc_base_file.append("")
@@ -392,27 +550,31 @@ def convert_vgc(vgc_dir, vgc_filename, vgc_project):
         
         if key in ("$macro", "$conditional", "$project", "$group", "$include"):
             if key in ("$project", "$group"):
-                AddSpace(key[1:])
+                add_space(key[1:])
                 qpc_base_file.append(key[1:])
                 if project_block.values:
                     qpc_base_file[-1] += ' "' + '" "'.join(project_block.values) + '"'
                 
                 if key == "$project" and len(project_block.items) == 1:
-                    qpc_base_file[-1] += ' "' + project_block.items[0].key.replace("\\", "/").replace(".vpc", ".qpc") + '"'''
-                    WriteCondition(project_block.items[0].condition, qpc_base_file)
+                    qpc_base_file[-1] += f' "{project_block.items[0].key.replace(".vpc", ".qpc")}"'.replace("\\", "/")
+                    write_condition(project_block.items[0].condition, qpc_base_file)
                     qpc_base_file.append("")
                     project_block.items.remove(project_block.items[0])
                 else:
-                    WriteCondition(project_block.condition, qpc_base_file)
+                    write_condition(project_block.condition, qpc_base_file)
                 
                 if project_block.items:
                     qpc_base_file.append("{")
-                    ConvertSubVGCBlock(1, project_block.items, qpc_base_file)
+                    convert_project_group_recurse(1, project_block.items, qpc_base_file)
                     qpc_base_file.append("}")
             
             elif key in ("$macro", "$conditional", "$include"):
                 for index, value in enumerate(values):
-                    values[index] = ConvertMacroCasing(value.replace("vpc_scripts", "_qpc_scripts"))
+                    # HARDCODING
+                    if not args.no_hardcoding:
+                        values[index] = convert_macro_casing(value.replace("vpc_scripts", "_qpc_scripts"))
+                        values[index] = values[index].replace("projects", "_projects")
+                        values[index] = values[index].replace("groups", "_groups")
 
                 if key == "$include":
                     qpc_base_file.append(
@@ -420,7 +582,7 @@ def convert_vgc(vgc_dir, vgc_filename, vgc_project):
                 else:
                     qpc_base_file.append('macro "' + project_block.values[0].replace("\\", "/") + '"')
 
-                WriteCondition(project_block.condition, qpc_base_file)
+                write_condition(project_block.condition, qpc_base_file)
             
         # skip
         elif key in {"$games"}:
@@ -429,37 +591,43 @@ def convert_vgc(vgc_dir, vgc_filename, vgc_project):
             project_block.warning("Unknown Key:")
             
     # add configurations block
-    qpc_base_file.extend(
-        ["",
-         "configurations",
-         "{",
-         "\t\"Debug\"",
-         "\t\"Release\"",
-         "}"
-         ]
-    )
+    # HARDCODING
+    if vgc_filename == "default":
+        qpc_base_file.extend(
+            ["",
+             "configurations",
+             "{",
+             "\t\"Debug\"",
+             "\t\"Release\"",
+             "}"
+             ]
+        )
     
-    WriteProject(vgc_dir, vgc_filename, qpc_base_file, True)
+    # HARDCODING
+    if not args.no_hardcoding:
+        write_project(vgc_dir, vgc_filename, qpc_base_file, True)
+    else:
+        write_project(vgc_dir, "_" + vgc_filename, qpc_base_file, True)
     
     return
 
 
-def ConvertSubVGCBlock(depth, block_items, qpc_base_file):
+def convert_project_group_recurse(depth, block_items, qpc_base_file):
     space = "{0}".format("\t" * depth)
     for sub_block in block_items:
         if sub_block.key.casefold() == "$folder":
             qpc_base_file.append(space + 'folder "' + sub_block.values[0] + '"')
-            WriteCondition(sub_block.condition, qpc_base_file)
+            write_condition(sub_block.condition, qpc_base_file)
             for item in sub_block.items:
-                ConvertSubVGCBlock(depth+1, item, qpc_base_file)
+                convert_project_group_recurse(depth + 1, item, qpc_base_file)
         else:
-            key = ConvertMacroCasing('"' + sub_block.key.replace("\\", "/").replace(".vpc", ".qpc") + '"')
+            key = convert_macro_casing('"' + sub_block.key.replace("\\", "/").replace(".vpc", ".qpc") + '"')
             qpc_base_file.append(space + key)
-            WriteCondition(sub_block.condition, qpc_base_file)
+            write_condition(sub_block.condition, qpc_base_file)
     return
 
 
-def CreateDirectory(directory: str):
+def create_directory(directory: str):
     try:
         os.makedirs(directory)
         if args.verbose:
@@ -470,17 +638,22 @@ def CreateDirectory(directory: str):
         pass
 
 
-def WriteProject(directory, filename, project_lines, base_file=False):
+def write_project(directory, filename, project_lines, base_file=False):
     out_dir = args.output + directory.split(args.directory)[1].replace("vpc_scripts", "_qpc_scripts")
-    CreateDirectory(out_dir)
+    create_directory(out_dir)
     
     abs_path = os.path.normpath(out_dir + os.sep + filename + ".qpc")
     if base_file:
         abs_path += "_base"
     
     with open(abs_path, mode="w", encoding="utf-8") as project_file:
-        WriteTopComment(project_file, filename)
+        write_comment_header(project_file, filename)
         project_file.write('\n'.join(project_lines) + "\n")
+
+        # HARDCODING
+        if filename.endswith("default"):
+            dependencies = "\n".join([f'\t"{key}"\t\t\t"{value}"' for key, value in LIBS_TO_DEPENDENCIES_LAZY.items()])
+            project_file.write(f'\ndependency_paths\n{{\n{dependencies}\n}}\n')
     return
 
 
@@ -506,7 +679,7 @@ class Configuration:
             ConfigOption("preprocessor_definitions", True, False),
             ConfigOption("precompiled_header"),
             ConfigOption("precompiled_header_file"),
-            ConfigOption("precompiled_header_out_file"),
+            ConfigOption("precompiled_header_output_file"),
             ConfigOption("options", True, False),
         ]
         
@@ -522,9 +695,9 @@ class Configuration:
         ]
         
         self.groups = {
-            "general": general.ToDict(),
-            "compiler": compiler.ToDict(),
-            "linker": linker.ToDict(),
+            "general": general.to_dict(),
+            "compiler": compiler.to_dict(),
+            "linker": linker.to_dict(),
         }
         
         self.options = {
@@ -554,7 +727,7 @@ class ConfigGroup:
         self.name = name
         self.options = []
         
-    def ToDict(self):
+    def to_dict(self) -> dict:
         option_dict = {}
         for option in self.options:
             option_dict[option.name] = option
@@ -562,14 +735,16 @@ class ConfigGroup:
         
         
 class ConfigOption:
-    def __init__(self, name: str, is_list: bool = False, replace_path_sep: bool = True):
+    def __init__(self, name: str, is_list: bool = False, replace_path_sep: bool = True, remove_ext: bool = False):
         self.name = name
-        self.is_list = is_list
-        self.replace_path_sep = replace_path_sep
         self.condition = None
         self.value = []
+        
+        self.is_list = is_list
+        self.replace_path_sep = replace_path_sep
+        self.remove_ext = remove_ext
     
-    def SetValue(self, values, condition, split_values):
+    def set_value(self, values, condition, split_values):
         if self.is_list:
             if split_values:
                 for string in split_values:
@@ -589,7 +764,7 @@ class ConfigOption:
             for added_value in self.value:
                 if added_value.value in values:
                     # it is added, so merge the conditions
-                    added_value.condition = MergeConfigConditions(condition, added_value.condition)
+                    added_value.condition = merge_config_conditions(condition, added_value.condition)
                     values.remove(added_value.value)
             
             if split_values:
@@ -598,14 +773,14 @@ class ConfigOption:
                     # other values
                     value = value.replace("%(AdditionalDependencies)", "")
                     if value != '""':
-                        condition = NormalizePlatformConditions(condition)
+                        condition = normalize_platform_conditions(condition)
                         self.value.append(ConfigOptionValue(value, condition))
             else:
                 for value in values:
                     value = value.replace("$BASE", "")
                     value = value.lstrip().rstrip()  # strip trailing whitespace at start and end
                     if value and value != "\\n":
-                        condition = NormalizePlatformConditions(condition)
+                        condition = normalize_platform_conditions(condition)
                         self.value.append(ConfigOptionValue('"' + value + '"', condition))
         else:
             value = '"' + ''.join(values) + '"'
@@ -615,7 +790,7 @@ class ConfigOption:
                 value = value.replace("\\", "/")
             
             # get rid of any file extension and add the quote back onto the end if it changed
-            if self.name in ("output_file", "debug_file", "import_library"):
+            if self.remove_ext:
                 # value = os.path.splitext(value)[0] + '"'
                 new_value = os.path.splitext(value)[0]
                 if new_value != value:
@@ -625,17 +800,17 @@ class ConfigOption:
             for added_value in self.value:
                 if added_value.value == value:
                     # it is added, so merge the conditions
-                    added_value.condition = MergeConfigConditions(condition, added_value.condition)
-                    added_value.condition = NormalizePlatformConditions(added_value.condition)
+                    added_value.condition = merge_config_conditions(condition, added_value.condition)
+                    added_value.condition = normalize_platform_conditions(added_value.condition)
                     return
             
             if not condition:
                 condition = None
             
-            condition = NormalizePlatformConditions(condition)
+            condition = normalize_platform_conditions(condition)
             self.value.append(ConfigOptionValue(value, condition))
     
-    def AddValue(self, value, condition):
+    def add_value(self, value, condition):
         # might be added already
         for added_value_obj in self.value:
             if added_value_obj.value == value and added_value_obj.condition == condition:
@@ -650,20 +825,20 @@ class ConfigOptionValue:
         self.condition = condition
 
 
-# TODO: maybe change this to MergeConditions? would have to split by all operators and go through each one
+# TODO: maybe change this to merge_conditions? would have to split by all operators and go through each one
 #  meh, maybe in the future, though i doubt it
-def MergeConfigConditions(cond, add_cond):
+def merge_config_conditions(cond: str, add_cond: str) -> str:
     if cond and add_cond:
         if "$DEBUG" in cond and "$RELEASE" in add_cond and \
                 "RELEASEASSERTS" not in cond and "RELEASEASSERTS" not in add_cond:
-            add_cond = RemoveCondition(add_cond, "$RELEASE")
+            add_cond = remove_condition(add_cond, "$RELEASE")
         
         elif "$RELEASE" in cond and "$DEBUG" in add_cond and \
                 "RELEASEASSERTS" not in cond and "RELEASEASSERTS" not in add_cond:
-            add_cond = RemoveCondition(add_cond, "$DEBUG")
+            add_cond = remove_condition(add_cond, "$DEBUG")
         
         elif add_cond:
-            add_cond = AddCondition(add_cond, cond, "&&")
+            add_cond = add_condition(add_cond, cond, "&&")
         
         if not add_cond:
             add_cond = None
@@ -672,7 +847,7 @@ def MergeConfigConditions(cond, add_cond):
     return add_cond
 
 
-def ConvertMacroCasing(string):
+def convert_macro_casing(string: str) -> str:
     for macro in MACRO_CONVERT:
         if macro in string:
             string = string.replace(macro, MACRO_CONVERT[macro])
@@ -684,13 +859,14 @@ def convert_vpc(vpc_dir, vpc_filename, vpc_project):
     config = Configuration()
     libraries = []
     files_block_list = []
+    dependencies = {}
     
     for project_block in vpc_project:
         
         key = project_block.key.casefold()  # compare with ignoring case
         
         if key == "$configuration":
-            ParseConfiguration(project_block, config)
+            parse_configuration(project_block, config, dependencies)
         
         elif key == "$project":
             if len(qpc_project_list) > 0 and not qpc_project_list[-1].endswith("\n") and qpc_project_list[-1] != "":
@@ -701,9 +877,9 @@ def convert_vpc(vpc_dir, vpc_filename, vpc_project):
                 qpc_project_list.insert(1, "")
 
             files_block = ["files"]
-            WriteCondition(project_block.condition, files_block)
+            write_condition(project_block.condition, files_block)
             files_block.append("{")
-            found_libraries, files_block = WriteFilesBlock(project_block, files_block, "\t")
+            found_libraries, files_block = write_files_block(project_block, files_block, "\t")
             
             if found_libraries:
                 libraries.extend(found_libraries)
@@ -713,13 +889,13 @@ def convert_vpc(vpc_dir, vpc_filename, vpc_project):
                 files_block.append("}")
                 files_block_list.extend(files_block)
         
-        elif key in ("$macro", "$macrorequired", "$macrorequiredallowempty", "$conditional"):
-            WriteMacro(project_block, qpc_project_list)
+        elif key in {"$macro", "$macrorequired", "$macrorequiredallowempty", "$conditional", "$macroemptystring"}:
+            write_macro(project_block, qpc_project_list)
         
         elif key == "$include":
-            WriteInclude(project_block, qpc_project_list)
+            write_include(project_block, qpc_project_list)
         
-        elif key in ("$linux", "$ignoreredundancywarning", "$loadaddressmacro", "$loadaddressmacroauto"):
+        elif key in IGNORE_ROOT_KEYS:
             pass
         
         else:
@@ -732,49 +908,73 @@ def convert_vpc(vpc_dir, vpc_filename, vpc_project):
         AddLibrariesToConfiguration(libraries, config)
         
         # config = MergeConfigurations(config_list)
-    qpc_project_list = WriteConfiguration(config, "", qpc_project_list)
+    qpc_project_list = write_configuration(config, "", qpc_project_list)
+    
+    
+    for library in config.groups["linker"]["libraries"].value:
+        if library.value.startswith("- "):
+            continue
+        value = library.value[1:-1]
+        if value.startswith("$LIBPUBLIC/") or value.startswith("$LIBCOMMON/"):
+            value = value[11:]
+            
+        if value in LIBS_TO_DEPENDENCIES_LAZY:
+            dependencies[value] = library.condition
+        elif "bzip2" in value:
+            dependencies["bzip2"] = library.condition
+        
+    if dependencies:
+        # dependencies = "\n".join([f'\t"{key}"\t\t\t"{value}"' for key, value in LIBS_TO_DEPENDENCIES_LAZY.items()])
+        # project_file.write(f'\ndependency_paths\n{{\n{dependencies}\n}}\n')
+        qpc_project_list.append("\ndependencies\n{")
+        for dependency, condition in dependencies.items():
+            string = f'\t"{dependency}"'
+            if condition:
+                string += f"\t[{format_condition(condition)}]"
+            qpc_project_list.append(string)
+        qpc_project_list.append("}")
+    
+    # gap between anything before files and files
+    if qpc_project_list and qpc_project_list[-1] != "":
+        qpc_project_list.append("")
+    qpc_project_list.extend(files_block_list)
     
     # empty vpc script
     if not qpc_project_list:
         return
     
-    # gap between anything before files and files
-    if qpc_project_list[-1] != "":
-        qpc_project_list.append("")
-    qpc_project_list.extend(files_block_list)
-    
     for index, line in enumerate(qpc_project_list):
-        qpc_project_list[index] = ConvertMacroCasing(line)
+        qpc_project_list[index] = convert_macro_casing(line)
     
-    WriteProject(vpc_dir, vpc_filename, qpc_project_list)
+    write_project(vpc_dir, vpc_filename, qpc_project_list)
     return
 
 
-def WriteTopComment(qpc_project, filename: str):
+def write_comment_header(qpc_project, filename: str):
     qpc_project.write(
         f"// ---------------------------------------------------------------\n" +
         f"// {filename}.qpc\n" +
         f"// ---------------------------------------------------------------\n")
 
 
-def NormalizePlatformConditions(cond):
+def normalize_platform_conditions(cond: str) -> str:
     if cond:
         if "$WINDOWS" in cond:
             if "$WIN32" in cond or "$WIN64" in cond:
-                cond = RemoveCondition(cond, "$WIN32")
-                cond = RemoveCondition(cond, "$WIN64")
+                cond = remove_condition(cond, "$WIN32")
+                cond = remove_condition(cond, "$WIN64")
         
         if "$WIN32" in cond and "$WIN64" in cond:
             cond = cond.replace("$WIN32", "$WINDOWS")
-            cond = RemoveCondition(cond, "$WIN64")
+            cond = remove_condition(cond, "$WIN64")
         
         if "$LINUX32" in cond and "$LINUX64" in cond:
             cond = cond.replace("$LINUX32", "$LINUX")
-            cond = RemoveCondition(cond, "$LINUX64")
+            cond = remove_condition(cond, "$LINUX64")
         
         if "$OSX32" in cond and "$OSX64" in cond:
             cond = cond.replace("$OSX32", "$MACOS")
-            cond = RemoveCondition(cond, "$OSX64")
+            cond = remove_condition(cond, "$OSX64")
         
         cond = cond.replace("$OSXALL", "$OSX")
         cond = cond.replace("$LINUXALL", "$LINUX")
@@ -782,33 +982,33 @@ def NormalizePlatformConditions(cond):
         if "$POSIX64" in cond:
             # get rid of any redundant conditions (might not be redundant and im just dumb)
             if "$OSX64" in cond and "!$OSX64" not in cond:
-                cond = RemoveCondition(cond, "$OSX64")
+                cond = remove_condition(cond, "$OSX64")
             if "$LINUX64" in cond and "!$LINUX64" not in cond:
-                cond = RemoveCondition(cond, "$LINUX64")
+                cond = remove_condition(cond, "$LINUX64")
         
         if "$POSIX32" in cond:
             # get rid of any redundant conditions (might not be redundant and im just dumb)
             if "$OSX32" in cond and "!$OSX32" not in cond:
-                cond = RemoveCondition(cond, "$OSX32")
+                cond = remove_condition(cond, "$OSX32")
             if "$LINUX32" in cond and "!$LINUX64" not in cond:
-                cond = RemoveCondition(cond, "$LINUX32")
+                cond = remove_condition(cond, "$LINUX32")
     return cond
 
 
 # could be used to add a condition maybe
-def NormalizeConfigConditions(cond):
+def normalize_config_conditions(cond):
     if cond:
         # remove it and then add it back, could be in there multiple times lmao
         if "$DEBUG" in cond:
-            cond = RemoveCondition(cond, "$DEBUG")
-            cond = AddCondition(cond, "$DEBUG", "&&")
+            cond = remove_condition(cond, "$DEBUG")
+            cond = add_condition(cond, "$DEBUG", "&&")
         if "$RELEASE" in cond and "RELEASEASSERTS" not in cond:
-            cond = RemoveCondition(cond, "$RELEASE")
-            cond = AddCondition(cond, "$RELEASE", "&&")
+            cond = remove_condition(cond, "$RELEASE")
+            cond = add_condition(cond, "$RELEASE", "&&")
     return cond
 
 
-def AddCondition(base_cond, add_cond, add_operator):
+def add_condition(base_cond, add_cond, add_operator):
     if base_cond:
         # if we have operators in this already, then wrap that in parenthesis
         for operator in ("||", "&&", ">", ">=", "==", "!=", "=<", "<"):
@@ -827,7 +1027,7 @@ def AddCondition(base_cond, add_cond, add_operator):
     return base_cond
 
 
-def RemoveCondition(cond, value_to_remove):
+def remove_condition(cond, value_to_remove):
     while value_to_remove in cond:
         cond = cond.split(value_to_remove, 1)
         
@@ -850,22 +1050,27 @@ def RemoveCondition(cond, value_to_remove):
         
         # better way to merge them together
         if cond[0] and cond[1] and operator:
-            cond = AddCondition(cond[0], cond[1], operator)
+            cond = add_condition(cond[0], cond[1], operator)
         else:
             cond = ''.join(cond)
     
     return cond
 
 
-def WriteCondition(condition, qpc_project):
+def write_condition(condition, qpc_project):
     if condition:
-        condition = NormalizePlatformConditions(condition)
-        condition = NormalizeConfigConditions(condition)
-        condition = AddSpacingToCondition(condition)
-        qpc_project[-1] += " [" + condition + "]"
+        qpc_project[-1] += " [" + format_condition(condition) + "]"
 
 
-def AddSpacingToCondition(cond):
+def format_condition(condition: str) -> str:
+    if condition:
+        condition = normalize_platform_conditions(condition)
+        condition = normalize_config_conditions(condition)
+        condition = add_spacing_to_condition(condition)
+    return condition
+
+
+def add_spacing_to_condition(cond):
     cond = cond.strip(" ")
     
     if ">=" not in cond:
@@ -879,9 +1084,9 @@ def AddSpacingToCondition(cond):
     return cond
 
 
-def WriteMacro(vpc_macro, qpc_project):
+def write_macro(vpc_macro, qpc_project):
     if len(vpc_macro.values) > 1:
-        macro_value = ' "' + ConvertMacroCasing(vpc_macro.values[1]) + '"'
+        macro_value = ' "' + convert_macro_casing(vpc_macro.values[1]) + '"'
     else:
         macro_value = ''
     
@@ -894,54 +1099,62 @@ def WriteMacro(vpc_macro, qpc_project):
     if macro_value.endswith('""'):
         macro_value = macro_value[:-1]
     
-    qpc_project.append("macro " + ConvertMacroCasing(vpc_macro.values[0]) + macro_value)
-    WriteCondition(vpc_macro.condition, qpc_project)
+    qpc_project.append("macro " + convert_macro_casing(vpc_macro.values[0]) + macro_value)
+    write_condition(vpc_macro.condition, qpc_project)
 
 
-def WriteInclude(vpc_include, qpc_project):
+def write_include(vpc_include, qpc_project):
     qpc_include_path = vpc_include.values[0].replace(".vpc", ".qpc")
-    qpc_include_path = qpc_include_path.replace("vpc_scripts", "_qpc_scripts")
     qpc_include_path = os.path.normpath(qpc_include_path)
-    qpc_include_path = ConvertMacroCasing(qpc_include_path)
+    qpc_include_path = convert_macro_casing(qpc_include_path)
+    
+    # HARDCODING
+    if not args.no_hardcoding:
+        qpc_include_path = qpc_include_path.replace("vpc_scripts", "_qpc_scripts")
     
     # leave a gap in-between
     if len(qpc_project) > 0 and not qpc_project[-1].startswith("include") and qpc_project[-1][-1] != "\n":
         qpc_project.append("")
     
     qpc_project.append("include \"" + qpc_include_path.replace("\\", "/") + "\"")
-    WriteCondition(vpc_include.condition, qpc_project)
+    write_condition(vpc_include.condition, qpc_project)
 
 
-def WriteFilesBlock(vpc_files, qpc_project, indent):
+def write_files_block(vpc_files, qpc_project, indent):
     libraries = []
     for file_block in vpc_files.items:
         
-        if file_block.key.casefold() == "$folder" and not file_block.values[0].casefold() == "link libraries":
+        key = file_block.key.casefold()
+        
+        if key == "$folder" and not file_block.values[0].casefold() == "link libraries":
             
             # if "}" in qpc_project[-1]:
             if "{" not in qpc_project[-1]:
                 qpc_project[-1] += "\n"
             
             qpc_project.append(indent + "folder \"" + file_block.values[0] + '"')
-            WriteCondition(file_block.condition, qpc_project)
+            write_condition(file_block.condition, qpc_project)
             qpc_project.append(indent + "{")
-            nothing, qpc_project = WriteFilesBlock(file_block, qpc_project, indent + "\t")
+            nothing, qpc_project = write_files_block(file_block, qpc_project, indent + "\t")
             qpc_project.append(indent + "}")
         
-        elif file_block.key.casefold() in ("$file", "$dynamicfile", "-$file"):
+        elif key in FILE_KEYS:
             if file_block.values[0].endswith(".lib"):
                 libraries.append(file_block)
             else:
-                qpc_project = WriteFile(file_block, qpc_project, indent)
+                qpc_project = write_file(file_block, qpc_project, indent)
         
-        elif file_block.key.casefold() == "$folder" and file_block.values[0] == "Link Libraries":
+        elif key == "$folder" and file_block.values[0] == "Link Libraries":
             libraries.extend(file_block.items)
+            
+        elif key in SPECIAL_FILE_KEYS:
+            print("what the fuck: " + key)
     
     return libraries, qpc_project
 
 
-def WriteFile(file_block, qpc_project, indent):
-    if file_block.key.casefold() in ("$file", "$dynamicfile", "-$file"):
+def write_file(file_block, qpc_project, indent):
+    if file_block.key.casefold() in FILE_KEYS:
         if len(file_block.values) > 1:
             qpc_project[-1] += "\n"
             for index, file_path in enumerate(file_block.values):
@@ -963,21 +1176,19 @@ def WriteFile(file_block, qpc_project, indent):
             else:
                 qpc_project.append(indent + '"' + file_path + '"')
         
-        WriteCondition(file_block.condition, qpc_project)
+        write_condition(file_block.condition, qpc_project)
         
         if file_block.items:
             file_config = Configuration()
             
             for file_config_block in file_block.items:
-                ParseConfiguration(file_config_block, file_config)
+                parse_configuration(file_config_block, file_config)
             
             # useless?
             # config = MergeConfigurations(file_config)
-            
-            qpc_project.append(indent + "{")
-            # qpc_project = WriteConfiguration(file_config, len(qpc_project) + 1, indent + "\t", qpc_project)
-            qpc_project = WriteConfiguration(file_config, indent + "\t", qpc_project)
-            qpc_project.append(indent + "}")
+
+            config_lines = write_config_group(file_config.groups["compiler"], indent[:-2])
+            qpc_project.extend(config_lines)
     else:
         file_block.warning("Unknown Key: ")
     return qpc_project
@@ -1010,14 +1221,14 @@ def AddLibrariesToConfiguration(libraries_block_list, config):
                 break
         
         if library.key.startswith("-"):
-            config_option.AddValue("- " + lib_name, library.condition)
+            config_option.add_value("- " + lib_name, library.condition)
         else:
-            config_option.AddValue(lib_name, library.condition)
+            config_option.add_value(lib_name, library.condition)
     
     # might be a bad idea
     if library_paths:
         for lib_path in library_paths:
-            config.groups["general"]["library_directories"].AddValue('"' + os.path.splitext(lib_path)[0] + '"', None)
+            config.groups["general"]["library_directories"].add_value('"' + os.path.splitext(lib_path)[0] + '"', None)
     return
 
 
@@ -1026,7 +1237,7 @@ def AddLibrariesToConfiguration(libraries_block_list, config):
 def WriteLibraries(libraries_block, linker_libraries, qpc_project, macros):
     qpc_project.append("libraries")
     if libraries_block:
-        WriteCondition(libraries_block.condition, qpc_project)
+        write_condition(libraries_block.condition, qpc_project)
     qpc_project.append("{")
     
     if libraries_block:
@@ -1041,7 +1252,7 @@ def WriteLibraries(libraries_block, linker_libraries, qpc_project, macros):
             else:
                 qpc_project.append("\t\"" + lib_path + '"')
             
-            WriteCondition(library.condition, qpc_project)
+            write_condition(library.condition, qpc_project)
         
         if linker_libraries:
             qpc_project[-1] += "\n"
@@ -1057,45 +1268,43 @@ def WriteLibraries(libraries_block, linker_libraries, qpc_project, macros):
         
         qpc_project.append("\t" + lib_path)
         
-        WriteCondition(condition, qpc_project)
+        write_condition(condition, qpc_project)
     
     qpc_project.append("}\n")
-    return
 
 
-def ParseConfigOption(condition, option_block, qpc_option, option_value):
-    condition = NormalizePlatformConditions(condition)
+def parse_config_option(condition, option_block, qpc_option, option_values: list):
+    condition = normalize_platform_conditions(condition)
     # ew
     if option_block.key.casefold() == "$multiprocessorcompilation":
         if option_block.values and option_block.values[0] == "True":
-            option_value = ["/MP"]
+            option_values = ["/MP"]
     # ew again
     elif option_block.key.casefold() == "$disablespecificwarnings":
         if option_block.values:
-            option_value = [option_block.values[0].replace(";", ";/ignore:")]
+            option_values = [option_block.values[0].replace(";", ";/ignore:")]
     # ew yet again
     elif option_block.key.casefold() == "$excludedfrombuild":
         if option_block.values:
             if option_block.values[0] == "No":
-                option_value = "True"
+                option_values = "True"
             elif option_block.values[0] == "Yes":
-                option_value = "False"
+                option_values = "False"
     
     if option_block.key.casefold() == "$commandline":
-        for index, value in enumerate(option_value):
-            option_value[index] = value.replace('"', '\\"').replace('$QUOTE', '\\"')
+        for index, value in enumerate(option_values):
+            option_values[index] = value.replace('"', '\\"').replace('$QUOTE', '\\"')
         
         # don't split this into a list
-        qpc_option.SetValue(option_value, condition, False)
+        qpc_option.set_value(option_values, condition, False)
         
     elif option_block.key.casefold() in ("$gcc_extracompilerflags", "$gcc_extralinkerflags", "$optimizerlevel"):
-        qpc_option.SetValue(option_value, condition, [','])  # only split by commas (i think?)
+        qpc_option.set_value(option_values, condition, [','])  # only split by commas (i think?)
     else:
-        qpc_option.SetValue(option_value, condition, [',', ';', ' '])
-    return
+        qpc_option.set_value(option_values, condition, [',', ';', ' '])
 
 
-def ParseConfiguration(vpc_config, qpc_config):
+def parse_configuration(vpc_config: reader.QPCBlock, qpc_config, dependencies: dict = None):
     if vpc_config.values:
         config_cond = "$" + vpc_config.values[0].upper()
         if vpc_config.condition:
@@ -1104,74 +1313,97 @@ def ParseConfiguration(vpc_config, qpc_config):
         config_cond = vpc_config.condition
     
     for config_group in vpc_config.items:
-        config_group_name = ConvertConfigGroupName(config_group.key)
+        if config_group.key.casefold() in IGNORE_CONFIG_GROUPS:
+            continue
+            
+        config_group_name = convert_config_group_name(config_group.key)
         
         if not config_group_name:
-            config_group.warning("Unknown config group: ")
+            # config_group.warning("Unknown config group: ")
+            print("Unknown config group: " + config_group.key.casefold())
             continue
         
         for option_block in config_group.items:
-            config_group_name = ConvertVPCGroup(option_block.key, config_group.key)
-            option_name = ConvertConfigOptionName(option_block.key)
-            
-            if option_block.key in VPC_CONFIG_IGNORE_LIST:
-                print("ignore list key")
+            if option_block.key.casefold() in IGNORE_CONFIG_KEYS:
+                continue
+                
+            config_group_name = convert_vpc_group(option_block.key, config_group.key)
+            option_name = convert_config_option_name(option_block.key)
             
             if config_group_name in EVENTS:
                 if option_block.key.casefold() == "$commandline":
-                    option_value = option_block.values
+                    option_values = option_block.values
                 else:
                     continue
             
             elif not option_name:
-                option_value = ConvertVPCOptionToQPCOption(option_block.values)
+                if not option_block.values:
+                    continue
+                option_values = convert_to_qpc_option(option_block.values)
                 
-                if not option_value:
-                    option_block.warning("Unknown config option: ")
+                if not option_values:
+                    # option_block.warning("Unknown config option: " + option_block.key.casefold())
+                    print("Unknown config option: " + option_block.key.casefold() + " - " + " ".join(option_block.values))
                     continue
                 else:
                     option_name = "options"
             else:
-                option_value = ConvertBoolToVSCommand(option_block)
-                if not option_value:
-                    option_value = ConvertVPCOption(option_block.values)
+                option_values = convert_bool_to_vs_cmd(option_block)
+                if not option_values:
+                    option_values = convert_option(option_block.values)
             
-            if option_value:
-                if config_group_name in qpc_config.options:
-                    ParseConfigOption(config_cond, option_block, qpc_config.options[config_group_name], option_value)
+            if option_values:
+                if option_block.key.casefold() == "$additionalprojectdependencies":
+                    for value in option_values:
+                        if "$BASE" in value:
+                            value = value.replace("$BASE;", "").replace(";$BASE", "").replace("$BASE", "")
+                        dependencies[value] = add_config_condition(option_block, config_group, config_cond)
+                    
+                elif config_group_name in qpc_config.options:
+                    parse_config_option(config_cond, option_block, qpc_config.options[config_group_name], option_values)
+                    
                 elif config_group_name in qpc_config.groups:
                     try:
                         qpc_option = qpc_config.groups[config_group_name][option_name]
                     except KeyError:
-                        print("unknown config option")
+                        # option_block.warning("Unknown config option 2: " + option_block.key.casefold())
+                        print("Unknown config option 2: " + option_block.key.casefold())
                         continue
                             
-                    condition = NormalizePlatformConditions(option_block.condition)
-
-                    # if the group has a condition, add that onto every value here
-                    if config_group and config_group.condition:
-                        if condition:
-                            # TODO: test this, never ran into this yet, so im hoping this works
-                            group_condition = NormalizePlatformConditions(config_group.condition)
-
-                            if condition != group_condition:
-                                condition = NormalizePlatformConditions(
-                                    option_block.condition + "&&" + group_condition)
-                        else:
-                            condition = NormalizePlatformConditions(config_group.condition)
-
-                    # if this option is in a specific config, add a config condition to it
-                    if config_cond:
-                        condition = AddCondition(condition, config_cond, "&&")
+                    condition = add_config_condition(option_block, config_group, config_cond)
+                    
+                    option_values = add_options_prefix(option_block, option_values)
                         
-                    ParseConfigOption(condition, option_block, qpc_option, option_value)
+                    parse_config_option(condition, option_block, qpc_option, option_values)
                 else:
                     print("unknown config group/option")
     
     return
 
 
-def ConvertConfigGroupName(group_name):
+def add_config_condition(option_block: reader.QPCBlock, config_group: reader.QPCBlock, config_cond: str) -> str:
+    condition = normalize_platform_conditions(option_block.condition)
+    
+    # if the group has a condition, add that onto every value here
+    if config_group and config_group.condition:
+        if condition:
+            # TODO: test this, never ran into this yet, so im hoping this works
+            group_condition = normalize_platform_conditions(config_group.condition)
+            
+            if condition != group_condition:
+                condition = normalize_platform_conditions(
+                    option_block.condition + "&&" + group_condition)
+        else:
+            condition = normalize_platform_conditions(config_group.condition)
+    
+    # if this option is in a specific config, add a config condition to it
+    if config_cond:
+        condition = add_condition(condition, config_cond, "&&")
+        
+    return condition
+
+
+def convert_config_group_name(group_name: str) -> str:
     group_name = group_name.casefold()
     if group_name == "$general":
         return "general"
@@ -1187,38 +1419,36 @@ def ConvertConfigGroupName(group_name):
         return "pre_build"
     elif group_name == "$postbuildevent":
         return "post_build"
-    else:
-        return None
 
 
-def ConvertConfigOptionName(option_name):
+def convert_config_option_name(option_name) -> str:
     option_name = option_name.casefold()
     try:
         return OPTION_NAME_CONVERT_DICT[option_name]
     except KeyError:
-        return None
+        pass
 
 
-def ConvertVPCOption(option_value):
+def convert_option(option_value: list) -> list:
     if option_value:
         try:
             return [OPTION_VALUE_CONVERT_DICT[option_value[0]]]
         except KeyError:
             return option_value
     else:
-        return None
+        pass
 
 
-def ConvertVPCGroup(option_name, current_group):
+def convert_vpc_group(option_name: str, current_group) -> str:
     option_name = option_name.casefold()
     try:
         return CONFIG_GROUP_CONVERT_DICT[option_name]
     except KeyError:
         # convert it again, since we might of changed it in the previous option
-        return ConvertConfigGroupName(current_group)
+        return convert_config_group_name(current_group)
 
 
-def ConvertVPCOptionToQPCOption(option_value):
+def convert_to_qpc_option(option_value: str):
     if option_value:
         try:
             return [CMD_CONVERT[option_value[0]]]
@@ -1228,17 +1458,23 @@ def ConvertVPCOptionToQPCOption(option_value):
         return None
 
 
-def ConvertBoolToVSCommand(option_block):
+def convert_bool_to_vs_cmd(option_block: reader.QPCBlock) -> list:
     if option_block.key and option_block.values:
         try:
             return [VS_BOOL_CONVERT[option_block.key.casefold()][option_block.values[0]]]
         except KeyError:
-            return None
-    else:
-        return None
+            pass
+
+
+def add_options_prefix(option_block: reader.QPCBlock, option_values: list) -> list:
+    if option_block.key and option_values:
+        key = option_block.key.casefold()
+        if key in OPTION_PREFIX_ADD:
+            return [OPTION_PREFIX_ADD[key] + value for value in option_values]
+    return option_values
     
     
-def WriteConfigOption(indent, option):
+def write_config_option(indent: str, option):
     current_option = []
     if option.value:
         if option.is_list:
@@ -1267,13 +1503,13 @@ def WriteConfigOption(indent, option):
                             if value.startswith("- \""):
                                 option_lines[-1] += " " + value[2:]
                             else:
-                                WriteCondition(condition, option_lines)
+                                write_condition(condition, option_lines)
                                 option_lines.append(indent + "\t\t" + value)
                     else:
                         option_lines[-1] += " ".join(value_list)
                     
                     # would be cool if i could get the conditionals indented the same amount
-                    WriteCondition(condition, option_lines)
+                    write_condition(condition, option_lines)
             
             if None in cond_values:
                 for value in cond_values[None]:
@@ -1293,7 +1529,7 @@ def WriteConfigOption(indent, option):
             option_lines = []
             for value_obj in option.value:
                 option_lines.append(indent + "\t" + option.name + " " + value_obj.value + '')
-                WriteCondition(value_obj.condition, option_lines)
+                write_condition(value_obj.condition, option_lines)
             current_option += option_lines
             
             # current_group.append(indent + "\t" + option.name + " " + option.value + '')
@@ -1302,40 +1538,52 @@ def WriteConfigOption(indent, option):
     return current_option
 
 
-# def WriteConfiguration(config, insert_index, indent, qpc_project_list):
-def WriteConfiguration(config, indent, qpc_project_list):
+def write_file_configuration(config: Configuration, indent: str, qpc_project_list: list):
+    config_lines = write_config_group(config.groups["compiler"], indent[:-2])
+    qpc_project_list.extend(config_lines)
+    return qpc_project_list
+
+
+def _config_add_space(config_lines: list, indent: str):
+    if config_lines and "}" in config_lines[-1] and not config_lines[-1].endswith("\n"):
+        config_lines.append(indent + "\t")
+
+
+def write_config_group(config_group: dict, indent: str) -> list:
+    current_group = [indent + "\t{"]
+    
+    for option in config_group.values():
+        option_lines = write_config_option(indent + "\t", option)
+        if option_lines:
+            if current_group:
+                # add indenting
+                if "}" in current_group[-1] and not current_group[-1].endswith("\n") or \
+                        (option.is_list and "{" not in current_group[-1]):
+                    current_group.append(indent + "\t\t")
+            current_group.extend(option_lines)
+    
+    if len(current_group) > 1:
+        current_group.append(indent + "\t}")
+        return current_group
+    else:
+        return []
+            
+
+def write_configuration(config: Configuration, indent: str, qpc_project_list: list):
     starting_config_lines = [indent + "configuration", indent + "{"]
     config_lines = []
     
-    def AddSpace():
-        if config_lines and "}" in config_lines[-1] and not config_lines[-1].endswith("\n"):
-            config_lines.append(indent + "\t")
-    
-    def AddSpaceGroup(is_list=False):
-        if current_group:
-            if "}" in current_group[-1] and not current_group[-1].endswith("\n") or \
-                    (is_list and "{" not in current_group[-1]):
-                current_group.append(indent + "\t\t")
-    
     for config_group, config_option_dict in config.groups.items():
-        current_group = [indent + "\t" + config_group, indent + "\t{"]
-        
-        for option in config_option_dict.values():
-            option_lines = WriteConfigOption(indent + "\t", option)
-            if option_lines:
-                AddSpaceGroup(option.is_list)
-                current_group.extend(option_lines)
-        
-        if len(current_group) > 2:
-            current_group.append(indent + "\t}")
-            AddSpace()
-            config_lines += current_group
+        config_group_written = write_config_group(config_option_dict, indent)
+        if config_group_written:
+            _config_add_space(config_lines, indent)
+            config_lines += [indent + "\t" + config_group, *config_group_written]
             
     for config_option in config.options.values():
         # current_option = [indent + "\t" + config_option.name, indent + "\t{"]
-        option_lines = WriteConfigOption(indent, config_option)
+        option_lines = write_config_option(indent, config_option)
         if option_lines:
-            AddSpace()
+            _config_add_space(config_lines, indent)
             config_lines.extend(option_lines)
     
     if config_lines:
@@ -1364,6 +1612,8 @@ def parse_args():
     arg_parser.add_argument("-d", "--directory")
     arg_parser.add_argument("-o", "--output")
     arg_parser.add_argument("-v", "--verbose")
+    arg_parser.add_argument("-q", "--quiet", default=0, type=int, help="type of stuff to hide, 1 is converting")
+    arg_parser.add_argument("-nh", "--nohardcoding", dest="no_hardcoding", action="store_true", help="don't do some of the hardcoding")
     return arg_parser.parse_args()
 
 
@@ -1376,7 +1626,8 @@ def main():
     if vgc_path_list:
         print("\nConverting VGC Scripts")
         for vgc_path in vgc_path_list:
-            print("Converting: " + vgc_path)
+            if args.quiet < 1:
+                print("Converting: " + vgc_path)
             read_vgc, vgc_dir, vgc_name = prepare_vpc_file(vgc_path)
             convert_vgc(vgc_dir, vgc_name, read_vgc)
     
@@ -1385,9 +1636,12 @@ def main():
         
         for vpc_path in vpc_path_list:
             # TODO: maybe make a keep comments option in ReadFile()? otherwise, commented out files won't be kept
-            print("Converting: " + vpc_path)
+            if args.quiet < 1:
+                print("Converting: " + vpc_path)
             read_vpc, vpc_dir, vpc_name = prepare_vpc_file(vpc_path)
             convert_vpc(vpc_dir, vpc_name, read_vpc)
+    
+    print("finished")
 
 
 if __name__ == "__main__":
