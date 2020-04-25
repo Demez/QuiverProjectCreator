@@ -76,28 +76,28 @@ class QPCBlockBase:
     def get_items_condition(self, macros: list):
         items = []
         for item in self.items:
-            if solve_condition(item.condition, macros):
+            if solve_condition(self, item.condition, macros):
                 items.append(item)
         return items
     
     def get_item_keys_condition(self, macros: list):
         items = []
         for item in self.items:
-            if solve_condition(item.condition, macros):
+            if solve_condition(self, item.condition, macros):
                 items.append(item.key)
         return items
     
     def get_item_values_condition(self, macros: list):
         items = []
         for item in self.items:
-            if solve_condition(item.condition, macros):
+            if solve_condition(self, item.condition, macros):
                 items.extend(item.values)
         return items
     
     def get_item_list_condition(self, macros: list):
         items = []
         for item in self.items:
-            if solve_condition(item.condition, macros):
+            if solve_condition(self, item.condition, macros):
                 items.extend([item.key, *item.values])
         return items
     
@@ -177,8 +177,8 @@ class QPCBlock(QPCBlockBase):
     def get_list(self) -> tuple:
         return (self.key, *self.values)  # need parenthesis for python versions older than 3.8
     
-    def solve_condition(self, macros: dict) -> int:
-        return solve_condition(self.condition, macros)
+    def solve_condition(self, macros: dict):
+        return solve_condition(self, self.condition, macros)
     
     def invalid_option(self, *valid_option_list):
         print("WARNING: Invalid Option")
@@ -199,19 +199,22 @@ class QPCBlock(QPCBlockBase):
     def warning(self, message):
         print("WARNING: " + message)
         self.print_info()
-    
-    def print_info(self):
-        # TODO: this path is relative to the current directory
-        print("\tFile Path: " + self.file_path +
-              "\n\tLine: " + str(self.line_num) +
-              "\n\tKey: " + self.key)
         
+    def get_formatted_info(self) -> str:
+        # TODO: this path is relative to the current directory
+        final_string = f"\tFile Path: {self.file_path}\n"   \
+                       f"\tLine: {str(self.line_num)}\n"    \
+                       f"\tKey: {self.key}"
+    
         if self.values:
             # if there is only one value, write it on the same line
-            if len(self.values) == 1:
-                print("\tValues: " + self.values[0])
-            else:
-                print("\tValues:\n\t\t" + '\n\t\t'.join(self.values))
+            final_string += "\n\tValues:"
+            final_string += f" {self.values[0]}" if len(self.values) == 1 else "\n\t\t" + '\n\t\t'.join(self.values)
+                
+        return final_string
+    
+    def print_info(self):
+        print(self.get_formatted_info())
 
 
 # maybe make a comment object so when you re-write the file, you don't lose comments
@@ -238,30 +241,37 @@ def replace_macros_condition(split_string, macros):
     return split_string
 
 
-def solve_condition(condition, macros):
+def solve_condition(qpcblock: QPCBlock, condition: str, macros: dict) -> int:
     if not condition:
         return True
     
+    solved_cond = condition
     # solve any sub conditionals first
-    while "(" in condition:
-        sub_cond_line = (condition.split('(')[1]).split(')')[0]
-        sub_cond_value = solve_condition(sub_cond_line, macros)
-        condition = condition.split('(', 1)[0] + str(sub_cond_value * 1) + condition.split(')', 1)[1]
+    while "(" in solved_cond:
+        sub_cond_line = (solved_cond.split('(')[1]).split(')')[0]
+        sub_cond_value = solve_condition(qpcblock, sub_cond_line, macros)
+        solved_cond = solved_cond.split('(', 1)[0] + str(sub_cond_value * 1) + solved_cond.split(')', 1)[1]
     
-    split_string = COND_OPERATORS.split(condition)
+    split_string = COND_OPERATORS.split(solved_cond)
     
-    condition = replace_macros_condition(split_string, macros)
+    solved_cond = replace_macros_condition(split_string, macros)
     
-    if len(condition) == 1:
+    if len(solved_cond) == 1:
         try:
-            return int(condition[0])
+            return int(solved_cond[0])
         except ValueError:
             return 1
     
-    while len(condition) > 1:
-        condition = _solve_single_condition(condition)
+    while len(solved_cond) > 1:
+        try:
+            solved_cond = _solve_single_condition(solved_cond)
+        except Exception as F:
+            raise Exception(f'Error Solving Condition: {str(F)}\n'
+                            f'\tCondition: [{condition}]\n'
+                            f'\tProgress:  [{" ".join(solved_cond)}]\n\n' +
+                            qpcblock.get_formatted_info())
     
-    return condition[0]
+    return solved_cond[0]
 
 
 def _solve_single_condition(cond):
