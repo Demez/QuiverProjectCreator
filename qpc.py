@@ -123,32 +123,29 @@ def main():
 
                 hash_result = check_hash(project_script, False)
 
-                if os.path.isfile(project_script):
-                    project_dir, project_filename = os.path.split(project_script)
+                project_dir, project_filename = os.path.split(project_script)
 
-                    if project_dir and project_dir != args.root_dir:
-                        os.chdir(project_dir)
+                if project_dir and project_dir != args.root_dir:
+                    os.chdir(project_dir)
 
-                    project = parser.parse_project(project_def, project_script, info, generator_list, platform_dict)
-                    if not project:
-                        continue
+                project = parser.parse_project(project_def, project_script, info, generator_list, platform_dict)
+                if not project:
+                    continue
 
-                    for generator in generator_list:
-                        if args.force or not check_project_exists(project_filename, project_def.platforms, generator) \
-                                or not hash_result:
-                            generator.create_project(project)
+                for generator in generator_list:
+                    if args.force or not check_project_exists(project_filename, project_def.platforms, generator) \
+                            or not hash_result:
+                        generator.create_project(project)
 
-                    if project_dir and project_dir != args.root_dir:
-                        os.chdir(args.root_dir)
+                if project_dir and project_dir != args.root_dir:
+                    os.chdir(args.root_dir)
 
-                    info.project_dependencies[project_script] = project.dependencies
+                info.add_project_dependencies(project_script, list(platform_dict), project.dependencies)
 
-                    write_project_hash(project_script, project.out_dir, project.get_hashes(), project.dependencies, project.get_glob_files())
-
-                else:
-                    print("Script does not exist: " + project_script)
+                write_project_hash(project_script, project.out_dir, project.get_hashes(), project.dependencies, project.get_glob_files())
+                    
             else:
-                info.project_dependencies[project_script] = get_project_dependencies(project_script)
+                info.add_project_dependencies(project_script, list(platform_dict), get_project_dependencies(project_script))
                 
             info.project_hashes[project_script] = get_hash_file_path(project_script)
 
