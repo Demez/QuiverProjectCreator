@@ -31,6 +31,9 @@ class Compiler(Enum):
     MSVC_140 = auto(),
     MSVC_120 = auto(),
     MSVC_100 = auto(),
+    
+    MSVC_140_XP = auto(),
+    MSVC_120_XP = auto(),
 
     CLANG_9 = auto(),
     CLANG_8 = auto(),
