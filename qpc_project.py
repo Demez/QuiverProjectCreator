@@ -84,11 +84,14 @@ class ProjectDefinition:
         # list would be faster here
         [group.project_defined(self) for group in self.groups]
     
-    def add_script(self, script_path: str) -> None:
-        self.script_list[posix_path(script_path)] = None
+    def add_script(self, script_path: str) -> bool:
+        if os.path.isfile(script_path):
+            self.script_list[posix_path(script_path)] = None
+            return True
+        return False
     
-    def add_script_list(self, script_list) -> None:
-        [self.add_script(script_path) for script_path in script_list]
+    def add_script_list(self, script_list) -> bool:
+        return all([self.add_script(script_path) for script_path in script_list])
 
 
 class ProjectGroup:
