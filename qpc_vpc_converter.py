@@ -18,11 +18,6 @@ import argparse
 # TODO: add dependencies here, they will have to be hard coded, but i could care less
 
 
-def debug_assert(result: bool):
-    if result:
-        print("put breakpoint here")
-
-
 # Conversion stuff
 EVENTS = {"pre_link", "pre_build", "post_build"}
 
@@ -281,6 +276,7 @@ CMD_CONVERT = {
     "Yes (/Oi)": "/Oi",
     "Yes (/MAP)": "/MAP",
     "Yes (/Wp64)": "/Wp64",
+    "Yes (/MP)": "/MP",
     
     "Yes (/Zc:forScope)": "/Zc:forScope",
     "Yes (/Zc:wchar_t)": "/Zc:wchar_t",
@@ -905,7 +901,7 @@ def convert_vpc(vpc_dir, vpc_filename, vpc_project):
         # if not qpc_project_list[-1].endswith("\n") and qpc_project_list[-1] != "":
         #     qpc_project_list.append("")
         # WriteLibraries( libraries, linker_libraries, qpc_project_list, base_macros )
-        AddLibrariesToConfiguration(libraries, config)
+        add_libs_to_config(libraries, config)
         
         # config = MergeConfigurations(config_list)
     qpc_project_list = write_configuration(config, "", qpc_project_list)
@@ -1194,7 +1190,7 @@ def write_file(file_block, qpc_project, indent):
     return qpc_project
 
 
-def AddLibrariesToConfiguration(libraries_block_list, config):
+def add_libs_to_config(libraries_block_list, config):
     config_option = config.groups["linker"]["libraries"]
     library_paths = []
     
@@ -1234,7 +1230,7 @@ def AddLibrariesToConfiguration(libraries_block_list, config):
 
 # might be skipping this if it has a condition?
 # maybe return any paths found and add that into the configuration?
-def WriteLibraries(libraries_block, linker_libraries, qpc_project, macros):
+def write_libraries(libraries_block, linker_libraries, qpc_project, macros):
     qpc_project.append("libraries")
     if libraries_block:
         write_condition(libraries_block.condition, qpc_project)
@@ -1275,6 +1271,10 @@ def WriteLibraries(libraries_block, linker_libraries, qpc_project, macros):
 
 def parse_config_option(condition, option_block, qpc_option, option_values: list):
     condition = normalize_platform_conditions(condition)
+    if qpc_option.name == "options":
+        for ass in option_values:
+            base.debug_assert(not ass.startswith("/") and not ass.startswith("-") and ass != "")
+        
     # ew
     if option_block.key.casefold() == "$multiprocessorcompilation":
         if option_block.values and option_block.values[0] == "True":
@@ -1336,12 +1336,12 @@ def parse_configuration(vpc_config: reader.QPCBlock, qpc_config, dependencies: d
                 else:
                     continue
             
-            elif not option_name:
+            elif not option_name or option_name == "options":
                 if not option_block.values:
                     continue
                 option_values = convert_to_qpc_option(option_block.values)
                 
-                if not option_values:
+                if not option_values and not option_name:
                     # option_block.warning("Unknown config option: " + option_block.key.casefold())
                     print("Unknown config option: " + option_block.key.casefold() + " - " + " ".join(option_block.values))
                     continue
