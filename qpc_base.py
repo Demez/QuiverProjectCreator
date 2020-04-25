@@ -224,3 +224,8 @@ def get_all_dict_values(d: dict):
             # return found_values
             found_values.append(v)
     return found_values
+
+
+def debug_assert(result: bool):
+    if result:
+        print("put breakpoint here")
