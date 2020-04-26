@@ -479,7 +479,10 @@ class Parser:
                     include_path = project.replace_macros(project_block.values[0])
                     include_file = self._include_file(include_path, project, project_file.file_path, indent + "    ")
                     if include_file:
-                        self._parse_project(include_file, project, indent + "    ")
+                        try:
+                            self._parse_project(include_file, project, indent + "    ")
+                        except RecursionError:
+                            raise RecursionError("Recursive Includes found:\n" + project_block.get_formatted_info())
                         if args.verbose:
                             print(indent + "    " + "Finished Parsing")
                     
