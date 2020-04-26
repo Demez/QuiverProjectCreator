@@ -2,6 +2,7 @@ import os
 import qpc_base as base
 import qpc_reader as reader
 import argparse
+import re
 
 # this file is awful, good luck adding to it
 # some random notes:
@@ -92,10 +93,14 @@ MACRO_CONVERT = {
     "OUTBINNAME": "OUT_BIN_NAME",
     "OUTLIBDIR": "OUT_LIB_DIR",
     "OUTLIBNAME": "OUT_LIB_NAME",
+    "OUTDLLEXT": "OUT_DLL_EXT",
     "PROJECTNAME": "PROJECT_NAME",
     "LOADADDRESS_DEVELOPMENT": "LOADADDRESS_DEVELOPMENT",
     "LOADADDRESS_RETAIL": "LOADADDRESS_RETAIL",
     "PLATSUBDIR": "PLATFORM",
+    
+    "_DLL_EXT": "_BIN_EXT",
+    "_EXE_EXT": "_APP_EXT",
 }
 
 IGNORE_CONFIG_GROUPS = {
@@ -235,6 +240,7 @@ OPTION_VALUE_CONVERT_DICT = {
     # preprocessor defs
     "Use Multi-Byte Character Set": "MBCS",
     "Use Unicode Character Set": "_MBCS",
+    "Not Set": "",
 }
 
 # TODO: do the same here in vstudio, but convert the other way around to vs2019 options
@@ -480,10 +486,14 @@ FILE_KEYS = {"$file", "$dynamicfile", "-$file", "$filepattern"}
 
 MACRO_KEYS = {
     "$macro",
+    "$macroemptystring",  # what is this
+    "$conditional",
+}
+
+
+MACRO_KEYS_COND = {
     "$macrorequired",
     "$macrorequiredallowempty",
-    "$macroemptystring",
-    "$conditional",
 }
 
 
@@ -600,7 +610,7 @@ def convert_vgc(vgc_dir, vgc_filename, vgc_project):
         )
     
     # HARDCODING
-    if not args.no_hardcoding:
+    if args.no_hardcoding:
         write_project(vgc_dir, vgc_filename, qpc_base_file, True)
     else:
         write_project(vgc_dir, "_" + vgc_filename, qpc_base_file, True)
@@ -768,6 +778,7 @@ class ConfigOption:
                     value = value.replace("$BASE ", "").replace("$BASE", "")
                     # other values
                     value = value.replace("%(AdditionalDependencies)", "")
+                    value = value.replace("%(PreprocessorDefinitions)", "")
                     if value != '""':
                         condition = normalize_platform_conditions(condition)
                         self.value.append(ConfigOptionValue(value, condition))
@@ -836,8 +847,9 @@ def merge_config_conditions(cond: str, add_cond: str) -> str:
         elif add_cond:
             add_cond = add_condition(add_cond, cond, "&&")
         
-        if not add_cond:
-            add_cond = None
+        # why should i do this?
+        # if not add_cond:
+        #     add_cond = None
     else:
         add_cond = cond
     return add_cond
@@ -875,7 +887,7 @@ def convert_vpc(vpc_dir, vpc_filename, vpc_project):
             files_block = ["files"]
             write_condition(project_block.condition, files_block)
             files_block.append("{")
-            found_libraries, files_block = write_files_block(project_block, files_block, "\t")
+            found_libraries, files_block = write_files_block(project_block, files_block, project_block.condition, "\t")
             
             if found_libraries:
                 libraries.extend(found_libraries)
@@ -885,7 +897,11 @@ def convert_vpc(vpc_dir, vpc_filename, vpc_project):
                 files_block.append("}")
                 files_block_list.extend(files_block)
         
-        elif key in {"$macro", "$macrorequired", "$macrorequiredallowempty", "$conditional", "$macroemptystring"}:
+        elif key in MACRO_KEYS:
+            write_macro(project_block, qpc_project_list)
+        
+        elif key in MACRO_KEYS_COND:
+            project_block.condition = add_condition(project_block.condition, "!$" + project_block.values[0], "&&")
             write_macro(project_block, qpc_project_list)
         
         elif key == "$include":
@@ -903,9 +919,7 @@ def convert_vpc(vpc_dir, vpc_filename, vpc_project):
         # WriteLibraries( libraries, linker_libraries, qpc_project_list, base_macros )
         add_libs_to_config(libraries, config)
         
-        # config = MergeConfigurations(config_list)
     qpc_project_list = write_configuration(config, "", qpc_project_list)
-    
     
     for library in config.groups["linker"]["libraries"].value:
         if library.value.startswith("- "):
@@ -953,27 +967,83 @@ def write_comment_header(qpc_project, filename: str):
         f"// ---------------------------------------------------------------\n")
 
 
+COND_OPERATORS = ("||", "&&", ">", ">=", "==", "!=", "=<", "<")
+
+
+def _remove_platform_archs(cond: list, platform_name: str, plat32: str, plat64: str) -> list:
+    if platform_name in cond:
+        if plat32 in cond and plat64 in cond:
+            cond = remove_conditions_parsed(cond, plat32, plat64)
+        elif plat32 in cond or plat64 in cond:
+            cond = remove_condition_parsed(cond, platform_name)
+    return cond
+
+
+def _remove_platform_arch(cond: list, platform_name: str, remove_plat: str) -> list:
+    if platform_name in cond and remove_plat in cond:
+        cond = remove_condition_parsed(cond, remove_plat)
+    return cond
+
+
+def _replace_name(cond: list, replace_name: str, old_name: str) -> list:
+    if old_name in cond:
+        cond[cond.index(old_name)] = replace_name
+    return cond
+
+
+def _remove_arch(cond: list, remove_arch: str) -> list:
+    if remove_arch in cond:
+        cond = remove_condition_parsed(cond, remove_arch)
+    return cond
+
+
+def _replace_archs_with_platform(cond: list, platform_name: str, plat32: str, plat64: str) -> list:
+    if plat32 in cond and plat64 in cond:
+        cond[cond.index(plat32)] = platform_name
+        cond = remove_condition_parsed(cond, plat64)
+    return cond
+        
+
 def normalize_platform_conditions(cond: str) -> str:
     if cond:
-        if "$WINDOWS" in cond:
-            if "$WIN32" in cond or "$WIN64" in cond:
-                cond = remove_condition(cond, "$WIN32")
-                cond = remove_condition(cond, "$WIN64")
-        
-        if "$WIN32" in cond and "$WIN64" in cond:
-            cond = cond.replace("$WIN32", "$WINDOWS")
-            cond = remove_condition(cond, "$WIN64")
-        
-        if "$LINUX32" in cond and "$LINUX64" in cond:
-            cond = cond.replace("$LINUX32", "$LINUX")
-            cond = remove_condition(cond, "$LINUX64")
-        
-        if "$OSX32" in cond and "$OSX64" in cond:
-            cond = cond.replace("$OSX32", "$MACOS")
-            cond = remove_condition(cond, "$OSX64")
-        
         cond = cond.replace("$OSXALL", "$OSX")
         cond = cond.replace("$LINUXALL", "$LINUX")
+        
+        parsed_cond = parse_condition(cond, True, False)
+        
+        parsed_cond = _remove_platform_archs(parsed_cond, "$WINDOWS", "$WIN32", "$WIN64")
+        # parsed_cond = _remove_platform_archs(parsed_cond, "$LINUX", "$LINUX32", "$LINUX64")
+        parsed_cond = _remove_platform_archs(parsed_cond, "$MACOS", "$OSX32", "$OSX64")
+        
+        parsed_cond = _replace_archs_with_platform(parsed_cond, "$WINDOWS", "$WIN32", "$WIN64")
+        # parsed_cond = _replace_archs_with_platform(parsed_cond, "$LINUX", "$LINUX32", "$LINUX64")
+        parsed_cond = _replace_archs_with_platform(parsed_cond, "$MACOS", "$OSX32", "$OSX64")
+        
+        # replace OSX64 with MACOS
+        parsed_cond = _replace_name(parsed_cond, "$MACOS", "$OSX64")
+        
+        parsed_cond = _remove_platform_archs(parsed_cond, "$LINUX32", "$POSIX", "$LINUX")
+        parsed_cond = _remove_platform_archs(parsed_cond, "$LINUX64", "$POSIX", "$LINUX")
+        
+        # parsed_cond = _remove_platform_arch(parsed_cond, "$LINUX32", "$POSIX")
+        # parsed_cond = _remove_platform_arch(parsed_cond, "$LINUX64", "$POSIX")
+        
+        # parsed_cond = _remove_platform_arch(parsed_cond, "$LINUX32", "$LINUX")
+        # parsed_cond = _remove_platform_arch(parsed_cond, "$LINUX64", "$LINUX")
+        
+        parsed_cond = _remove_platform_arch(parsed_cond, "$OSX32", "$POSIX")
+        parsed_cond = _remove_platform_arch(parsed_cond, "$OSX64", "$POSIX")
+        
+        parsed_cond = _remove_platform_arch(parsed_cond, "$LINUX", "$POSIX")
+        parsed_cond = _remove_platform_arch(parsed_cond, "$MACOS", "$POSIX")
+        
+        parsed_cond = _replace_archs_with_platform(parsed_cond, "$POSIX", "$LINUX", "$MACOS")
+        
+        # this doesn't exist in qpc
+        parsed_cond = _remove_arch(parsed_cond, "$OSX64")
+        parsed_cond = _remove_arch(parsed_cond, "$OSX32")
+        
+        cond = parsed_cond_to_string(parsed_cond)
         
         if "$POSIX64" in cond:
             # get rid of any redundant conditions (might not be redundant and im just dumb)
@@ -991,65 +1061,201 @@ def normalize_platform_conditions(cond: str) -> str:
     return cond
 
 
-# could be used to add a condition maybe
-def normalize_config_conditions(cond):
-    if cond:
-        # remove it and then add it back, could be in there multiple times lmao
-        if "$DEBUG" in cond:
-            cond = remove_condition(cond, "$DEBUG")
-            cond = add_condition(cond, "$DEBUG", "&&")
-        if "$RELEASE" in cond and "RELEASEASSERTS" not in cond:
-            cond = remove_condition(cond, "$RELEASE")
-            cond = add_condition(cond, "$RELEASE", "&&")
-    return cond
+COND_REGEX_OPERATORS = re.compile(r"\(|\)|\B!=|\b&&|\b==|\b\|\||>=|\b<=|>|<")
+# COND_REGEX_OPERATORS = re.compile(r"\B!=|\b&&|\b==|\b\|\||>=|\b<=|>|<")
+COND_REGEX_OPERATORS_GROUP = re.compile(r"\(|\)")
+COND_REG_GET_GROUPS = re.compile(r"\(|\)")
 
 
-def add_condition(base_cond, add_cond, add_operator):
+# This removes conditions from the condition to add if it's already used in the base condition
+def _strip_add_cond(base_cond_parsed: list, add_cond_parsed: list) -> str:
+    add_i = 0
+    while add_i < len(add_cond_parsed):
+        sub_add_cond = add_cond_parsed[add_i]
+        if sub_add_cond in COND_OPERATORS:
+            add_i += 1
+            continue
+            
+        if type(sub_add_cond) == list:
+            new_sub_add_cond = _strip_add_cond(base_cond_parsed, sub_add_cond.copy())
+            if "".join(sub_add_cond) != new_sub_add_cond:
+                add_cond_parsed = parse_condition(new_sub_add_cond, True)
+                add_i = -1
+            add_i += 1
+            continue
+
+        base_i = 0
+        while base_i < len(base_cond_parsed):
+            sub_base_cond = base_cond_parsed[base_i]
+            if sub_base_cond in COND_OPERATORS:
+                base_i += 1
+                continue
+            
+            if type(sub_base_cond) == list:
+                new_sub_add_cond = _strip_add_cond(sub_base_cond, add_cond_parsed)
+                # add_cond_parsed = _add_cond(add_cond_parsed)
+                if "".join(add_cond_parsed) != new_sub_add_cond:
+                    add_cond_parsed = parse_condition(new_sub_add_cond, True)
+                    add_i = -1
+                
+            elif sub_add_cond in sub_base_cond:
+                if _is_same_cond(sub_base_cond, sub_add_cond):
+                    add_cond_parsed = remove_condition_parsed(add_cond_parsed, sub_add_cond)
+                    # add_cond_parsed = parse_condition(new_add_cond, True)
+                    add_i = -1
+
+            base_i += 1
+        add_i += 1
+        
+    return parsed_cond_to_string(add_cond_parsed)
+
+
+def _is_same_cond(base_cond: str, compare_cond: str) -> bool:
+    return base_cond == compare_cond or base_cond == "!" + compare_cond or "!" + base_cond == compare_cond
+
+
+def _add_condition_internal(base_cond: str, add_cond: str, add_operator: str) -> str:
+    # if we have operators in this already, then wrap that in parenthesis
+    for operator in COND_OPERATORS:
+        if operator in base_cond:
+            # don't need to wrap if it's || or &&
+
+            for in_add_operator in COND_OPERATORS:
+                if in_add_operator in add_cond:
+                    # should probably wrap the condition we're adding just in case if it has any operator in it
+                    add_cond = "(" + add_cond + ")"
+                    break
+            
+            if operator in ("||", "&&"):
+                base_cond += add_operator + add_cond
+            else:
+                base_cond = "(" + base_cond + ")" + add_operator + add_cond
+            break
+    else:
+        # there are no operators, only one condition, so don't wrap in parenthesis
+        base_cond += add_operator + add_cond
+    return base_cond
+
+
+def add_condition(base_cond: str, add_cond: str, add_operator: str):
     if base_cond:
-        # if we have operators in this already, then wrap that in parenthesis
-        for operator in ("||", "&&", ">", ">=", "==", "!=", "=<", "<"):
-            if operator in base_cond:
-                # don't need to wrap if it's || or &&
-                if operator in ("||", "&&"):
-                    base_cond += add_operator + add_cond
-                else:
-                    base_cond = "(" + base_cond + ")" + add_operator + add_cond
-                break
-        else:
-            # there are no operators, only one condition, so don't wrap in parenthesis
-            base_cond += add_operator + add_cond
+        if base_cond == add_cond:
+            return base_cond
+        elif add_cond in base_cond or base_cond in add_cond:
+            # FUCK YOU
+            if _is_same_cond(base_cond, add_cond):
+                return ""
+            
+        base_cond_parsed = parse_condition(base_cond, True)
+        add_cond_parsed = parse_condition(add_cond, True)
+        
+        add_cond = _strip_add_cond(base_cond_parsed, add_cond_parsed)
+        
+        if add_cond:
+            base_cond = _add_condition_internal(base_cond, add_cond, add_operator)
     else:
         base_cond = add_cond
     return base_cond
 
 
-def remove_condition(cond, value_to_remove):
-    while value_to_remove in cond:
-        cond = cond.split(value_to_remove, 1)
-        
-        operator = ''
-        if cond[0].endswith("||") or cond[0].endswith("&&"):
-            operator = cond[0][-2:]
-            cond[0] = cond[0][:-2]
-        
-        if cond[1].startswith("||") or cond[1].startswith("&&"):
-            operator = cond[1][:2]
-            cond[1] = cond[1][2:]
-        
-        # strip parenthesis from both ends if they existed
-        # this might cause an issue, because there might be more conds depending on these parenthesis
-        # though that's very unlikely, so im not going to bother fixing it
-        if cond[0].endswith("("):
-            cond[0] = cond[0][:-1]
-        elif len(cond) > 1 and cond[1].startswith("("):
-            cond[1] = cond[1][1:-1]
-        
-        # better way to merge them together
-        if cond[0] and cond[1] and operator:
-            cond = add_condition(cond[0], cond[1], operator)
+def parsed_cond_to_string(cond_list: list) -> str:
+    final_string = ""
+    for cond in cond_list:
+        if type(cond) == list:
+            final_string += "(" + parsed_cond_to_string(cond) + ")"
         else:
-            cond = ''.join(cond)
+            final_string += cond
+    return final_string
+
+
+# is there any point to this?
+def parse_condition(cond: str, full: bool = False, nested_lists: bool = True) -> list:
+    return _parse_condition_nested(cond, 0, full, nested_lists)[1]
+
+
+def _parse_condition_nested(cond: str, depth: int = 0, full: bool = False, nested_lists: bool = True) -> tuple:
+    index = 0
+    parsed_cond = []
+    current_cond = ""
     
+    def add_current_cond():
+        if full:
+            current_cond_split = reader.COND_OPERATORS.split(current_cond)
+            while "" in current_cond_split:
+                current_cond_split.remove("")
+            parsed_cond.extend(current_cond_split)
+        else:
+            parsed_cond.append(current_cond)
+    
+    while index < len(cond):
+        char = cond[index]
+        
+        if char == "(":
+            add_index, sub_cond = _parse_condition_nested(cond[index + 1:], depth + 1, full, nested_lists)
+            index += add_index
+            if current_cond:
+                add_current_cond()
+                current_cond = ""
+            if full and nested_lists:
+                parsed_cond.append(sub_cond)
+            else:
+                parsed_cond.append(char)
+                parsed_cond.extend(sub_cond)
+        
+        elif char == ")":
+            add_current_cond()
+            current_cond = ""
+            if not full or not nested_lists:
+                parsed_cond.append(char)
+            break
+            
+        else:
+            current_cond += char
+        
+        index += 1
+        
+    if current_cond:
+        add_current_cond()
+        
+    return index + 1, parsed_cond
+
+
+def remove_condition(cond: str, remove_string: str) -> str:
+    if remove_string in cond:
+        split_cond = parse_condition(cond, True, False)
+        split_cond = remove_condition_parsed(split_cond, remove_string)
+        return "".join(split_cond)
+    return cond
+
+
+def remove_conditions(cond: str, *remove_strings) -> str:
+    if any([string in cond for string in remove_strings]):
+        split_cond = parse_condition(cond, True, False)
+        split_cond = remove_conditions_parsed(split_cond, *remove_strings)
+        cond = "".join(split_cond)
+    return cond
+
+
+def remove_condition_parsed(cond: list, remove_string: str) -> list:
+    while remove_string in cond:
+        cond = removed_condition_parsed_internal(cond, cond.index(remove_string))
+    return cond
+
+
+def remove_conditions_parsed(cond: list, *remove_strings) -> list:
+    if any([string in sub_cond for string in remove_strings for sub_cond in cond]):
+        for string in remove_strings:
+            while string in cond:
+                cond = removed_condition_parsed_internal(cond, cond.index(string))
+    return cond
+
+
+def removed_condition_parsed_internal(cond: list, index: int) -> list:
+    del cond[index]
+    if index < len(cond):
+        del cond[index]
+    elif index - 1 > 0:
+        del cond[index - 1]
     return cond
 
 
@@ -1061,7 +1267,6 @@ def write_condition(condition, qpc_project):
 def format_condition(condition: str) -> str:
     if condition:
         condition = normalize_platform_conditions(condition)
-        condition = normalize_config_conditions(condition)
         condition = add_spacing_to_condition(condition)
     return condition
 
@@ -1085,10 +1290,8 @@ def write_macro(vpc_macro, qpc_project):
         macro_value = ' "' + convert_macro_casing(vpc_macro.values[1]) + '"'
     else:
         macro_value = ''
-    
-    # leave a gap in-between
-    if len(qpc_project) > 0 and not qpc_project[-1].startswith("macro") and qpc_project[-1][-1] != "\n":
-        qpc_project.append("")
+
+    add_gap(qpc_project, "macro")
     
     # might be a bad idea for a macro
     macro_value = macro_value.replace("\\", "/")
@@ -1108,22 +1311,29 @@ def write_include(vpc_include, qpc_project):
     if not args.no_hardcoding:
         qpc_include_path = qpc_include_path.replace("vpc_scripts", "_qpc_scripts")
     
-    # leave a gap in-between
-    if len(qpc_project) > 0 and not qpc_project[-1].startswith("include") and qpc_project[-1][-1] != "\n":
-        qpc_project.append("")
+    add_gap(qpc_project, "include")
     
     qpc_project.append("include \"" + qpc_include_path.replace("\\", "/") + "\"")
     write_condition(vpc_include.condition, qpc_project)
 
 
-def write_files_block(vpc_files, qpc_project, indent):
+# leave a gap in-between
+def add_gap(qpc_project: list, skip_word: str):
+    try:
+        if len(qpc_project) > 0 and not qpc_project[-1].startswith(skip_word) and \
+                not qpc_project[-1] == "" and qpc_project[-1][-1] != "\n":
+            qpc_project.append("")
+    except IndexError:
+        print()
+
+
+def write_files_block(vpc_files, qpc_project, condition: str, indent: str):
     libraries = []
     for file_block in vpc_files.items:
         
         key = file_block.key.casefold()
         
         if key == "$folder" and not file_block.values[0].casefold() == "link libraries":
-            
             # if "}" in qpc_project[-1]:
             if "{" not in qpc_project[-1]:
                 qpc_project[-1] += "\n"
@@ -1131,16 +1341,21 @@ def write_files_block(vpc_files, qpc_project, indent):
             qpc_project.append(indent + "folder \"" + file_block.values[0] + '"')
             write_condition(file_block.condition, qpc_project)
             qpc_project.append(indent + "{")
-            nothing, qpc_project = write_files_block(file_block, qpc_project, indent + "\t")
+            nothing, qpc_project = write_files_block(file_block, qpc_project, condition, indent + "\t")
             qpc_project.append(indent + "}")
         
         elif key in FILE_KEYS:
+            if condition:
+                file_block.condition = add_condition(file_block.condition, condition, "&&")
             if file_block.values[0].endswith(".lib"):
                 libraries.append(file_block)
-            else:
-                qpc_project = write_file(file_block, qpc_project, indent)
+            elif file_block.values and file_block.values[0] != "$ROOTSCRIPT":
+                write_file(file_block, qpc_project, indent)
         
-        elif key == "$folder" and file_block.values[0] == "Link Libraries":
+        elif key == "$folder" and file_block.values[0].casefold() == "link libraries":
+            if file_block.condition:
+                for item in file_block.items:
+                    item.condition = add_condition(item.condition, file_block.condition, "&&")
             libraries.extend(file_block.items)
             
         elif key in SPECIAL_FILE_KEYS:
@@ -1149,45 +1364,38 @@ def write_files_block(vpc_files, qpc_project, indent):
     return libraries, qpc_project
 
 
-def write_file(file_block, qpc_project, indent):
-    if file_block.key.casefold() in FILE_KEYS:
-        if len(file_block.values) > 1:
-            qpc_project[-1] += "\n"
-            for index, file_path in enumerate(file_block.values):
-                file_path = file_path.replace("\\", "/")
-                # TODO: would be cool to get every "\" indented the same amount, but idk how i would do that
-                if index == 0 and file_block.key.startswith("-"):
-                    qpc_project.append(indent + '- "' + file_path + "\"\t\\")
-                elif index < len(file_block.values) - 1:
-                    qpc_project.append(indent + '"' + file_path + "\"\t\\")
-                else:
-                    qpc_project.append(indent + '"' + file_path + "\"")
-        else:
-            if "}" in qpc_project[-1]:
-                qpc_project[-1] += "\n"
-            
-            file_path = file_block.values[0].replace("\\", "/")
-            if file_block.key.startswith("-"):
-                qpc_project.append(indent + '- "' + file_path + '"')
+def write_file(file_block: reader.QPCBlock, qpc_project: list, indent: str):
+    if len(file_block.values) > 1:
+        qpc_project[-1] += "\n"
+        for index, file_path in enumerate(file_block.values):
+            file_path = file_path.replace("\\", "/")
+            # TODO: would be cool to get every "\" indented the same amount, but idk how i would do that
+            if index == 0 and file_block.key.startswith("-"):
+                qpc_project.append(indent + '- "' + file_path + "\"\t\\")
+            elif index < len(file_block.values) - 1:
+                qpc_project.append(indent + '"' + file_path + "\"\t\\")
             else:
-                qpc_project.append(indent + '"' + file_path + '"')
-        
-        write_condition(file_block.condition, qpc_project)
-        
-        if file_block.items:
-            file_config = Configuration()
-            
-            for file_config_block in file_block.items:
-                parse_configuration(file_config_block, file_config)
-            
-            # useless?
-            # config = MergeConfigurations(file_config)
-
-            config_lines = write_config_group(file_config.groups["compiler"], indent[:-2])
-            qpc_project.extend(config_lines)
+                qpc_project.append(indent + '"' + file_path + "\"")
     else:
-        file_block.warning("Unknown Key: ")
-    return qpc_project
+        if "}" in qpc_project[-1]:
+            qpc_project[-1] += "\n"
+        
+        file_path = file_block.values[0].replace("\\", "/")
+        if file_block.key.startswith("-"):
+            qpc_project.append(indent + '- "' + file_path + '"')
+        else:
+            qpc_project.append(indent + '"' + file_path + '"')
+    
+    write_condition(file_block.condition, qpc_project)
+    
+    if file_block.items:
+        file_config = Configuration()
+        
+        for file_config_block in file_block.items:
+            parse_configuration(file_config_block, file_config)
+
+        config_lines = write_config_group(file_config.groups["compiler"], indent[:-1])
+        qpc_project.extend(config_lines)
 
 
 def add_libs_to_config(libraries_block_list, config):
@@ -1225,7 +1433,6 @@ def add_libs_to_config(libraries_block_list, config):
     if library_paths:
         for lib_path in library_paths:
             config.groups["general"]["library_directories"].add_value('"' + os.path.splitext(lib_path)[0] + '"', None)
-    return
 
 
 # might be skipping this if it has a condition?
@@ -1369,16 +1576,14 @@ def parse_configuration(vpc_config: reader.QPCBlock, qpc_config, dependencies: d
                         # option_block.warning("Unknown config option 2: " + option_block.key.casefold())
                         print("Unknown config option 2: " + option_block.key.casefold())
                         continue
-                            
+                        
                     condition = add_config_condition(option_block, config_group, config_cond)
                     
                     option_values = add_options_prefix(option_block, option_values)
-                        
+                    
                     parse_config_option(condition, option_block, qpc_option, option_values)
                 else:
                     print("unknown config group/option")
-    
-    return
 
 
 def add_config_condition(option_block: reader.QPCBlock, config_group: reader.QPCBlock, config_cond: str) -> str:
@@ -1390,9 +1595,11 @@ def add_config_condition(option_block: reader.QPCBlock, config_group: reader.QPC
             # TODO: test this, never ran into this yet, so im hoping this works
             group_condition = normalize_platform_conditions(config_group.condition)
             
+            # why am i doing this again?
             if condition != group_condition:
-                condition = normalize_platform_conditions(
-                    option_block.condition + "&&" + group_condition)
+                condition = add_condition(option_block.condition, group_condition, "&&")
+                condition = normalize_platform_conditions(condition)
+                # condition = normalize_platform_conditions(option_block.condition + "&&" + group_condition)
         else:
             condition = normalize_platform_conditions(config_group.condition)
     
@@ -1435,8 +1642,6 @@ def convert_option(option_value: list) -> list:
             return [OPTION_VALUE_CONVERT_DICT[option_value[0]]]
         except KeyError:
             return option_value
-    else:
-        pass
 
 
 def convert_vpc_group(option_name: str, current_group) -> str:
@@ -1523,12 +1728,11 @@ def write_config_option(indent: str, option):
             current_option += option_lines
             current_option.append(indent + "\t}")
         else:
-            # TODO: BUG: can't have multiple of these with different conditions
-            # this is a workaround that will probably never change
-            
+            # each option can have multiple different values set to it with different conditions
+            # all the values are stored in a list, and here i write each value
             option_lines = []
             for value_obj in option.value:
-                option_lines.append(indent + "\t" + option.name + " " + value_obj.value + '')
+                option_lines.append(f"{indent}\t{option.name} {value_obj.value}")
                 write_condition(value_obj.condition, option_lines)
             current_option += option_lines
             
@@ -1536,12 +1740,6 @@ def write_config_option(indent: str, option):
             # WriteCondition(option.condition, current_group)
             
     return current_option
-
-
-def write_file_configuration(config: Configuration, indent: str, qpc_project_list: list):
-    config_lines = write_config_group(config.groups["compiler"], indent[:-2])
-    qpc_project_list.extend(config_lines)
-    return qpc_project_list
 
 
 def _config_add_space(config_lines: list, indent: str):
@@ -1567,7 +1765,7 @@ def write_config_group(config_group: dict, indent: str) -> list:
         return current_group
     else:
         return []
-            
+        
 
 def write_configuration(config: Configuration, indent: str, qpc_project_list: list):
     starting_config_lines = [indent + "configuration", indent + "{"]
@@ -1642,8 +1840,8 @@ def main():
             convert_vpc(vpc_dir, vpc_name, read_vpc)
     
     print("finished")
-
-
+    
+    
 if __name__ == "__main__":
     args = parse_args()
     args.directory = args.directory.replace("\\", "/")
