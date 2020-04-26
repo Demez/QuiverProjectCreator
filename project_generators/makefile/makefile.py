@@ -293,7 +293,7 @@ def get_default_platform(project: ProjectContainer) -> str:
 
 
 def get_compiler(compiler: Enum, language: Enum) -> str:
-    if compiler in {Compiler.GCC_9, Compiler.GCC_8, Compiler.GCC_7, Compiler.GCC_6}:
+    if compiler in {Compiler.GCC_9, Compiler.GCC_8, Compiler.GCC_7, Compiler.GCC_6, Compiler.GCC_5, Compiler.GCC_4}:
         if language == Language.CPP:
             return "g++-" + str(compiler.name[-1])
         else:  # assuming language == Language.C:

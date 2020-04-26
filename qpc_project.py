@@ -45,6 +45,8 @@ class Compiler(Enum):
     GCC_8 = auto(),
     GCC_7 = auto(),
     GCC_6 = auto(),
+    GCC_5 = auto(),
+    GCC_4 = auto(),
 
 
 # maybe move to qpc_base with the other Enums?
