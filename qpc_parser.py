@@ -379,7 +379,7 @@ class Parser:
             self._parse_project_group_items(project_group, info, group_block, [])
 
     @staticmethod
-    def _add_project_base(info: BaseInfoPlatform, project_name: str, warning_func, *project_paths) -> None:
+    def _add_project_base(info: BaseInfoPlatform, project_name: str, *project_paths) -> None:
         # TODO: check if script path is already used
         if project_name in info.shared.unsorted_projects:
             project_def = info.shared.unsorted_projects[project_name]
@@ -392,7 +392,6 @@ class Parser:
         for script_path in project_paths:
             script_path = replace_macros(script_path, info.macros)
             if not project_def.add_script(script_path) and not args.hide_warnings:
-                # warning_func("Script does not exist: " + script_path)
                 print("Script does not exist: " + script_path)
 
         info.add_project(project_def)
@@ -402,7 +401,7 @@ class Parser:
             include_dir += "/"
         scripts = [include_dir + replace_macros(item.key, info.macros) for item in block.items if item.solve_condition(info.macros)]
         scripts += [include_dir + replace_macros(script, info.macros) for script in block.values[1:]]
-        self._add_project_base(info, block.values[0], block.warning, *scripts)
+        self._add_project_base(info, block.values[0], *scripts)
 
     @staticmethod
     def _check_plat_condition(condition: str) -> bool:
