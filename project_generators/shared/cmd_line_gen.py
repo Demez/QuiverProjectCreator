@@ -1,5 +1,5 @@
 from enum import Enum, auto
-from qpc_project import Compiler, Language
+from qpc_project import Language
 
 
 class Mode(Enum):
@@ -18,7 +18,7 @@ class CommandLineGen:
         self.set_mode(mode)
     
     def set_mode(self, mode: Enum):
-        if mode and mode != self._compiler and mode in Compiler:
+        if mode and mode != self._compiler:
             self._compiler = mode
             mode_name = mode.name.lower()
             if mode_name.startswith("msvc"):
@@ -43,19 +43,20 @@ class CommandLineGen:
         [converted_paths.append(f"{self._char_define}{define}") for define in defines]
         return converted_paths
         
-    # this is pretty bad, maybe i should consider adding a compiler_path option to qpc
-    # hell, maybe even add just MSVC, GCC, and CLANG as options to default to latest
-    def get_compiler_path(self, language: Enum) -> str:
-        # idk how msvc handles versions yet
-        if self._mode == Mode.MSVC:
-            return "cl.exe"
-        elif self._compiler in {Compiler.GCC_9, Compiler.GCC_8, Compiler.GCC_7, Compiler.GCC_6}:
-            if language == Language.CPP:
-                return "g++-" + str(self._compiler.name[-1])
-            else:  # assuming language == Language.C:
-                return "gcc-" + str(self._compiler.name[-1])
-        elif self._compiler in {Compiler.CLANG_9, Compiler.CLANG_8}:
-            return "clang-" + str(self._compiler.name[-1])
-        return "g++"
+        
+# meh
+def get_compiler(compiler: str, language: Enum) -> str:
+    # idk how msvc handles versions yet
+    if compiler.startswith("msvc"):
+        return "cl.exe"
+    elif compiler.startswith("gcc_"):
+        if language == Language.CPP:
+            return "g++-" + str(compiler[4:])
+        else:  # assuming language == Language.C:
+            return "gcc-" + str(compiler[4:])
+    elif compiler.startswith("clang_") and compiler != "clang_cl":
+        return "clang-" + str(compiler[6:])
+    else:
+        return compiler
         
 

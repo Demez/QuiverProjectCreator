@@ -4,8 +4,9 @@ from enum import Enum
 
 # from qpc_args import args
 import qpc_hash
+from project_generators.shared.cmd_line_gen import get_compiler
 from qpc_base import BaseProjectGenerator, Platform, PlatformName
-from qpc_project import Compiler, ConfigType, Language, ProjectContainer, ProjectPass, Configuration
+from qpc_project import ConfigType, Language, ProjectContainer, ProjectPass, Configuration
 from qpc_parser import BaseInfo
 
 import qpc_c_parser as cp
@@ -290,17 +291,6 @@ def get_default_platform(project: ProjectContainer) -> str:
         return "linux64"
     else:
         return platforms[0].name.lower()
-
-
-def get_compiler(compiler: Enum, language: Enum) -> str:
-    if compiler in {Compiler.GCC_9, Compiler.GCC_8, Compiler.GCC_7, Compiler.GCC_6, Compiler.GCC_5, Compiler.GCC_4}:
-        if language == Language.CPP:
-            return "g++-" + str(compiler.name[-1])
-        else:  # assuming language == Language.C:
-            return "gcc-" + str(compiler.name[-1])
-    elif compiler in {Compiler.CLANG_9, Compiler.CLANG_8}:
-        return "clang-" + str(compiler.name[-1])
-    return "g++"
 
 
 def gen_defines(project: ProjectContainer, compiler: str, configs: list) -> str:

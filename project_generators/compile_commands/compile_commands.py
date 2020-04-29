@@ -6,7 +6,7 @@ from enum import Enum
 # from qpc_args import args
 import qpc_hash
 from qpc_base import BaseProjectGenerator, Platform, create_directory
-from qpc_project import Compiler, ConfigType, Language, ProjectContainer, ProjectPass, Configuration
+from qpc_project import ConfigType, Language, ProjectContainer, ProjectPass, Configuration
 from qpc_parser import BaseInfo
 from ..shared import cmd_line_gen
 
@@ -66,7 +66,7 @@ class CompileCommandsGenerator(BaseProjectGenerator):
     def handle_file(self, file: str, project: ProjectPass) -> dict:
         file_dict = {
             "directory": os.getcwd().replace("\\", "/"),
-            "command": self.cmd_gen.get_compiler_path(project.config.general.language) + " ",
+            "command": cmd_line_gen.get_compiler(project.config.general.compiler, project.config.general.language) + " ",
             "file": file
         }
         

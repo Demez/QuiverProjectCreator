@@ -6,7 +6,7 @@ import lxml.etree as et
 from time import perf_counter
 from qpc_args import args
 from qpc_base import BaseProjectGenerator, add_dict_value, Platform, PlatformName
-from qpc_project import Compiler, PrecompiledHeader, ConfigType, Language, ProjectContainer, ProjectPass
+from qpc_project import PrecompiledHeader, ConfigType, Language, ProjectContainer, ProjectPass
 from qpc_parser import BaseInfo
 from enum import Enum
 
@@ -333,14 +333,15 @@ def setup_globals(vcxproj, project_list):
     
     
 COMPILER_DICT = {
-    Compiler.MSVC_142: "v142",
-    Compiler.MSVC_141: "v141",
-    Compiler.MSVC_140: "v140",
-    Compiler.MSVC_120: "v120",
-    Compiler.MSVC_100: "v100",
-    Compiler.MSVC_140_XP: "v140_xp",
-    Compiler.MSVC_120_XP: "v120_xp",
-    Compiler.CLANG_CL: "ClangCL",
+    "msvc":         "v142",  # latest
+    "msvc_142":     "v142",
+    "msvc_141":     "v141",
+    "msvc_140":     "v140",
+    "msvc_120":     "v120",
+    "msvc_100":     "v100",
+    "msvc_140_xp":  "v140_xp",
+    "msvc_120_xp":  "v120_xp",
+    "clang_cl":     "ClangCL",
 }
 
 

@@ -25,30 +25,6 @@ from time import perf_counter
 EXTS_C = {".cpp", ".cxx", ".c", ".cc"}
 
 
-class Compiler(Enum):
-    MSVC_142 = auto(),
-    MSVC_141 = auto(),
-    MSVC_140 = auto(),
-    MSVC_120 = auto(),
-    MSVC_100 = auto(),
-    
-    MSVC_140_XP = auto(),
-    MSVC_120_XP = auto(),
-
-    CLANG_9 = auto(),
-    CLANG_8 = auto(),
-    
-    CLANG_CL = auto(),  # vstudio junk, ClangCL is different from the clang versions above
-
-    # GCC_10 = auto(),
-    GCC_9 = auto(),
-    GCC_8 = auto(),
-    GCC_7 = auto(),
-    GCC_6 = auto(),
-    GCC_5 = auto(),
-    GCC_4 = auto(),
-
-
 # maybe move to qpc_base with the other Enums?
 class ConfigType(Enum):
     STATIC_LIBRARY = auto(),
@@ -132,6 +108,9 @@ class ProjectBase:
         self.hash_list = {}
         self.macros = project.macros.copy()
         self._glob_files = set()
+        
+        # testing of something similar to CustomBuildStep in vpc
+        self.build_events = set()
     
     def add_macro(self, macro_name: str, macro_value: str = "") -> None:
         key_name = "$" + macro_name.upper()
@@ -513,12 +492,11 @@ class General:
         # won't work, so im just leaving it as it is for now, hopefully i can get something better later on
         self.configuration_type = None
         self.language = None
-        if platform is None:
-            self.compiler = None
-        elif platform in {Platform.WIN32, Platform.WIN64}:
-            self.compiler = Compiler.MSVC_142
+        
+        if platform in {Platform.WIN32, Platform.WIN64}:
+            self.compiler = "msvc"
         else:
-            self.compiler = Compiler.GCC_9
+            self.compiler = "gcc"
         
         self.default_include_directories = True
         self.default_library_directories = True
@@ -562,7 +540,7 @@ class General:
             if option_block.key == "toolset_version":
                 if not args.hide_warnings:
                     option_block.warning("toolset_version is now compiler")
-            self.set_compiler(option_block)
+            self.compiler = replace_macros(option_block.values[0], macros)
             
         else:
             option_block.error("Unknown General Option: ")
@@ -572,9 +550,6 @@ class General:
 
     def set_language(self, option: QPCBlock) -> None:
         self.language = convert_enum_option(self.language, option, Language)
-
-    def set_compiler(self, option: QPCBlock) -> None:
-        self.compiler = convert_enum_option(self.compiler, option, Compiler)
 
 
 class ConfigCompiler:
@@ -685,6 +660,12 @@ def convert_enum_option(old_value: Enum, option_block: QPCBlock, enum_list: Enum
     else:
         option_block.invalid_option(*[enum.name.lower() for enum in enum_list])
         return old_value
+    
+    
+class BuildEvent:
+    def __init__(self, name: str, *event_args):
+        self.name = name
+        self.args = event_args
         
         
 def check_if_file_exists(file_path: str, option_warning: classmethod):
