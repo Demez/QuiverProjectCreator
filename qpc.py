@@ -11,11 +11,13 @@ from enum import Enum
 
 import qpc_reader
 from qpc_generator_handler import GeneratorHandler
-from qpc_parser import Parser
+from qpc_parser import Parser, ProjectDefinition
 from qpc_args import args, parse_args
 from qpc_base import BaseProjectGenerator, PLATFORM_DICT, create_directory
-from qpc_hash import (check_hash, check_master_file_hash, write_project_hash, write_master_file_hash,
-                      get_project_dependencies, get_hash_file_path, QPC_HASH_DIR)
+
+import qpc_hash
+# from qpc_hash import (check_hash, check_master_file_hash, write_project_hash, write_master_file_hash,
+#                       get_project_dependencies, get_hash_file_path, QPC_HASH_DIR)
 
 
 PRINT_LINE = "------------------------------------------------------------------------"
@@ -78,19 +80,21 @@ def check_platforms(platform_list: list, generator_platforms: list) -> set:
     return has_valid_platforms
 
 
-def check_project_exists_all(project_script: str, platforms: list, generator_list: list) -> bool:
+def any_generator_need_rebuild(project_script: str, platforms: list, generator_list: list) -> bool:
     for generator in generator_list:
         if check_platforms(platforms, generator.get_supported_platforms()):
             if not generator.does_project_exist(project_script):
-                return False
-    return True
+                return True
+    return False
 
 
-def check_project_exists(project_script: str, platforms: list, generator: BaseProjectGenerator) -> bool:
+def generator_needs_rebuild(project_script: str, platforms: list, generator: BaseProjectGenerator, hash_generators: list) -> bool:
     if check_platforms(platforms, generator.get_supported_platforms()):
         if not generator.does_project_exist(project_script):
-            return False
-    return True
+            return True
+        if generator.filename in hash_generators:
+            return True
+    return False
 
 
 def check_valid_platforms(generator: BaseProjectGenerator, platform: Enum):
@@ -98,8 +102,28 @@ def check_valid_platforms(generator: BaseProjectGenerator, platform: Enum):
     return PLATFORM_DICT[platform].intersection(set(platforms))
 
 
+# only run if the hash check fails or if the user force creates projects
+# may look in the hash for where the project output directory is in the future
+def should_build_project(project_script: str, project_def: ProjectDefinition, generator_list: list) -> bool:
+    if args.skip_projects:
+        return False
+    if args.force:
+        return True
+    if any_generator_need_rebuild(project_script, project_def.platforms, generator_list):
+        return True
+    return not qpc_hash.check_hash(project_script)
+
+
+def should_call_create_project(hash_result: bool, project_script: str, project_def: ProjectDefinition, generator: BaseProjectGenerator) -> bool:
+    if args.force:
+        return True
+    if generator_needs_rebuild(project_script, project_def.platforms, generator):
+        return True
+    return hash_result
+
+
 def main():
-    create_directory(QPC_HASH_DIR)
+    create_directory(qpc_hash.QPC_HASH_DIR)
     os.chdir(args.root_dir)
     
     parser = Parser()
@@ -116,12 +140,10 @@ def main():
         for project_script in project_def.script_list:
             if not args.skip_projects:
                 print()
-            # only run if the hash check fails or if the user force creates projects
-            # may look in the hash for where the project output directory is in the future
-            if not args.skip_projects and (args.force or not check_project_exists_all(project_script, project_def.platforms, generator_list) \
-                    or not check_hash(project_script)):
-
-                hash_result = check_hash(project_script, False)
+                
+            if should_build_project(project_script, project_def, generator_list):
+                hash_result = qpc_hash.check_hash(project_script, False)
+                hash_generators = qpc_hash.get_project_generator_hash(project_script)
 
                 project_dir, project_filename = os.path.split(project_script)
 
@@ -132,22 +154,25 @@ def main():
                 if not project:
                     continue
 
-                for generator in generator_list:
-                    if args.force or not check_project_exists(project_filename, project_def.platforms, generator) \
-                            or not hash_result:
-                        generator.create_project(project)
+                if args.force or hash_result:
+                    [generator.create_project(project) for generator in generator_list]
+                else:
+                    # does any generator need to rebuild?
+                    for generator in generator_list:
+                        if generator_needs_rebuild(project_filename, project_def.platforms, generator, hash_generators):
+                            generator.create_project(project)
 
                 if project_dir and project_dir != args.root_dir:
                     os.chdir(args.root_dir)
 
                 info.add_project_dependencies(project_script, list(platform_dict), project.dependencies)
-
-                write_project_hash(project_script, project.out_dir, project.get_hashes(), project.dependencies, project.get_glob_files())
+                qpc_hash.write_project_hash(project_script, project)
                     
             else:
-                info.add_project_dependencies(project_script, list(platform_dict), get_project_dependencies(project_script))
+                info.add_project_dependencies(
+                    project_script, list(platform_dict), qpc_hash.get_project_dependencies(project_script))
                 
-            info.project_hashes[project_script] = get_hash_file_path(project_script)
+            info.project_hashes[project_script] = qpc_hash.get_hash_file_path(project_script)
 
     if args.time:
         print("\nFinished Parsing Projects"
@@ -164,9 +189,9 @@ def main():
                 continue
             file_path = generator.get_master_file_path(args.master_file)
             if args.force_master or file_path and (
-                    not os.path.isfile(file_path) or not check_master_file_hash(file_path, info, generator.uses_folders())):
+                    not os.path.isfile(file_path) or not qpc_hash.check_master_file_hash(file_path, info, generator.uses_folders())):
                 generator.create_master_file(info, file_path, platform_dict)
-                write_master_file_hash(file_path, info, generator.get_supported_platforms(), generator.path)
+                qpc_hash.write_master_file_hash(file_path, info, generator.get_supported_platforms(), generator.path)
 
 
 if __name__ == "__main__":
