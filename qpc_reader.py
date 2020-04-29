@@ -357,7 +357,7 @@ def parse_recursive(lexer, block, path):
         key, line_num = lexer.next_key()
         
         if not key:
-            if lexer.next_symbol() == "}":
+            if lexer.next_symbol() == "}" or lexer.char_num == lexer.file_len:
                 return
             print("empty key? might work, who knows")
             block.print_info()
