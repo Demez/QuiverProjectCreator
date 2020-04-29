@@ -142,7 +142,7 @@ def _project_check_file_hash(project_dir: str, hash_list: list, project_path: st
     return result
     
     
-def check_master_file_hash(project_path: str, base_info, has_project_folders: bool) -> bool:
+def check_master_file_hash(project_path: str, base_info, generator, hash_list: dict) -> bool:
     project_hash_file_path = get_hash_file_path(project_path)
     project_dir = os.path.split(project_path)[0]
     total_blocks = sorted(("commands", "hashes", "files"))
@@ -169,11 +169,11 @@ def check_master_file_hash(project_path: str, base_info, has_project_folders: bo
                 blocks_found.append(block.key)
                 if not base_info.project_hashes:
                     continue
-                if has_project_folders:
-                    if not _check_files(project_dir, block.items, base_info.project_hashes, base_info.project_list):
+                if generator.uses_folders():
+                    if not _check_files(project_dir, block.items, hash_list, base_info.project_list):
                         return False
                 else:
-                    if not _check_files(project_dir, block.items, base_info.project_hashes):
+                    if not _check_files(project_dir, block.items, hash_list):
                         return False
                 
             else:

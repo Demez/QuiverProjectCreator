@@ -262,6 +262,16 @@ class BaseInfo:
             if base_info.platform in platforms:
                 all_dependencies.update(base_info.project_dependencies)
         return all_dependencies
+    
+    def get_hashes_plat(self, *platforms) -> dict:
+        all_hashes = {}
+        for base_info in self.info_list:
+            if base_info.platform in platforms:
+                for project in base_info.projects_to_use:
+                    for script in project.script_list:
+                        if script in self.project_hashes:
+                            all_hashes[script] = self.project_hashes[script]
+        return all_hashes
 
 
 class Parser:

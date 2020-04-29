@@ -13,7 +13,7 @@ import qpc_reader
 from qpc_generator_handler import GeneratorHandler
 from qpc_parser import Parser, ProjectDefinition
 from qpc_args import args, parse_args
-from qpc_base import BaseProjectGenerator, PLATFORM_DICT, create_directory
+from qpc_base import BaseProjectGenerator, PLATFORM_DICT, create_directory, get_platform_name
 
 import qpc_hash
 # from qpc_hash import (check_hash, check_master_file_hash, write_project_hash, write_master_file_hash,
@@ -122,6 +122,17 @@ def should_call_create_project(hash_result: bool, project_script: str, project_d
     return hash_result
 
 
+def should_call_create_master_file(file_path: str, info, generator: BaseProjectGenerator, hashes: dict) -> bool:
+    if args.force_master:
+        return True
+    if file_path:
+        if not os.path.isfile(file_path):
+            return True
+        if not qpc_hash.check_master_file_hash(file_path, info, generator, hashes):
+            return True
+    return False
+
+
 def main():
     create_directory(qpc_hash.QPC_HASH_DIR)
     os.chdir(args.root_dir)
@@ -187,9 +198,13 @@ def main():
         for generator in generator_list:
             if not generator.generates_master_file():
                 continue
+                
             file_path = generator.get_master_file_path(args.master_file)
-            if args.force_master or file_path and (
-                    not os.path.isfile(file_path) or not qpc_hash.check_master_file_hash(file_path, info, generator.uses_folders())):
+            generator_platforms = set()
+            [generator_platforms.add(get_platform_name(platform)) for platform in generator.get_supported_platforms()]
+            project_hashes = info.get_hashes_plat(*generator_platforms)
+            
+            if should_call_create_master_file(file_path, info, generator, project_hashes):
                 generator.create_master_file(info, file_path, platform_dict)
                 qpc_hash.write_master_file_hash(file_path, info, generator.get_supported_platforms(), generator.path)
 
