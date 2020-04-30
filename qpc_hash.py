@@ -1,7 +1,7 @@
 import hashlib
 import qpc_reader
 from qpc_args import args
-from qpc_base import posix_path, get_platform_name, QPC_DIR, QPC_GENERATOR_DIR
+from qpc_base import posix_path, QPC_DIR, QPC_GENERATOR_DIR
 from qpc_reader import QPCBlockBase, QPCBlock
 from qpc_generator_handler import GENERATOR_PATHS, GENERATOR_LIST
 import qpc_parser
@@ -14,14 +14,14 @@ QPC_HASH_DIR = QPC_DIR + "hashes/"
 
 
 # Source: https://bitbucket.org/prologic/tools/src/tip/md5sum
-def make_hash(filename):
+def make_hash(filename: str) -> str:
     md5 = hashlib.md5()
-    try:
+    if os.path.isfile(filename):
         with open(filename, "rb") as f:
             for chunk in iter(lambda: f.read(128 * md5.block_size), b""):
                 md5.update(chunk)
         return md5.hexdigest()
-    except FileNotFoundError:
+    else:
         return ""
     
     
@@ -55,57 +55,71 @@ for file in GENERATOR_LIST:
 QPC_HASHES = {**QPC_BASE_HASHES, **QPC_GENERATOR_HASHES}
 
 CHECKED_HASHES = {}
-CHECKED_HASHES_GENERATORS = {}
-GENERATOR_FILE_NAMES = [os.path.splitext(os.path.basename(__generator))[0] for __generator in GENERATOR_LIST]
+GENERATOR_FILE_NAMES = []
+ARCH_NAMES = []
 
 
-# to be called after check_hash is called
-def get_project_generator_hash(project_path: str) -> list:
-    if project_path in CHECKED_HASHES_GENERATORS and CHECKED_HASHES_GENERATORS[project_path]:
-        return CHECKED_HASHES_GENERATORS[project_path]
-    return GENERATOR_FILE_NAMES
+def post_args_init():
+    GENERATOR_FILE_NAMES.extend([os.path.splitext(os.path.basename(__generator))[0] for __generator in args.generators])
+    ARCH_NAMES.extend([arch.name.casefold() for arch in args.archs])
+
+
+# to be called after check_hash is called, so we know what we need to rebuild exactly
+def get_rebuild_info(project_path: str, rebuild_generators: list) -> dict:
+    if project_path not in CHECKED_HASHES:
+        check_hash(project_path, False)
+        
+    if rebuild_generators:
+        for gen in rebuild_generators:
+            if gen.filename not in CHECKED_HASHES[project_path]["generators"]:
+                CHECKED_HASHES[project_path]["generators"].append(gen.filename)
+            
+    elif not CHECKED_HASHES[project_path]["generators"]:
+        CHECKED_HASHES[project_path]["generators"] = GENERATOR_FILE_NAMES
+        
+    return CHECKED_HASHES[project_path]
 
 
 def check_hash(project_path: str, print_valid: bool = True) -> bool:
     if project_path in CHECKED_HASHES:
-        return CHECKED_HASHES[project_path]
+        return CHECKED_HASHES[project_path]["result"]
     
     project_hash_file_path = get_hash_file_path(project_path)
     project_dir = os.path.split(project_path)[0]
-    total_blocks = sorted(("commands", "hashes", "glob_files"))
+    total_blocks = sorted(("commands", "glob_files", "hashes"))
     blocks_found = []
-    CHECKED_HASHES_GENERATORS[project_path] = []
+    CHECKED_HASHES[project_path] = {"result": True, "generators": [], "rebuild_all": False}
     result = True
     
     if os.path.isfile(project_hash_file_path):
         hash_file = qpc_reader.read_file(project_hash_file_path)
         
         if not hash_file:
-            CHECKED_HASHES[project_path] = False
+            CHECKED_HASHES[project_path]["result"] = False
+            CHECKED_HASHES[project_path]["rebuild_all"] = True
             return False
         
         for block in hash_file:
             if not result:
-                CHECKED_HASHES[project_path] = False
+                CHECKED_HASHES[project_path]["result"] = False
                 return False
             
             if block.key == "commands":
                 blocks_found.append(block.key)
-                if not _check_commands(project_dir, block.items):
-                    result = False
+                result = _check_commands(project_dir, block.items, 4)
+                CHECKED_HASHES[project_path]["rebuild_all"] = not result
                 
             elif block.key == "hashes":
                 blocks_found.append(block.key)
-                if not _project_check_file_hash(project_dir, block.items, project_path):
-                    result = False
+                result = _project_check_file_hash(project_dir, block.items, project_path)
 
             elif block.key == "dependencies":
                 pass
 
             elif block.key == "glob_files":
                 blocks_found.append(block.key)
-                if not _check_glob_files(project_dir, block.items):
-                    result = False
+                result = _check_glob_files(project_dir, block.items)
+                CHECKED_HASHES[project_path]["rebuild_all"] = not result
                 
             elif print_valid:
                 # how would this happen
@@ -114,14 +128,15 @@ def check_hash(project_path: str, print_valid: bool = True) -> bool:
         if total_blocks == sorted(blocks_found):
             if print_valid:
                 print("Valid: " + project_path + get_hash_file_ext(project_path))
-            CHECKED_HASHES[project_path] = True
+            CHECKED_HASHES[project_path]["result"] = True
             return True
-        CHECKED_HASHES[project_path] = False
+        CHECKED_HASHES[project_path]["result"] = False
         return False
     else:
         if args.verbose and print_valid:
             print("Hash File does not exist")
-        CHECKED_HASHES[project_path] = False
+        CHECKED_HASHES[project_path]["result"] = False
+        CHECKED_HASHES[project_path]["rebuild_all"] = True
         return False
 
 
@@ -134,8 +149,12 @@ def _project_check_file_hash(project_dir: str, hash_list: list, project_path: st
             project_file_path = posix_path(os.path.normpath(project_dir + "/" + hash_block.values[0]))
         
         if hash_block.key != make_hash(project_file_path):
-            if hash_block.values[0] in QPC_GENERATOR_HASHES:
-                CHECKED_HASHES_GENERATORS[project_path].append(os.path.splitext(os.path.basename(hash_block.values[0]))[0])
+            if not CHECKED_HASHES[project_path]["rebuild_all"] and hash_block.values[0] in QPC_GENERATOR_HASHES:
+                generator_name = os.path.splitext(os.path.basename(hash_block.values[0]))[0]
+                if generator_name in args.generators:
+                    CHECKED_HASHES[project_path]["generators"].append(generator_name)
+            else:
+                CHECKED_HASHES[project_path]["rebuild_all"] = True
             if args.verbose:
                 print("Invalid: " + hash_block.values[0])
             result = False
@@ -157,7 +176,7 @@ def check_master_file_hash(project_path: str, base_info, generator, hash_list: d
         for block in hash_file:
             if block.key == "commands":
                 blocks_found.append(block.key)
-                if not _check_commands(project_dir, block.items):
+                if not _check_commands(project_dir, block.items, 5):
                     return False
                 
             elif block.key == "hashes":
@@ -170,7 +189,7 @@ def check_master_file_hash(project_path: str, base_info, generator, hash_list: d
                 if not base_info.project_hashes:
                     continue
                 if generator.uses_folders():
-                    if not _check_files(project_dir, block.items, hash_list, base_info.project_list):
+                    if not _check_files(project_dir, block.items, hash_list, base_info.projects):
                         return False
                 else:
                     if not _check_files(project_dir, block.items, hash_list):
@@ -209,10 +228,8 @@ def get_out_dir(project_hash_file_path):
         # return posix_path(os.path.normpath(working_dir + "/" + out_dir))
     
     
-def _check_commands(project_dir: str, command_list) -> bool:
-    total_commands = 4
+def _check_commands(project_dir: str, command_list: list, total_commands: int) -> bool:
     commands_found = 0
-    
     for command_block in command_list:
         if command_block.key == "working_dir":
             commands_found += 1
@@ -240,9 +257,9 @@ def _check_commands(project_dir: str, command_list) -> bool:
             if sorted(args.remove) != sorted(command_block.values):
                 return False
         
-        elif command_block.key == "generators":
+        elif command_block.key == "architectures":
             commands_found += 1
-            if sorted(args.generators) != sorted(command_block.values):
+            if sorted(ARCH_NAMES) != sorted(command_block.values):
                 return False
         
         elif command_block.key == "macros":
@@ -405,13 +422,18 @@ def get_project_dependencies(project_path: str, recurse: bool = False) -> list:
     return list(dep_list)
 
 
-def write_project_hash(project_path: str, project: qpc_project.ProjectContainer) -> None:
+def write_project_hash(project_path: str, project: qpc_project.ProjectContainer, generators: list) -> None:
     base_block = QPCBlockBase(project_path)
     
     _write_hash_commands(base_block, project.out_dir)
     
     hashes = base_block.add_item("hashes", [])
-    [hashes.add_item(hash_value, script_path) for script_path, hash_value in QPC_HASHES.items()]
+    [hashes.add_item(hash_value, script_path) for script_path, hash_value in QPC_BASE_HASHES.items()]
+    
+    for generator in generators:
+        if generator.path in QPC_GENERATOR_HASHES:
+            hashes.add_item(QPC_GENERATOR_HASHES[generator.path], generator.path)
+    
     hash_list = project.get_hashes()
     if hash_list:
         [hashes.add_item(hash_value, script_path) for script_path, hash_value in hash_list.items()]
@@ -450,7 +472,7 @@ def write_master_file_hash(project_path: str, base_info, platforms: list, genera
     files = base_block.add_item("files", [])
     
     for info_platform in info_list:
-        for project_def in info_platform.projects_to_use:
+        for project_def in info_platform.projects:
             folder = "/".join(project_def.folder_list)
             
             for script_path in project_def.script_list:
@@ -478,12 +500,12 @@ def _write_hash_commands(base_block: QPCBlockBase, out_dir: str = "", master_fil
     commands.add_item("working_dir", os.getcwd().replace('\\', '/') + "/" + os.path.split(base_block.file_path)[0])
     commands.add_item("out_dir", out_dir.replace('\\', '/'))
     commands.add_item("macros", args.macros)
+    commands.add_item("architectures", ARCH_NAMES)
     
     if master_file:
         commands.add_item("add", args.add)
         commands.add_item("remove", args.remove)
     else:
-        commands.add_item("generators", args.generators)
         commands.add_item("qpc_py_count", str(len(QPC_BASE_HASHES)))
        
         

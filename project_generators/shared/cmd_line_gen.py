@@ -9,7 +9,7 @@ class Mode(Enum):
 
 
 class CommandLineGen:
-    def __init__(self, mode: Enum = None):
+    def __init__(self, mode: str = ""):
         self._compiler = None
         self._mode = None
         self.switch = None
@@ -17,21 +17,20 @@ class CommandLineGen:
         self._char_define = None
         self.set_mode(mode)
     
-    def set_mode(self, mode: Enum):
+    def set_mode(self, mode: str):
         if mode and mode != self._compiler:
             self._compiler = mode
-            mode_name = mode.name.lower()
-            if mode_name.startswith("msvc"):
+            if mode.startswith("msvc"):
                 self._mode = Mode.MSVC
                 self.switch = "/"
                 self._char_inc_dir = "/I"
                 self._char_define = "/D"
         
-            elif mode_name.startswith("gcc") or mode_name.startswith("clang"):
+            elif mode.startswith("gcc") or mode.startswith("clang"):
                 self.switch = "-"
                 self._char_inc_dir = "-I"
                 self._char_define = "-D"
-                self._mode = Mode.GCC if mode_name.startswith("gcc") else Mode.CLANG
+                self._mode = Mode.GCC if mode.startswith("gcc") else Mode.CLANG
                 
     def convert_includes(self, include_paths: list) -> list:
         converted_paths = []

@@ -3,8 +3,8 @@ import glob
 import qpc_hash
 from qpc_reader import read_file, QPCBlock, QPCBlockBase
 from qpc_args import args, get_arg_macros
-from qpc_base import Platform, PlatformName, get_platform_name, check_file_path_glob
-from qpc_project import ProjectContainer, ProjectBase, ProjectDefinition, ProjectGroup, SourceFile, replace_macros
+from qpc_base import Platform, Arch, check_file_path_glob
+from qpc_project import ProjectContainer, ProjectPass, ProjectDefinition, ProjectGroup, replace_macros
 from enum import Enum
 from time import perf_counter
 
@@ -21,7 +21,7 @@ def replace_exact_macros(split_string, macros):
 
 def get_platform_macros(platform: Enum) -> dict:
     # OS Specific Defines
-    if platform == PlatformName.WINDOWS:
+    if platform == Platform.WINDOWS:
         return {
             "$WINDOWS": "1",
             "$_BIN_EXT": ".dll",
@@ -33,7 +33,7 @@ def get_platform_macros(platform: Enum) -> dict:
             # "$_DBG_EXT": ".pdb",
         }
     
-    elif platform == PlatformName.LINUX:
+    elif platform == Platform.LINUX:
         return {
             "$POSIX": "1",
             "$LINUX": "1",
@@ -45,7 +45,7 @@ def get_platform_macros(platform: Enum) -> dict:
         }
     
     # TODO: finish setting up MacOS stuff here
-    elif platform == PlatformName.MACOS:
+    elif platform == Platform.MACOS:
         return {
             "$POSIX": "1",
             "$MACOS": "1",
@@ -55,8 +55,8 @@ def get_platform_macros(platform: Enum) -> dict:
             "$_APP_EXT": "",
             # "$_DBG_EXT": ".dbg",
         }
-    
-    
+
+
 class BaseInfoPlatform:
     def __init__(self, base_info, platform: Enum):
         self.shared = base_info
@@ -67,81 +67,100 @@ class BaseInfoPlatform:
             print()
             [print('Set Macro: {0} = "{1}"'.format(name, value)) for name, value in self.macros.items()]
         
-        self.groups = {}
-        self.all_projects = []
-        self.undef_projects = {}
+        self._projects_all = []
+        # self._projects_undefined = {}
+        
+        # this stores all everything in dependency_paths in a base file
+        # and also has path fixes on it if used with a include with a path to change to
         self.dependency_dict = {}
-        self.dependency_dict_unfixed = {}
-        self.project_dependencies = {}
+        # if any path was modified above, then it's also added here with the original path
+        self.dependency_dict_original = {}
+        
+        # for generators and parts of qpc to use:
         self.configurations = []
-        self.projects_to_use = []
+        self.projects = []
+        
+        self.project_dependencies = {}
+
+    def add_project(self, project_name: str, *project_paths) -> None:
+        # TODO: check if script path is already used
+        project_def = self.shared.add_project(project_name)
+        project_def.platforms.add(self.platform)
+    
+        for script_path in project_paths:
+            script_path = replace_macros(script_path, self.macros)
+            if not project_def.add_script(script_path) and not args.hide_warnings:
+                print("Script does not exist: " + script_path)
+
+        project_def.update_groups()
+        self._projects_all.append(project_def)
+        
+    def add_project_to_group(self, project_name: str, project_group: ProjectGroup, folder_list: list):
+        project_def = self.get_project(project_name)
+        if project_def:
+            if not project_def.folder_list:
+                project_def.folder_list = tuple(folder_list)
+            project_group.project_defined(project_def)
+        else:
+            project_def = ProjectDefinition(project_name, *folder_list)
+            self._projects_all.append(project_def)
+        project_def.add_group(project_group)
+        
+    def init_args(self):
+        for project_path in args.add:
+            if check_file_path_glob(project_path):
+                for found_file in glob.glob(project_path):
+                    self.add_project(os.path.splitext(os.path.basename(found_file))[0], found_file)
+            elif os.path.isfile(project_path):
+                self.add_project(os.path.splitext(os.path.basename(project_path))[0], project_path)
+            elif not self.is_project_added(project_path) and project_path not in self.shared.groups:
+                print("Project, Group, or File does not exist: " + project_path)
+
+        if not self.configurations:
+            self.configurations.append("Default")
 
     def add_macro(self, project_block: QPCBlock):
-        self.macros["$" + project_block.values[0].upper()] = replace_macros(project_block.values[1], self.macros)
-    
-    def add_project(self, project: ProjectDefinition):
-        project.update_groups()
-        self.all_projects.append(project)
+        self.macros["$" + project_block.values[0]] = replace_macros(project_block.values[1], self.macros)
 
     def is_project_script_added(self, project_path: str) -> bool:
-        return bool(self.get_project_def_script(project_path))
+        return bool(self.get_project_by_script(project_path))
 
     def is_project_added(self, project_name: str) -> bool:
-        if project_name in self.shared.unsorted_projects:
-            return True
-        return bool(self.get_project_def_script(project_name))
+        return bool(self.get_project_by_script(project_name))
 
-    def get_project_def_script(self, project_path: str) -> ProjectDefinition:
-        for project in self.all_projects:
+    def get_project_by_script(self, project_path: str) -> ProjectDefinition:
+        for project in self._projects_all:
             if project_path in project.script_list:
                 return project
 
-    def get_project_def_name(self, project_name: str) -> ProjectDefinition:
-        for project in self.all_projects:
+    def get_project_by_name(self, project_name: str) -> ProjectDefinition:
+        for project in self._projects_all:
             if project.name == project_name:
                 return project
 
-    def get_project_def(self, project_name: str) -> ProjectDefinition:
-        for project in self.all_projects:
+    def get_project(self, project_name: str) -> ProjectDefinition:
+        for project in self._projects_all:
             if project.name == project_name or project_name in project.script_list:
                 return project
             
     def get_dependency_path(self, key: str):
-        if key in self.dependency_dict_unfixed:
-            return self.dependency_dict[self.dependency_dict_unfixed[key]]
+        if key in self.dependency_dict_original:
+            return self.dependency_dict[self.dependency_dict_original[key]]
         elif key in self.dependency_dict:
             return self.dependency_dict[key]
         return key
 
     def _use_project(self, project: ProjectDefinition, unwanted_projects: dict):
         if self.platform in project.platforms and project.name not in unwanted_projects:
-            for added_project in self.projects_to_use:
+            for added_project in self.projects:
                 if added_project.name == project.name:
                     break
             else:
-                self.projects_to_use.append(project)
+                self.projects.append(project)
         
     # get all the _passes the user wants (this is probably the worst part in this whole project)
-    def setup_wanted_projects(self) -> None:
-        self.projects_to_use = []
-
-        unwanted_projects = {}
-        remove_list = []
-        add_list = []
-
-        for item in args.add:
-            if check_file_path_glob(item):
-                add_list.extend(glob.glob(item))
-            else:
-                add_list.append(item)
-
-        for item in args.remove:
-            if check_file_path_glob(item):
-                remove_list.extend(glob.glob(item))
-            else:
-                remove_list.append(item)
-
-        [add_list.remove(item) for item in remove_list if item in add_list]
+    def setup_wanted_projects(self, add_list: list, remove_list: list, unwanted_projects: dict) -> None:
+        self.projects = []
 
         for removed_item in remove_list:
             if removed_item in self.shared.groups:
@@ -150,10 +169,10 @@ class BaseInfoPlatform:
                         unwanted_projects[project.name] = project
             
             elif removed_item in self.shared.unsorted_projects:
-                if self.shared.unsorted_projects[removed_item] in self.all_projects:
+                if self.shared.unsorted_projects[removed_item] in self._projects_all:
                     unwanted_projects[removed_item] = self.shared.unsorted_projects[removed_item]
             else:
-                for project in self.all_projects:
+                for project in self._projects_all:
                     if removed_item in project.script_list:
                         unwanted_projects[project.name] = project
                         break
@@ -166,108 +185,110 @@ class BaseInfoPlatform:
                 if added_item in self.shared.groups:
                     for project in self.shared.groups[added_item].projects:
                         self._use_project(project, unwanted_projects)
-
-                    # TODO: move to another function
-                    '''
-                    for project in self.shared.groups[added_item].projects:
-                        if self.platform in project.platforms and project.name not in unwanted_projects:
-                            for added_project in self.projects_to_use:
-                                if added_project.name == project.name:
-                                    break
-                            else:
-                                self.projects_to_use.append(project)
-                    '''
+                        
                 elif added_item in self.shared.unsorted_projects:
-                    if self.shared.unsorted_projects[added_item] in self.all_projects:
+                    if self.shared.unsorted_projects[added_item] in self._projects_all:
                         self._use_project(self.shared.unsorted_projects[added_item], unwanted_projects)
                 else:
-                    for project in self.all_projects:
+                    for project in self._projects_all:
                         if added_item in project.script_list:
                             self._use_project(project, unwanted_projects)
                             break
                     else:
                         print("Project, Group, or Script does not exist: " + added_item)
-                    '''
-                    for project in self.all_projects:
-                        if added_item == project.name or added_item in project.script_list:
-                            for added_project in self.projects_to_use:
-                                if added_project.name == project.name:
-                                    break
-                            else:
-                                self.projects_to_use.append(project)
-                    '''
-                    # else:
-                    #     print("hey this item doesn't exist: " + added_item)
         else:
             raise Exception("No projects were added to generate for")
 
 
 class BaseInfo:
-    def __init__(self, platform_list: tuple):
-        self.platform_list = platform_list
-        self.project_list = {}
-        self.unsorted_projects = {}
+    def __init__(self):
+        self._projects_all = {}
+        self.projects = {}  # maybe remove?
         self.groups = {}
-        self.info_list = [BaseInfoPlatform(self, platform) for platform in platform_list]
+        # maybe add something for archs?
+        self.info_list = [BaseInfoPlatform(self, platform) for platform in args.platforms]
         
         self.project_hashes = {}
         self.project_dependencies = {}
+        
+    def finish_parsing(self):
+        [info_plat.init_args() for info_plat in self.info_list]
+        self._prepare_projects()
 
-    def get_base_info(self, platform: Enum) -> BaseInfoPlatform:
-        if platform in Platform:
-            return self.get_base_info_plat_name(get_platform_name(platform))
+    # this probably shouldn't be used, use below instead and rename to this
+    def _prepare_projects(self) -> tuple:
+        self.projects = {}  # dict keeps order, set doesn't as of 3.8, both faster than lists
 
-    def get_base_info_plat_name(self, platform_name: Enum) -> BaseInfoPlatform:
+        unwanted_projects = {}
+        remove_list = []
+        add_list = []
+        
+        def add_item(item_list: list, _item: str):
+            if check_file_path_glob(_item):
+                item_list.extend(glob.glob(_item))
+            else:
+                item_list.append(_item)
+
+        [add_item(add_list, item) for item in args.add]
+        [add_item(remove_list, item) for item in args.remove]
+        [add_list.remove(item) for item in remove_list if item in add_list]
+        
         for base_info in self.info_list:
-            if base_info.platform == platform_name:
-                return base_info
+            base_info.setup_wanted_projects(add_list, remove_list, unwanted_projects.copy())
+            for project in base_info.projects:
+                if project not in self.projects:
+                    self.projects[project] = None
+        self.projects = tuple(self.projects.keys())
+        return self.projects
+    
+    def add_project(self, project_name: str) -> ProjectDefinition:
+        if project_name in self._projects_all:
+            project_def = self._projects_all[project_name]
+        else:
+            project_def = ProjectDefinition(project_name)
+            self._projects_all[project_name] = project_def
+        return project_def
+
+    def get_base_info(self, platform: Platform) -> BaseInfoPlatform:
+        if platform in Platform:
+            for base_info in self.info_list:
+                if base_info.platform == platform:
+                    return base_info
 
     def get_configs(self) -> list:
         configurations = set()
         [configurations.update(info.configurations) for info in self.info_list]
         return list(configurations)
-
-    # get all the _passes the user wants (this is probably the worst part in this whole project)
-    def get_wanted_projects(self) -> tuple:
-        self.project_list = {}  # dict keeps order, set doesn't as of 3.8, both faster than lists
-        for base_info in self.info_list:
-            base_info.setup_wanted_projects()
-            for project in base_info.projects_to_use:
-                if project not in self.project_list:
-                    self.project_list[project] = None
-        self.project_list = tuple(self.project_list.keys())
-        return self.project_list
     
-    def get_wanted_projects_plat(self, *platforms) -> tuple:
+    def get_projects(self, *platforms) -> tuple:
         project_list = {}  # dict keeps order, set doesn't as of 3.8, both faster than lists
         for base_info in self.info_list:
             if base_info.platform not in platforms:
                 continue
-            base_info.setup_wanted_projects()
-            for project in base_info.projects_to_use:
+            for project in base_info.projects:
                 if project not in project_list:
                     project_list[project] = None
         project_list = tuple(project_list.keys())
         return project_list
     
-    def add_project_dependencies(self, project_script: str, platform_list: list, dependencies: list):
+    def add_project_dependencies(self, project_script: str, dependencies: list):
         self.project_dependencies[project_script] = dependencies  # might remove
         for base_info in self.info_list:
-            if base_info.platform in platform_list:
-                base_info.project_dependencies[project_script] = dependencies
+            # if base_info.platform in args.platforms:  # what is this needed for again?
+            base_info.project_dependencies[project_script] = dependencies
     
-    def get_project_dependencies_plat(self, *platforms) -> dict:
+    def get_project_dependencies(self, *platforms) -> dict:
         all_dependencies = {}
         for base_info in self.info_list:
             if base_info.platform in platforms:
                 all_dependencies.update(base_info.project_dependencies)
         return all_dependencies
     
-    def get_hashes_plat(self, *platforms) -> dict:
+    def get_hashes(self, *platforms) -> dict:
         all_hashes = {}
         for base_info in self.info_list:
             if base_info.platform in platforms:
-                for project in base_info.projects_to_use:
+                for project in base_info.projects:
                     for script in project.script_list:
                         if script in self.project_hashes:
                             all_hashes[script] = self.project_hashes[script]
@@ -282,8 +303,8 @@ class Parser:
     # TODO: bug discovered with this,
     #  if i include the groups before the base_info, it won't add any base_info
     # def parse_base_settings(self, base_file_path: str, output_type: str, platform: Enum) -> BaseInfo:
-    def parse_base_info(self, base_file_path: str, platform_list: tuple) -> BaseInfo:
-        info = BaseInfo(platform_list)
+    def parse_base_info(self, base_file_path: str) -> BaseInfo:
+        info = BaseInfo()
 
         if base_file_path:
             if args.verbose:
@@ -296,27 +317,12 @@ class Parser:
                 if args.verbose:
                     print("\nParsing: " + args.base_file)
 
-                [self._parse_base_info_include(info_plat, base_file) for info_plat in info.info_list]
+                [self._parse_base_info_recurse(info_plat, base_file) for info_plat in info.info_list]
 
-        [self._parse_base_info_args(info_plat) for info_plat in info.info_list]
-
-        info.get_wanted_projects()
+        info.finish_parsing()
         return info
-
-    def _parse_base_info_args(self, info: BaseInfoPlatform) -> None:
-        for project_path in args.add:
-            if check_file_path_glob(project_path):
-                for found_file in glob.glob(project_path):
-                    self._add_project_base(info, os.path.splitext(os.path.basename(found_file))[0], found_file)
-            elif os.path.isfile(project_path):
-                self._add_project_base(info, os.path.splitext(os.path.basename(project_path))[0], project_path)
-            elif not info.is_project_added(project_path) and project_path not in info.shared.groups:
-                print("Project, Group, or File does not exist: " + project_path)
-
-        if not info.configurations:
-            info.configurations.append("Default")
     
-    def _parse_base_info_include(self, info: BaseInfoPlatform, base_file: QPCBlockBase, include_dir: str = "") -> None:
+    def _parse_base_info_recurse(self, info: BaseInfoPlatform, base_file: QPCBlockBase, include_dir: str = "") -> None:
         for project_block in base_file:
         
             if not project_block.solve_condition(info.macros):
@@ -336,7 +342,7 @@ class Parser:
                     if dependency.values and dependency.solve_condition(info.macros):
                         info.dependency_dict[dependency.key] = temp_dir + dependency.values[0]
                         if temp_dir:
-                            info.dependency_dict_unfixed[dependency.values[0]] = dependency.key
+                            info.dependency_dict_original[dependency.values[0]] = dependency.key
 
             elif not project_block.values:
                 continue
@@ -368,7 +374,7 @@ class Parser:
                     if args.verbose:
                         print("Parsing... ")
                 
-                    self._parse_base_info_include(info, include_file, new_include_dir)
+                    self._parse_base_info_recurse(info, include_file, new_include_dir)
                 except FileNotFoundError:
                     project_block.warning("File Does Not Exist: ")
                     
@@ -387,37 +393,20 @@ class Parser:
                 project_group = ProjectGroup(group)
                 info.shared.groups[project_group.name] = project_group
             self._parse_project_group_items(project_group, info, group_block, [])
-
+            
     @staticmethod
-    def _add_project_base(info: BaseInfoPlatform, project_name: str, *project_paths) -> None:
-        # TODO: check if script path is already used
-        if project_name in info.shared.unsorted_projects:
-            project_def = info.shared.unsorted_projects[project_name]
-        else:
-            project_def = ProjectDefinition(project_name)
-            info.shared.unsorted_projects[project_name] = project_def
-        project_def.platforms.add(info.platform)
-
-        # could have values next to it as well now
-        for script_path in project_paths:
-            script_path = replace_macros(script_path, info.macros)
-            if not project_def.add_script(script_path) and not args.hide_warnings:
-                print("Script does not exist: " + script_path)
-
-        info.add_project(project_def)
-                
-    def _base_project_define(self, block: QPCBlock, info: BaseInfoPlatform, include_dir: str = ""):
+    def _base_project_define(block: QPCBlock, info: BaseInfoPlatform, include_dir: str = ""):
         if include_dir:
             include_dir += "/"
         scripts = [include_dir + replace_macros(item.key, info.macros) for item in block.items if item.solve_condition(info.macros)]
         scripts += [include_dir + replace_macros(script, info.macros) for script in block.values[1:]]
-        self._add_project_base(info, block.values[0], *scripts)
+        info.add_project(block.values[0], *scripts)
 
     @staticmethod
     def _check_plat_condition(condition: str) -> bool:
         cond = condition.lower()
-        return PlatformName.WINDOWS.name.lower() in cond or PlatformName.LINUX.name.lower() in cond or \
-            PlatformName.POSIX.name.lower() in cond or PlatformName.MACOS.name.lower() in cond
+        if "windows" in cond or "linux" in cond or "macos" in cond or "posix" in cond:
+            return True
     
     def _parse_project_group_items(self, project_group: ProjectGroup, info: BaseInfoPlatform,
                                    project_block: QPCBlock, folder_list: list) -> None:
@@ -429,10 +418,10 @@ class Parser:
                     self._parse_project_group_items(project_group, info, item, folder_list)
                     folder_list.remove(item.values[0])
                 else:
-                    project_group.add_project(item.key, folder_list, info.shared.unsorted_projects)
+                    info.add_project_to_group(item.key, project_group, folder_list)
+                    # project_group.add_project(item.key, folder_list, info.shared.unsorted_projects)
     
-    def parse_project(self, project_def: ProjectDefinition, project_script: str,
-                      info: BaseInfo, generator_list: list, platform_dict: dict) -> ProjectContainer:
+    def parse_project(self, project_def: ProjectDefinition, project_script: str, info: BaseInfo, generator_list: list) -> ProjectContainer:
         if args.time:
             start_time = perf_counter()
         else:
@@ -446,7 +435,7 @@ class Parser:
             return
 
         project_name = os.path.splitext(project_filename)[0]
-        project_container = ProjectContainer(project_name, project_script, info, project_def, generator_list, platform_dict)
+        project_container = ProjectContainer(project_name, project_script, info, project_def, generator_list)
         
         for project_pass in project_container._passes:
             project_pass.hash_list[project_filename] = qpc_hash.make_hash(project_filename)
@@ -463,7 +452,7 @@ class Parser:
             
         return project_container
     
-    def _parse_project(self, project_file: QPCBlockBase, project: ProjectBase, indent: str = "") -> None:
+    def _parse_project(self, project_file: QPCBlockBase, project: ProjectPass, indent: str = "") -> None:
         for project_block in project_file:
             if project_block.solve_condition(project.macros):
             
@@ -498,7 +487,7 @@ class Parser:
                 elif not args.hide_warnings:
                     project_block.warning("Unknown key: ")
     
-    def _include_file(self, include_path: str, project: ProjectBase, project_path: str, indent: str) -> QPCBlockBase:
+    def _include_file(self, include_path: str, project: ProjectPass, project_path: str, indent: str) -> QPCBlockBase:
         project.hash_list[include_path] = qpc_hash.make_hash(include_path)
         include_file = self.read_file(include_path)
     
@@ -511,7 +500,7 @@ class Parser:
     
         return include_file
     
-    def _parse_files(self, files_block: QPCBlock, project: ProjectBase, folder_list: list) -> None:
+    def _parse_files(self, files_block: QPCBlock, project: ProjectPass, folder_list: list) -> None:
         if files_block.solve_condition(project.macros):
             for block in files_block.items:
                 if not block.solve_condition(project.macros):
@@ -534,7 +523,7 @@ class Parser:
                                 self._source_file(block, project, file_path)
                        
     @staticmethod
-    def _source_file(files_block: QPCBlock, project: ProjectBase, file_path: str):
+    def _source_file(files_block: QPCBlock, project: ProjectPass, file_path: str):
         source_file = project.get_source_file(file_path)
         if not source_file:
             return
@@ -555,14 +544,10 @@ class Parser:
                         if group_block.solve_condition(project.macros):
                             for option_block in group_block.items:
                                 if option_block.solve_condition(project.macros):
-                                    source_file.compiler.parse_option(project.macros,
-                                                                      option_block)
+                                    source_file.compiler.parse_option(project.macros, option_block)
                 else:
                     # new, cleaner way, just assume it's compiler
                     source_file.compiler.parse_option(project.macros, config_block)
-    
-    def get_parsed_projects(self) -> list:
-        pass
 
     def read_file(self, script_path: str) -> QPCBlockBase:
         if script_path in self.read_files:
@@ -577,52 +562,10 @@ class Parser:
     
     # awful
     @staticmethod
-    def _parse_config(project_block: QPCBlock, project: ProjectBase) -> None:
+    def _parse_config(project_block: QPCBlock, project: ProjectPass) -> None:
         if project_block.solve_condition(project.macros):
             for group_block in project_block.items:
                 if group_block.solve_condition(project.macros):
                     for option_block in group_block.items:
                         if option_block.solve_condition(project.macros):
                             project.config.parse_config_option(group_block, option_block)
-
-    # gets everything that's the same across all project _passes, and puts them into container.shared
-    def _merge_project_passes(self, container: ProjectContainer) -> None:
-        macros = []
-        configs = []
-        files = []
-        source_files = []
-        # dependencies = []
-        
-        for proj_pass in container._passes:
-            macros.append(proj_pass.macros)
-            configs.append(proj_pass.config)
-            files.append(proj_pass.files)
-            source_files.append(proj_pass.source_files)
-            # source_files.append(proj_pass.dependencies)
-            
-        self._compare_configs(container, configs)
-        
-    def _compare_configs(self, container: ProjectContainer, configs: list) -> None:
-        general = []
-        compiler = []
-        linker = []
-        pre_build = []
-        pre_link = []
-        post_build = []
-    
-        for config in configs:
-            general.append(config.general)
-            compiler.append(config.compiler)
-            linker.append(config.linker)
-            pre_build.append(config.pre_build)
-            pre_link.append(config.pre_link)
-            post_build.append(config.post_build)
-            
-        self._compare_config_general(container, general)
-        pass
-        
-    def _compare_config_general(self, container: ProjectContainer, general_list: list) -> None:
-        for general in general_list:
-            test = all()
-            break
-        pass

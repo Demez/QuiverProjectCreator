@@ -1,5 +1,6 @@
 import sys
 import os
+from platform import machine
 from enum import Enum, auto, EnumMeta
 from time import perf_counter
 
@@ -19,6 +20,29 @@ def timer_diff(start_time: float) -> str:
 def post_args_init():
     global args
     from qpc_args import args
+    
+    
+class Arch(Enum):
+    AMD64 = auto(),
+    I386 = auto(),
+    ARM = auto(),
+    ARM64 = auto(),
+    # POWER10 = auto(),
+    # POWER9 = auto(),
+
+
+class Platform(Enum):
+    WINDOWS = auto(),
+    LINUX = auto(),
+    MACOS = auto(),
+    
+    
+# architectures the platform is on
+PLATFORM_ARCHS = {
+    Platform.WINDOWS:   {Arch.I386, Arch.AMD64, Arch.ARM, Arch.ARM64},
+    Platform.LINUX:     {Arch.I386, Arch.AMD64, Arch.ARM, Arch.ARM64},
+    Platform.MACOS:     {Arch.AMD64},
+}
 
 
 class BaseProjectGenerator:
@@ -28,7 +52,7 @@ class BaseProjectGenerator:
         self.path = None
         self.id = None
         self._platforms = []
-        self._compilers = []
+        self._architectures = []
         self._uses_folders = False
         self._uses_master_file = False
         self._macro = ""
@@ -60,12 +84,24 @@ class BaseProjectGenerator:
     def _get_passes(self, project) -> list:
         return project.get_passes(self.id)
     
-    def _add_platform(self, platform: Enum) -> None:
+    def _add_platform(self, platform: Platform) -> None:
         if platform not in Platform:
             raise Exception(f"Generator \"{self.name}\" tried adding an invalid platform: {platform.name}")
         elif platform not in self._platforms:
             self._platforms.append(platform)
-            
+    
+    def _add_architecture(self, architecture: Arch) -> None:
+        if architecture not in Arch:
+            raise Exception(f"Generator \"{self.name}\" tried adding an invalid platform: {architecture.name}")
+        elif architecture not in self._architectures:
+            self._architectures.append(architecture)
+    
+    def _add_architectures(self, *architectures) -> None:
+        [self._add_architecture(arch) for arch in architectures]
+    
+    def _add_platforms(self, *platforms) -> None:
+        [self._add_platform(platform) for platform in platforms]
+        
     def _set_project_folders(self, uses_project_folders: bool) -> None:
         self._uses_folders = uses_project_folders if type(uses_project_folders) == bool else self._uses_folders
     
@@ -74,10 +110,6 @@ class BaseProjectGenerator:
     
     def _set_macro(self, macro: str) -> None:
         self._macro = macro
-    
-    # will need to move Compiler enum class here
-    def _add_compiler(self, compiler: Enum) -> None:
-        pass
 
     def get_macro(self) -> str:
         # return {"$" + self._macro: "1"} if self._macro else {}
@@ -91,10 +123,6 @@ class BaseProjectGenerator:
     
     def get_supported_platforms(self) -> list:
         return self._platforms
-    
-    # unused currently
-    def get_supported_compilers(self) -> list:
-        return self._compilers
     
     def create_project(self, project_list) -> None:
         pass
@@ -110,53 +138,36 @@ class BaseProjectGenerator:
         print(f'Warning: Generator "{self.name}" doesn\'t override get_master_file_path but has _set_generate_master_file set to True')
         return ""
     
-    def create_master_file(self, settings, master_file_path: str, platform_dict: dict) -> str:
+    def create_master_file(self, settings, master_file_path: str) -> str:
         # return file name or abspath or whatever
         pass
 
     def does_master_file_exist(self, master_file_path: str) -> bool:
         return True
+    
 
-
-class Platform(Enum):
-    WIN32 = auto(),
-    WIN64 = auto(),
-    LINUX32 = auto(),
-    LINUX64 = auto(),
-    MACOS = auto()
-
-
-# really ugly and awful
-class PlatformName(Enum):
-    WINDOWS = auto(),
-    POSIX = auto(),
-    LINUX = auto(),
-    MACOS = auto()
-
-
-# BAD
-PLATFORM_DICT = {
-    PlatformName.WINDOWS:          {Platform.WIN32, Platform.WIN64},
-    PlatformName.LINUX:            {Platform.LINUX32, Platform.LINUX64},
-    PlatformName.MACOS:            {Platform.MACOS},
-}
-
-
-def get_platform_name(platform: Enum) -> Enum:
-    for platform_name in PLATFORM_DICT:
-        if platform in PLATFORM_DICT[platform_name]:
-            return platform_name
-
-
-def get_default_platforms() -> tuple:
+def get_default_platform() -> Platform:
     if sys.platform == "win32":
-        return Platform.WIN32, Platform.WIN64
+        return Platform.WINDOWS
     
     elif sys.platform.startswith("linux"):
-        return Platform.LINUX32, Platform.LINUX64
+        return Platform.LINUX
     
     elif sys.platform == "darwin":
-        return Platform.MACOS,
+        return Platform.MACOS
+    
+
+def get_default_archs() -> tuple:
+    if machine() in {"AMD64", "x86_64"}:
+        return (Arch.I386, Arch.AMD64)
+    
+    # very rare
+    elif machine() == "i386":
+        return (Arch.I386,)
+    
+    
+def is_arch_64bit(arch: Arch) -> bool:
+    return arch in {Arch.AMD64, Arch.ARM64}
 
 
 # os.path.normpath is not doing this on linux for me, fun
@@ -198,21 +209,10 @@ def check_file_path_glob(file_path: str) -> bool:
 
 
 def create_directory(directory: str):
-    try:
+    if not os.path.isdir(directory):
         os.makedirs(directory)
         if args.verbose:
             print("Created Directory: " + directory)
-    except FileExistsError:
-        pass
-    except FileNotFoundError:
-        pass
-
-
-def add_dict_value(dictionary: dict, key, value_type: type):
-    try:
-        dictionary[key]
-    except KeyError:
-        dictionary[key] = value_type()
 
 
 def get_all_dict_values(d: dict):

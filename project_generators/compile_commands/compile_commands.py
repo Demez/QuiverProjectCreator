@@ -14,12 +14,7 @@ from ..shared import cmd_line_gen
 class CompileCommandsGenerator(BaseProjectGenerator):
     def __init__(self):
         super().__init__("compile_commands.json")
-        self._add_platform(Platform.WIN32)
-        self._add_platform(Platform.WIN64)
-        self._add_platform(Platform.LINUX32)
-        self._add_platform(Platform.LINUX64)
-        self._add_platform(Platform.MACOS)
-        # self._set_generate_master_file(True)
+        self._add_platforms(Platform.WINDOWS, Platform.LINUX, Platform.MACOS)
         
         self.cmd_gen = cmd_line_gen.CommandLineGen()
         self.commands_list = {}
@@ -49,19 +44,18 @@ class CompileCommandsGenerator(BaseProjectGenerator):
 
         print("Adding to Compile Commands: " + project.file_name)
         
-        for project_pass in project_passes:
-            self.cmd_gen.set_mode(project_pass.config.general.compiler)
-            label = f"{project_pass.config_name.lower()}_{project_pass.platform.name.lower()}"
+        for proj_pass in project_passes:
+            self.cmd_gen.set_mode(proj_pass.config.general.compiler)
+            label = f"{proj_pass.config_name.lower()}_{proj_pass.platform.name.lower()}_{proj_pass.arch.name.lower()}"
             if label not in self.all_files:
                 self.all_files[label] = set()
             if label not in self.commands_list:
                 self.commands_list[label] = []
                 
-            all_files = project_pass.source_files
-            for file in all_files:
+            for file in proj_pass.source_files:
                 if file not in self.all_files[label]:
                     self.all_files[label].add(file)
-                    self.commands_list[label].append(self.handle_file(file, project_pass))
+                    self.commands_list[label].append(self.handle_file(file, proj_pass))
             
     def handle_file(self, file: str, project: ProjectPass) -> dict:
         file_dict = {

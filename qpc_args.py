@@ -4,7 +4,7 @@ import argparse
 import shutil
 from enum import Enum, auto, EnumMeta
 import glob
-from qpc_base import Platform, get_default_platforms
+from qpc_base import Platform, Arch, get_default_platform, get_default_archs
 
 
 args = argparse.Namespace()
@@ -14,6 +14,7 @@ DEFAULT_BASEFILE = "_qpc_scripts/_default.qpc_base"
 # this is here so i can check arguments globally across files
 def parse_args(generators: list) -> None:
     platforms = [platform.name.lower() for platform in Platform]
+    archs = [arch.name.lower() for arch in Arch]
 
     cmd_parser = argparse.ArgumentParser()
 
@@ -27,7 +28,7 @@ def parse_args(generators: list) -> None:
     
     # TODO: test this
     # cmd_parser.add_argument("--projectdir", action="store_true",
-    #                         help="Output project files based on PROJECT_DIR macro, relative to root dir probably")
+    #                         help="Output container files based on PROJECT_DIR macro, relative to root dir probably")
 
     cmd_parser.add_argument("--time", "-t", action="store_true", help="Print the time taken to parse")
     cmd_parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose console output")
@@ -38,8 +39,10 @@ def parse_args(generators: list) -> None:
     cmd_parser.add_argument("--skipprojects", "-sp", dest="skip_projects", action="store_true", help="Don't generate projects")
 
     cmd_parser.add_argument("--configs", "-c", nargs="+", help="Select configurations, added to configs set in base files")
-    cmd_parser.add_argument("--platforms", "-p", nargs="+", default=get_default_platforms(), choices=platforms,
+    cmd_parser.add_argument("--platforms", "-p", nargs="+", default=(get_default_platform(),), choices=platforms,
                             help="Select platforms to generate for instead of the default")
+    cmd_parser.add_argument("--archs", "-ar", nargs="+", default=get_default_archs(), choices=archs,
+                            help="Select architectures to generate for instead of the default")
     cmd_parser.add_argument("--generators", "-g", nargs="+", default=(), choices=generators, help="Project types to generate")
     cmd_parser.add_argument("--add", "-a", nargs="+", default=(), help="Add projects or groups to generate")
     cmd_parser.add_argument("--remove", "-r", default=(), nargs="+", help="Remove projects or groups from generating")
@@ -67,6 +70,7 @@ def parse_args(generators: list) -> None:
         os.path.normpath(args.root_dir + os.sep + args.out_dir)
 
     args.platforms = _convert_to_enum(args.platforms, Platform)
+    args.archs = _convert_to_enum(args.archs, Arch)
 
 
 # could just make a dictionary, where keys are enums and values are your mom?

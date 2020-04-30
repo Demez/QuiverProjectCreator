@@ -2,10 +2,10 @@ import sys
 import os
 from enum import Enum
 
-# from qpc_args import args
+from qpc_args import args
 import qpc_hash
 from project_generators.shared.cmd_line_gen import get_compiler
-from qpc_base import BaseProjectGenerator, Platform, PlatformName
+from qpc_base import BaseProjectGenerator, Platform, Arch, is_arch_64bit
 from qpc_project import ConfigType, Language, ProjectContainer, ProjectPass, Configuration
 from qpc_parser import BaseInfo
 
@@ -26,9 +26,8 @@ MAKEFILE_EXT = ".mak"
 class MakefileGenerator(BaseProjectGenerator):
     def __init__(self):
         super().__init__("Makefile")
-        self._add_platform(Platform.LINUX32)
-        self._add_platform(Platform.LINUX64)
-        self._add_platform(Platform.MACOS)
+        self._add_platforms(Platform.LINUX, Platform.MACOS)
+        self._add_architectures(Arch.I386, Arch.AMD64, Arch.ARM, Arch.ARM64)
         self._set_generate_master_file(True)
 
     def create_project(self, project: ProjectContainer) -> None:
@@ -53,12 +52,12 @@ class MakefileGenerator(BaseProjectGenerator):
     def get_master_file_path(self, master_file_path: str) -> str:
         return master_file_path + MAKEFILE_EXT
 
-    def create_master_file(self, info: BaseInfo, master_file_path: str, platform_dict: dict) -> None:
+    def create_master_file(self, info: BaseInfo, master_file_path: str) -> None:
         print("Creating Master File: " + master_file_path)
 
         out_dir_dict = {}
         dependency_dict = {}
-        wanted_projects = info.get_wanted_projects_plat(PlatformName.LINUX, PlatformName.MACOS)
+        wanted_projects = info.get_projects(Platform.LINUX, Platform.MACOS)
         for project_def in wanted_projects:
             for qpc_path in project_def.script_list:
                 out_dir = qpc_hash.get_out_dir(info.project_hashes[qpc_path])
@@ -66,16 +65,16 @@ class MakefileGenerator(BaseProjectGenerator):
                     out_dir_dict[qpc_path] = os.path.relpath(out_dir)
                     dependency_dict[qpc_path] = info.project_dependencies[qpc_path]
 
-        # why
-        platform = None
-        for plat in [i for v in platform_dict.values() for i in v]:
-            if plat in self._platforms and not platform or \
-                    plat.name.endswith("64") and platform and platform.name.endswith("32"):
-                platform = plat
+        # this chooses 64 bit architectures over 32 bit for a default arch
+        architecture = None
+        for arch in args.archs:
+            if arch in self._architectures and not architecture or \
+                    is_arch_64bit(arch) and architecture and not is_arch_64bit(architecture):
+                architecture = arch
 
         master_file = f"""#!/usr/bin/make -f
 
-SETTINGS = PLATFORM={platform.name.lower()} CONFIG={info.get_configs()[0]}
+SETTINGS = ARCH={architecture.name.lower()} CONFIG={info.get_configs()[0]}
 
 all:
 """
@@ -270,27 +269,29 @@ def gen_project_config_definitions(project: ProjectPass) -> str:
     makefile += "\n# MACROS:\n\n"
 
     makefile += "OUTNAME = "
-    makefile += project.config.general.out_name if project.config.general.out_name else project.project.file_name
+    makefile += project.config.general.out_name if project.config.general.out_name else project.container.file_name
     
     makefile += gen_project_targets(project.config)
     
     makefile += gen_clean_target()
     
     makefile += gen_dependency_tree(objects, headers, project.config)
-    # print(project.config)
+    # print(container.config)
     
     makefile += gen_script_targets(project.config)
     
     return make_ifeq(project.config_name, "$(CONFIG)",
-                     make_ifeq(project.platform.name.lower(), "$(PLATFORM)", makefile))
+                     make_ifeq(project.arch.name.lower(), "$(ARCH)", makefile))
 
 
 def get_default_platform(project: ProjectContainer) -> str:
-    platforms = project.get_platforms()
-    if Platform.LINUX64 in platforms:
-        return "linux64"
+    archs = project.get_archs()
+    if Arch.AMD64 in archs:
+        return "amd64"
+    if Arch.ARM64 in archs:
+        return "arm64"
     else:
-        return platforms[0].name.lower()
+        return archs[0].name.lower()
 
 
 def gen_defines(project: ProjectContainer, compiler: str, configs: list) -> str:
@@ -311,7 +312,7 @@ def gen_defines(project: ProjectContainer, compiler: str, configs: list) -> str:
 # / 　 づ  
 
 # don't mess with this, might break stuff
-PLATFORM = {get_default_platform(project)}
+ARCH = {get_default_platform(project)}
 # change the config with CONFIG=[{','.join(configs)}] to make
 CONFIG = {configs[0]}
 # edit this in your QPC script configuration/general/compiler

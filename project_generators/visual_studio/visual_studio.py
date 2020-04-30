@@ -5,8 +5,8 @@ import qpc_hash
 import lxml.etree as et
 from time import perf_counter
 from qpc_args import args
-from qpc_base import BaseProjectGenerator, add_dict_value, Platform, PlatformName
-from qpc_project import PrecompiledHeader, ConfigType, Language, ProjectContainer, ProjectPass
+from qpc_base import BaseProjectGenerator, Platform, Arch
+from qpc_project import PrecompiledHeader, ConfigType, Language, ProjectContainer
 from qpc_parser import BaseInfo
 from enum import Enum
 
@@ -18,8 +18,8 @@ def timer_diff(start_time: float) -> str:
 class VisualStudioGenerator(BaseProjectGenerator):
     def __init__(self):
         super().__init__("Visual Studio")
-        self._add_platform(Platform.WIN32)
-        self._add_platform(Platform.WIN64)
+        self._add_platform(Platform.WINDOWS)
+        self._add_architectures(Arch.I386, Arch.AMD64)
         self._set_project_folders(True)
         self._set_generate_master_file(True)
         self._set_macro("VISUAL_STUDIO")
@@ -96,7 +96,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
     def get_master_file_path(self, master_file_path: str) -> str:
         return master_file_path + ".sln"
     
-    def create_master_file(self, info: BaseInfo, master_file_path: str, platform_dict: dict) -> None:
+    def create_master_file(self, info: BaseInfo, master_file_path: str) -> None:
         print("Creating Solution File: " + master_file_path)
     
         # slow?
@@ -105,7 +105,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
             if qpc_path in info.project_dependencies:
                 self.out_dir_dict[qpc_path] = qpc_hash.get_out_dir(hash_path)
                 
-        info_win = info.get_base_info_plat_name(PlatformName.WINDOWS)
+        info_win = info.get_base_info(Platform.WINDOWS)
     
         with open(master_file_path, "w", encoding="utf-8") as self.solution_file:
             write_solution_header(self.solution_file)
@@ -113,7 +113,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
             self.project_uuid_dict = {}
             self.project_folder_uuid = {}
             
-            [self.sln_project_def_loop(project_def, info) for project_def in info_win.projects_to_use]
+            [self.sln_project_def_loop(project_def, info) for project_def in info_win.projects]
         
             # Write the folders as base_info because vstudio dumb
             # might have to make this a project def, idk
@@ -123,15 +123,12 @@ class VisualStudioGenerator(BaseProjectGenerator):
         
             # Write the global stuff
             self.solution_file.write("Global\n")
-        
-            # config_plat_list = []
-            # for config in info.configurations:
-            #     for plat in args.platforms:
-            #         config_plat_list.append(config + "|" + convert_platform(plat))
             
-            config_plat_list = [config + "|" + convert_platform(plat)
-                                for plat in self._platforms
-                                for config in info.get_base_info(plat).configurations]
+            config_plat_list = []
+            for plat in self._platforms:
+                for config in info.get_base_info(plat).configurations:
+                    for arch in self._architectures:
+                        config_plat_list.append(config + "|" + convert_arch(arch))
         
             # SolutionConfigurationPlatforms
             sln_config_plat = {}
@@ -153,7 +150,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         
             # write the project folders
             global_folder_uuid_dict = {}
-            for project_def in info.project_list:
+            for project_def in info_win.projects:
                 if project_def.name not in self.project_uuid_dict:
                     continue
             
@@ -190,12 +187,9 @@ class VisualStudioGenerator(BaseProjectGenerator):
                 self.project_folder_uuid[folder] = make_uuid()
         
         for script_path in project_def.script_list:
-            try:
+            if script_path in self.out_dir_dict:
                 out_dir = self.out_dir_dict[script_path]
-            except KeyError:
-                continue
-            except Exception as F:
-                print(F)
+            else:
                 continue
             if out_dir is None:
                 continue
@@ -211,25 +205,25 @@ class VisualStudioGenerator(BaseProjectGenerator):
             
             project_name, project_uuid = get_name_and_uuid(vcxproj)
             
-            # shut
-            add_dict_value(self.project_uuid_dict, project_def.name, list)
+            if project_def.name not in self.project_uuid_dict:
+                self.project_uuid_dict[project_def.name] = []
             self.project_uuid_dict[project_def.name].append(project_uuid)
             
             sln_write_project_line(self.solution_file, project_name, vcxproj_path, self.cpp_uuid, project_uuid)
             
-            # TODO: add dependencies to the project class and then use that here
+            # TODO: add dependencies to the container class and then use that here
             #  and have a GetDependencies() function for if the hash check _passes
-            # write any project dependencies
+            # write any container dependencies
             uuid_deps = get_project_dependencies(info.project_hashes, info.project_dependencies[script_path])
             sln_write_section(self.solution_file, "ProjectDependencies", uuid_deps, True, True)
             
             self.solution_file.write("EndProject\n")
 
 
-def convert_platform(platform: Enum) -> str:
-    if platform == Platform.WIN32:
+def convert_arch(arch: Arch) -> str:
+    if arch == Arch.I386:
         return "Win32"
-    elif platform == Platform.WIN64:
+    elif arch == Arch.AMD64:
         return "x64"
 
 
@@ -237,8 +231,8 @@ def make_uuid():
     return f"{{{uuid.uuid4()}}}".upper()
 
 
-def make_conf_plat_cond(config: str, platform: Enum) -> str:
-    return f"'$(Configuration)|$(Platform)'=='{config}|{convert_platform(platform)}'"
+def make_conf_plat_cond(config: str, arch: Arch) -> str:
+    return f"'$(Configuration)|$(Platform)'=='{config}|{convert_arch(arch)}'"
 
 
 def create_vcxproj(project_list: ProjectContainer, project_passes: list):
@@ -283,7 +277,7 @@ def create_vcxproj(project_list: ProjectContainer, project_passes: list):
     
     # TODO: merge everything together, for now, just add a condition on each one lmao
     for project in project_passes:
-        condition = make_conf_plat_cond(project.config_name, project.platform)
+        condition = make_conf_plat_cond(project.config_name, project.arch)
 
         # maybe do the same below for this?
         create_source_file_item_group(project.source_files, vcxproj, condition)
@@ -315,13 +309,10 @@ def setup_project_configurations(vcxproj, project_passes: list):
     
     for project in project_passes:
         project_configuration = et.SubElement(item_group, "ProjectConfiguration")
-        project_configuration.set("Include", project.config_name + "|" + convert_platform(project.platform))
+        project_configuration.set("Include", project.config_name + "|" + convert_arch(project.arch))
         
-        configuration = et.SubElement(project_configuration, "Configuration")
-        configuration.text = project.config_name
-        
-        elem_platform = et.SubElement(project_configuration, "Platform")
-        elem_platform.text = convert_platform(project.platform)
+        et.SubElement(project_configuration, "Configuration").text = project.config_name
+        et.SubElement(project_configuration, "Platform").text = convert_arch(project.arch)
 
 
 def setup_globals(vcxproj, project_list):
@@ -348,7 +339,7 @@ COMPILER_DICT = {
 def setup_property_group_configurations(vcxproj, project_passes: list):
     for project in project_passes:
         property_group = et.SubElement(vcxproj, "PropertyGroup")
-        property_group.set("Condition", make_conf_plat_cond(project.config_name, project.platform))
+        property_group.set("Condition", make_conf_plat_cond(project.config_name, project.arch))
         property_group.set("Label", "Configuration")
         
         config = project.config
@@ -403,7 +394,7 @@ def setup_general_properties(vcxproj, project_passes: list):
     et.SubElement(property_group, "_ProjectFileVersion").text = "10.0.30319.1"
     
     for project in project_passes:
-        condition = make_conf_plat_cond(project.config_name, project.platform)
+        condition = make_conf_plat_cond(project.config_name, project.arch)
         config = project.config
         
         property_group = et.SubElement(vcxproj, "PropertyGroup")
@@ -415,12 +406,7 @@ def setup_general_properties(vcxproj, project_passes: list):
         int_dir = et.SubElement(property_group, "IntDir")
         int_dir.text = config.general.build_dir + os.sep
         
-        target_name = et.SubElement(property_group, "TargetName")
-        if config.general.out_name:
-            target_name.text = config.general.out_name
-        else:
-            # target_name.text = container.get_project_name()
-            target_name.text = project.project.file_name
+        et.SubElement(property_group, "TargetName").text = config.general.out_name
         
         target_ext = et.SubElement(property_group, "TargetExt")
         
@@ -450,7 +436,7 @@ def setup_general_properties(vcxproj, project_passes: list):
 
 def setup_item_definition_groups(vcxproj: et.Element, project_passes: list):
     for project in project_passes:
-        condition = make_conf_plat_cond(project.config_name, project.platform)
+        condition = make_conf_plat_cond(project.config_name, project.arch)
         cfg = project.config
         
         item_def_group = et.SubElement(vcxproj, "ItemDefinitionGroup")
@@ -681,7 +667,7 @@ def create_file_item_groups(file_type, file_dict, parent_elem, condition):
             elem_file.set("Include", file_path)
 
 
-# TODO: maybe move this to the project class and rename to GetFilesByExt?
+# TODO: maybe move this to the project class and rename to get_files_by_ext?
 def get_project_files(project_files, valid_exts=None, invalid_exts=None):
     if not valid_exts:
         valid_exts = ()
@@ -793,7 +779,7 @@ def create_vcxproj_user(project: ProjectContainer, project_passes: list) -> et.E
         vcxproj.set("xmlns", "http://schemas.microsoft.com/developer/msbuild/2003")
     
     for project_pass in project_passes:
-        condition = make_conf_plat_cond(project_pass.config_name, project_pass.platform)
+        condition = make_conf_plat_cond(project_pass.config_name, project_pass.arch)
         create_debug_group(vcxproj, project_pass.config.debug, condition)
     
     return vcxproj

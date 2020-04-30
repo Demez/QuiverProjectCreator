@@ -9,7 +9,7 @@ import glob
 import qpc_hash
 from qpc_reader import solve_condition, read_file, QPCBlock
 from qpc_args import args, get_arg_macros
-from qpc_base import posix_path, norm_path, join_path, join_path_list, Platform, check_file_path_glob
+from qpc_base import posix_path, norm_path, Platform, Arch, PLATFORM_ARCHS, check_file_path_glob
 from enum import EnumMeta, Enum, auto
 from time import perf_counter
 
@@ -99,18 +99,49 @@ class SourceFile:
         self.compiler = ConfigCompiler()
 
 
-class ProjectBase:
-    def __init__(self, project):
-        self.project = project
+class ProjectPass:
+    # container is ProjectContainer, below this class
+    def __init__(self, container, config: str, platform: Platform, arch: Arch, gen_macro: str, gen_id: int):
+        self.config_name = config
+        self.platform = platform
+        self.arch = arch
+        self.base_info = container.base_info.get_base_info(platform)
+        
+        self.container = container
         self.config = Configuration(self)
         self.source_files = {}
         self.files = {}
         self.hash_list = {}
-        self.macros = project.macros.copy()
         self._glob_files = set()
+
+        self.macros = container.macros.copy()
+        self.macros.update({
+            **self.base_info.macros,
+            "$" + config.upper(): "1",  # this doesn't have to be uppercase, but it's mainly for consistency
+            "$" + platform.name: "1",
+            "$" + arch.name: "1",
+        })
+        
+        self.generators = set()
+        self.add_generator(gen_macro, gen_id)
         
         # testing of something similar to CustomBuildStep in vpc
-        self.build_events = set()
+        self.build_events = {}
+        
+    def check_pass(self, config: str, platform: Platform, arch: Arch, generator_macro: str, gen_id: int) -> bool:
+        # is this even setup right?
+        if self.config_name == config and self.platform == platform and self.arch == arch and gen_id in self.generators:
+            self.add_generator(generator_macro, gen_id)
+            return True
+        return False
+    
+    def add_generator(self, gen_macro: str, gen_id: int):
+        self.generators.add(gen_id)
+        if gen_macro:
+            self.macros.update({gen_macro: "1"})
+
+    def _convert_dependency_path(self, key: str) -> str:
+        return self.base_info.get_dependency_path(key)
     
     def add_macro(self, macro_name: str, macro_value: str = "") -> None:
         key_name = "$" + macro_name.upper()
@@ -191,14 +222,11 @@ class ProjectBase:
             elif not args.hide_warnings:
                 file_block.warning("Trying to remove a file that hasn't been added yet: " + file_path)
 
-    def _convert_dependency_path(self, key: str) -> str:
-        return key
-
     def add_dependency(self, qpc_path: str) -> None:
-        self.project.add_dependency(replace_macros(self._convert_dependency_path(qpc_path), self.macros))
+        self.container.add_dependency(replace_macros(self._convert_dependency_path(qpc_path), self.macros))
 
     def remove_dependency(self, qpc_path: str) -> None:
-        self.project.remove_dependency(replace_macros(self._convert_dependency_path(qpc_path), self.macros))
+        self.container.remove_dependency(replace_macros(self._convert_dependency_path(qpc_path), self.macros))
 
     def add_dependencies(self, *qpc_paths) -> None:
         [self.add_dependency(qpc_path) for qpc_path in qpc_paths]
@@ -263,35 +291,9 @@ class ProjectBase:
         return self._glob_files
 
 
-class ProjectPass(ProjectBase):
-    def __init__(self, container, config: str, platform_name: Enum, platform: Enum, gen_macro: str, gen_id: int):
-        self.config_name = config
-        self.platform = platform
-        self.base_info = container.base_info.get_base_info_plat_name(platform_name)
-        super().__init__(container)
-        self.macros.update({**self.base_info.macros, "$" + config.upper(): "1", "$" + platform.name.upper(): "1"})
-        self.generators = set()
-        self.add_generator(gen_macro, gen_id)
-            
-    def check_pass(self, config: str, platform: Enum, generator_macro: str, gen_id: int) -> bool:
-        if self.config_name == config and self.platform == platform and gen_id in self.generators:
-            self.add_generator(generator_macro, gen_id)
-            return True
-        return False
-    
-    def add_generator(self, gen_macro: str, gen_id: int):
-        self.generators.add(gen_id)
-        if gen_macro:
-            self.macros.update({gen_macro: "1"})
-
-    def _convert_dependency_path(self, key: str) -> str:
-        return self.base_info.get_dependency_path(key)
-
-
 class ProjectContainer:
     # base_info is BaseInfo from qpc_parser.py
-    def __init__(self, name: str, project_path: str, base_info, project_def: ProjectDefinition,
-                 generator_list: list, platform_dict: dict):
+    def __init__(self, name: str, project_path: str, base_info, project_def: ProjectDefinition, generator_list: list):
         self.file_name = name  # the actual file name
         self.project_path = project_path  # should use the macro instead tbh, might remove
         self.out_dir = os.path.split(project_path)[0]
@@ -318,18 +320,17 @@ class ProjectContainer:
 
         for generator, macro in generator_macros.items():
             generator_platforms = generator.get_supported_platforms()
-            for plat_name in project_def.platforms:
-                for config in base_info.get_base_info_plat_name(plat_name).configurations:
-                    for plat in platform_dict[plat_name]:
-                        if plat in generator_platforms:
-                            self.add_pass(config, plat_name, plat, macro, generator.id)
-                            
-        # self.shared = ProjectBase(self)
+            for platform in project_def.platforms:
+                if platform in generator_platforms:
+                    for config in base_info.get_base_info(platform).configurations:
+                        for arch in PLATFORM_ARCHS[platform]:
+                            if arch in args.archs:
+                                self.add_pass(config, platform, arch, macro, generator.id)
         
-    def add_pass(self, config: str, plat_name: Enum, plat: Enum, macro: str, gen_id: int):
+    def add_pass(self, config: str, plat: Platform, arch: Arch, macro: str, gen_id: int):
         # if not any existing passes without a generator macro
-        if not any(proj_pass.check_pass(config, plat, macro, gen_id) for proj_pass in self._passes):
-            self._passes.append(ProjectPass(self, config, plat_name, plat, macro, gen_id))
+        if not any(proj_pass.check_pass(config, plat, arch, macro, gen_id) for proj_pass in self._passes):
+            self._passes.append(ProjectPass(self, config, plat, arch, macro, gen_id))
             
     def get_all_passes(self) -> list:
         return self._passes
@@ -344,6 +345,11 @@ class ProjectContainer:
         platforms = set()
         [platforms.add(project_pass.platform) for project_pass in self._passes]
         return list(platforms)
+
+    def get_archs(self) -> list:
+        archs = set()
+        [archs.add(project_pass.arch) for project_pass in self._passes]
+        return list(archs)
     
     def get_hashes(self) -> dict:
         hash_dict = {}
@@ -422,13 +428,10 @@ class ProjectContainer:
 
 
 class Configuration:
-    def __init__(self, project: ProjectBase):
+    def __init__(self, project: ProjectPass):
         self._project = project
         self.debug = Debug()
-        if "platform" in project.__dict__:
-            self.general = General(project.platform)
-        else:
-            self.general = General(None)
+        self.general = General(project.container.file_name, project.platform)
         self.compiler = ConfigCompiler()
         self.linker = Linker()
         self.pre_build = []
@@ -481,10 +484,10 @@ def clean_path(string: str, macros: dict) -> str:
 
 
 class General:
-    def __init__(self, platform: Enum):
+    def __init__(self, file_name: str, platform: Platform):
         self.out_dir = None
         self.build_dir = None
-        self.out_name = None
+        self.out_name = file_name
 
         # i want to make these configuration options unaffected by config and platform macros,
         # and have it run before it goes through each config/platform
@@ -492,11 +495,7 @@ class General:
         # won't work, so im just leaving it as it is for now, hopefully i can get something better later on
         self.configuration_type = None
         self.language = None
-        
-        if platform in {Platform.WIN32, Platform.WIN64}:
-            self.compiler = "msvc"
-        else:
-            self.compiler = "gcc"
+        self.compiler = "msvc" if platform == Platform.WINDOWS else "gcc"
         
         self.default_include_directories = True
         self.default_library_directories = True
