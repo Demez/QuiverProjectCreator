@@ -95,12 +95,17 @@ MACRO_CONVERT = {
     "OUTLIBNAME": "OUT_LIB_NAME",
     "OUTDLLEXT": "OUT_DLL_EXT",
     "PROJECTNAME": "PROJECT_NAME",
+    "PROJNAME": "PROJECT_NAME",
     "LOADADDRESS_DEVELOPMENT": "LOADADDRESS_DEVELOPMENT",
     "LOADADDRESS_RETAIL": "LOADADDRESS_RETAIL",
     "PLATSUBDIR": "PLATFORM",
     
     "_DLL_EXT": "_BIN_EXT",
     "_EXE_EXT": "_APP_EXT",
+    
+    "OUTLIBCOMMONDIR": "LIBCOMMON",
+    
+    "$QUOTE": "\\\"",
 }
 
 IGNORE_CONFIG_GROUPS = {
@@ -204,78 +209,20 @@ OPTION_NAME_CONVERT_DICT = {
     "$gcc_extralinkerflags": "options",
 }
 
-OPTION_VALUE_CONVERT_DICT = {
-    "Application (.exe)": "application",
-    "Dynamic Library (.dll)": "dynamic_library",
-    "Dynamic Library (.xex)": "dynamic_library",
-    "Static Library (.lib)": "static_library",
-    
-    "Not Using Precompiled Headers": "none",
-    "Automatically Generate (/YX)": "create",
-    "Create Precompiled Header (/Yc)": "create",
-    "Create (/Yc)": "create",
-    "Use Precompiled Header (/Yu)": "use",
-    "Use (/Yu)": "use",
-    
-    "Compile as C Code (/TC)": "c",
-    "Compile as C++ Code (/TP)": "cpp",
-    
-    "TRUE": "true",
-    "True": "true",
-    "Yes": "true",
-    
-    "False": "false",
-    "No": "false",
-    
-    "v100": "msvc_100",
-    "v110": "msvc_110",
-    "v120": "msvc_120",
-    "v140": "msvc_140",
-    "v141": "msvc_141",
-    "v142": "msvc_142",
-    
-    "v120_xp": "msvc_120_xp",
-    "v140_xp": "msvc_140_xp",
-    
-    # preprocessor defs
-    "Use Multi-Byte Character Set": "MBCS",
-    "Use Unicode Character Set": "_MBCS",
-    "Not Set": "",
+OPTION_NAME_CONDITIONS = {
+    "$systemframeworks": "$MACOS",  # i think this is right?
+    "$systemlibraries": "$MACOS",
 }
 
-# TODO: do the same here in vstudio, but convert the other way around to vs2019 options
-#  and then search for that converted option value in all the options?
+# TODO: move all these into CONFIG_OPTION_CONVERT_DICT
 CMD_CONVERT = {
-    # preprocessor defs
-    # "Use Multi-Byte Character Set": "MBCS",
-    # "Use Unicode Character Set": "_MBCS",
-    
-    # commands
-    "C7 Compatible (/Z7)": "/Z7",
-    "Program Database (/Zi)": "/Zi",
-    "Program Database for Edit & Continue (/ZI)": "/ZI",
-    
     "Common Language RunTime Support (/clr)": "/clr",
     "Pure MSIL Common Language RunTime Support (/clr:pure)": "/clr:pure",
     "Safe MSIL Common Language RunTime Support (/clr:safe)": "/clr:safe",
     "Common Language RunTime Support, Old Syntax (/clr:oldSyntax)": "/clr:oldSyntax",
     
-    "Off: Turn Off All Warnings (/W0)": "/W0",
-    "Level 1 (/W1)": "/W1",
-    "Level 2 (/W2)": "/W2",
-    "Level 3 (/W3)": "/W3",
-    "Level 4 (/W4)": "/W4",
-    "EnableAllWarnings (/Wall)": "/Wall",
-    
     "No (/WX-)": "/WX-",
     "Yes (/WX)": "/WX",  # TODO: check if this is correct
-    
-    "Yes (/INCREMENTAL)": "/INCREMENTAL",
-    "No (/INCREMENTAL:NO)": "/INCREMENTAL:NO",
-    
-    "Yes (/NOLOGO)": "/NOLOGO",
-    "Yes (/nologo)": "/nologo",
-    "Yes (/Gy)": "/Gy",
     "Yes (/GF)": "/GF",
     "Yes (/Gm)": "/Gm",
     "Yes (/GR)": "/GR",
@@ -320,30 +267,11 @@ CMD_CONVERT = {
     "Both (/RTC1, equiv. to /RTCsu)": "/RTC1",
     "Both (/RTC1, equiv. to /RTCsu) (/RTC1)": "/RTC1",
     
-    "Multi-threaded (/MT)": "/MT",
-    "Multi-threaded Debug (/MTd)": "/MTd",
-    "Multi-threaded DLL (/MD)": "/MD",
-    "Multi-threaded Debug DLL (/MDd)": "/MDd",
-    
     "1 Byte (/Zp1)": "/Zp1",
     "2 Bytes (/Zp2)": "/Zp2",
     "4 Bytes (/Zp4)": "/Zp4",
     "8 Bytes (/Zp8)": "/Zp8",
     "16 Bytes (/Zp16)": "/Zp16",
-    
-    "Streaming SIMD Extensions (/arch:SSE)": "/arch:SSE",
-    "Streaming SIMD Extensions (/arch:SSE) (/arch:SSE)": "/arch:SSE",
-    "Streaming SIMD Extensions 2 (/arch:SSE2)": "/arch:SSE2",
-    "Streaming SIMD Extensions 2 (/arch:SSE2) (/arch:SSE2)": "/arch:SSE2",
-    
-    "Precise (/fp:precise)": "/fp:precise",
-    "Strict (/fp:strict)": "/fp:strict",
-    "Fast (/fp:fast)": "/fp:fast",
-    
-    # "Create Precompiled Header (/Yc)": "/Yc",
-    # "Create (/Yc)": "/Yc",
-    # "Use Precompiled Header (/Yu)": "/Yu",
-    # "Use (/Yu)": "/Yu",
     
     "Assembly-Only Listing (/FA)": "/FA",
     "Assembly With Machine Code (/FAc)": "/FAc",
@@ -356,28 +284,6 @@ CMD_CONVERT = {
     
     # skipping CompileAs, since language sets that
     
-    "Do Not Send Report (/errorReport:none)": "/errorReport:none",
-    "Prompt Immediately (/errorReport:prompt)": "/errorReport:prompt",
-    "Queue For Next Login (/errorReport:queue)": "/errorReport:queue",
-    "Send Automatically (/errorReport:send)": "/errorReport:send",
-    
-    "Do Not Send Report (/ERRORREPORT:NONE)": "/ERRORREPORT:NONE",
-    "Prompt Immediately (/ERRORREPORT:PROMPT)": "/ERRORREPORT:PROMPT",
-    "Queue For Next Login (/ERRORREPORT:QUEUE)": "/ERRORREPORT:QUEUE",
-    "Send Automatically (/ERRORREPORT:SEND)": "/ERRORREPORT:SEND",
-    
-    "MachineARM (/MACHINE:ARM)": "/MACHINE:ARM",
-    "MachineEBC (/MACHINE:EBC)": "/MACHINE:EBC",
-    "MachineIA64 (/MACHINE:IA64)": "/MACHINE:IA64",
-    "MachineMIPS (/MACHINE:MIPS)": "/MACHINE:MIPS",
-    "MachineMIPS16 (/MACHINE:MIPS16)": "/MACHINE:MIPS16",
-    "MachineMIPSFPU (/MACHINE:MIPSFPU)": "/MACHINE:MIPSFPU",
-    "MachineMIPSFPU16 (/MACHINE:MIPSFPU16)": "/MACHINE:MIPSFPU16",
-    "MachineSH4 (/MACHINE:SH4)": "/MACHINE:SH4",
-    "MachineTHUMB (/MACHINE:THUMB)": "/MACHINE:THUMB",
-    "MachineX64 (/MACHINE:X64)": "/MACHINE:X64",
-    "MachineX86 (/MACHINE:X86)": "/MACHINE:X86",
-    
     # skipping show progress
     
     "Enabled (/FORCE)": "/FORCE",
@@ -385,8 +291,8 @@ CMD_CONVERT = {
     "Undefined Symbol Only (/FORCE:UNRESOLVED)": "/FORCE:UNRESOLVED",
     
     "Enabled (/FUNCTIONPADMIN)": "/FUNCTIONPADMIN",
-    "X86 Image Only (/FUNCTIONPADMIN:5)": "/FUNCTIONPADMIN:5",
-    "X64 Image Only (/FUNCTIONPADMIN:6)": "/FUNCTIONPADMIN:6",
+    "I386 Image Only (/FUNCTIONPADMIN:5)": "/FUNCTIONPADMIN:5",
+    "AMD64 Image Only (/FUNCTIONPADMIN:6)": "/FUNCTIONPADMIN:6",
     "Itanium Image Only (/FUNCTIONPADMIN:16)": "/FUNCTIONPADMIN:16",
     
     "asInvoker (/level='asInvoker')": "/level='asInvoker'",
@@ -398,41 +304,15 @@ CMD_CONVERT = {
     "Runtime tracking and disable optimizations (/ASSEMBLYDEBUG)": "/ASSEMBLYDEBUG",
     "Yes (/ASSEMBLYDEBUG)": "/ASSEMBLYDEBUG",
     
-    "Console (/SUBSYSTEM:CONSOLE)": "/SUBSYSTEM:CONSOLE",
-    "Windows (/SUBSYSTEM:WINDOWS)": "/SUBSYSTEM:WINDOWS",
-    "Native (/SUBSYSTEM:NATIVE)": "/SUBSYSTEM:NATIVE",
-    "EFI Application (/SUBSYSTEM:EFI_APPLICATION)": "/SUBSYSTEM:EFI_APPLICATION",
-    "EFI Boot Service Driver (/SUBSYSTEM:EFI_BOOT_SERVICE_DRIVER)": "/SUBSYSTEM:EFI_BOOT_SERVICE_DRIVER",
-    "EFI ROM (/SUBSYSTEM:EFI_ROM)": "/SUBSYSTEM:EFI_ROM",
-    "EFI Runtime (/SUBSYSTEM:EFI_RUNTIME_DRIVER)": "/SUBSYSTEM:EFI_RUNTIME_DRIVER",
-    "WindowsCE (/SUBSYSTEM:WINDOWSCE)": "/SUBSYSTEM:WINDOWSCE",
-    "POSIX (/SUBSYSTEM:POSIX)": "/SUBSYSTEM:POSIX",
-    
-    "Do Not Support Addresses Larger Than 2 Gigabytes (/LARGEADDRESSAWARE:NO)": "/LARGEADDRESSAWARE:NO",
-    "No (/LARGEADDRESSAWARE:NO)": "/LARGEADDRESSAWARE:NO",
-    "Support Addresses Larger Than 2 Gigabytes (/LARGEADDRESSAWARE)": "/LARGEADDRESSAWARE",
-    "Yes (/LARGEADDRESSAWARE)": "/LARGEADDRESSAWARE",
-    
     "Driver (/DRIVER)": "/DRIVER",
     "Up Only (/DRIVER:UPONLY)": "/DRIVER:UPONLY",
     "WDM (/DRIVER:WDM)": "/DRIVER:WDM",
-    
-    "Do Not Remove Redundant COMDATs (/OPT:NOICF)": "/OPT:NOICF",
-    "No (/OPT:NOICF)": "/OPT:NOICF",
-    "Remove Redundant COMDATs (/OPT:ICF)": "/OPT:ICF",
-    "Yes (/OPT:ICF)": "/OPT:ICF",
-    "Eliminate Unreferenced Data (/OPT:REF)": "/OPT:REF",
     
     "Use Link Time Code Generation": "/ltcg",
     "Use Link Time Code Generation (/ltcg)": "/ltcg",
     "Profile Guided Optimization - Instrument (/ltcg:pginstrument)": "/ltcg:pginstrument",
     "Profile Guided Optimization - Optimize (/ltcg:pgoptimize)": "/ltcg:pgoptimize",
     "Profile Guided Optimization - Update (/ltcg:pgupdate)": "/ltcg:pgupdate",
-    
-    "Generate a relocation section (/FIXED:NO)": "/FIXED:NO",
-    "No (/FIXED:NO)": "/FIXED:NO",
-    "Image must be loaded at a fixed address (/FIXED)": "/FIXED",
-    "Yes (/FIXED)": "/FIXED",
     
     "Default threading attribute (/CLRTHREADATTRIBUTE:NONE)": "/CLRTHREADATTRIBUTE:NONE",
     "MTA threading attribute (/CLRTHREADATTRIBUTE:MTA)": "/CLRTHREADATTRIBUTE:MTA",
@@ -449,10 +329,9 @@ CMD_CONVERT = {
     "Call profiler within function calls. (/callcap)": "/callcap",
     "Call profiler around function calls. (/fastcap)": "/fastcap",
     
+    # truly awful, some of these are in really old vpc scripts, so i might not ever see these again
     "Default image type": "",
     "No Listing": "",
-    "Not Using Precompiled Headers": "",
-    "Not Set": "",
     "No": "",
     "Neither": "",
     "Default": "",
@@ -469,11 +348,151 @@ CONFIG_GROUP_CONVERT_DICT = {
     "$outputfile": "linker",
 }
 
-VS_BOOL_CONVERT = {
-    "$imagehassafeexceptionhandlers": {
-        "true": "/SAFESEH",
-        "false": "/SAFESEH:NO",
+# Technically, this should be used for all options, but i made all the option values part of one dict, idk why
+# if i ever use this converter again, i might just put everything into here
+# actually, a lot of these option values could just parsed to get the command line version out of it
+# because it just so happens to be part of the option name
+CONFIG_OPTION_CONVERT_DICT = {
+    "$multiprocessorcompilation": {
+        "true": "/MP",
+        "Yes (/MP)": "/MP",
+        "false": "",
     },
+    "$configurationtype": {
+        "Application (.exe)": "application",
+        "Dynamic Library (.dll)": "dynamic_library",
+        "Dynamic Library (.xex)": "dynamic_library",
+        "Static Library (.lib)": "static_library",
+    },
+    "$characterset": {
+        "Use Multi-Byte Character Set": "MBCS",
+        "Use Unicode Character Set": "_MBCS",
+        "Not Set": "",
+    },
+    "$create/useprecompiledheader": {
+        "Not Using Precompiled Headers": "none",
+        "Automatically Generate (/YX)": "create",
+        "Create Precompiled Header (/Yc)": "create",
+        "Create (/Yc)": "create",
+        "Use Precompiled Header (/Yu)": "use",
+        "Use (/Yu)": "use",
+    },
+    "$warninglevel": {
+        "Off: Turn Off All Warnings (/W0)": "/W0",
+        "Level 1 (/W1)": "/W1",
+        "Level 2 (/W2)": "/W2",
+        "Level 3 (/W3)": "/W3",
+        "Level 4 (/W4)": "/W4",
+        "EnableAllWarnings (/Wall)": "/Wall",
+    },
+    "$platformtoolset": {
+        "v100": "msvc_100",
+        "v110": "msvc_110",
+        "v120": "msvc_120",
+        "v140": "msvc_140",
+        "v141": "msvc_141",
+        "v142": "msvc_142",
+    
+        "v120_xp": "msvc_120_xp",
+        "v140_xp": "msvc_140_xp",
+    },
+    "$debuginformationformat": {
+        "C7 Compatible (/Z7)": "/Z7",
+        "Program Database (/Zi)": "/Zi",
+        "Program Database for Edit & Continue (/ZI)": "/ZI",
+    },
+    "$compileas": {
+        "Compile as C Code (/TC)": "c",
+        "Compile as C++ Code (/TP)": "cpp",
+    },
+    "$ignoreimportlibrary": {
+        "Yes": "true",
+        "TRUE": "true",  # what the fuck
+        "No": "false",
+    },
+    "$enableenhancedinstructionset": {
+        "Streaming SIMD Extensions (/arch:SSE)": "/arch:SSE",
+        "Streaming SIMD Extensions (/arch:SSE) (/arch:SSE)": "/arch:SSE",
+        "Streaming SIMD Extensions 2 (/arch:SSE2)": "/arch:SSE2",
+        "Streaming SIMD Extensions 2 (/arch:SSE2) (/arch:SSE2)": "/arch:SSE2",
+    },
+    "$references": {
+        "Do Not Remove Redundant COMDATs (/OPT:NOICF)": "/OPT:NOICF",
+        "No (/OPT:NOICF)": "/OPT:NOICF",
+        "Remove Redundant COMDATs (/OPT:ICF)": "/OPT:ICF",
+        "Yes (/OPT:ICF)": "/OPT:ICF",
+        "Eliminate Unreferenced Data (/OPT:REF)": "/OPT:REF",
+    },
+    "$enablelargeaddresses": {
+        "Do Not Support Addresses Larger Than 2 Gigabytes (/LARGEADDRESSAWARE:NO)": "/LARGEADDRESSAWARE:NO",
+        "No (/LARGEADDRESSAWARE:NO)": "/LARGEADDRESSAWARE:NO",
+        "Support Addresses Larger Than 2 Gigabytes (/LARGEADDRESSAWARE)": "/LARGEADDRESSAWARE",
+        "Yes (/LARGEADDRESSAWARE)": "/LARGEADDRESSAWARE",
+    },
+    "$fixedbaseaddress": {
+        "Generate a relocation section (/FIXED:NO)": "/FIXED:NO",
+        "No (/FIXED:NO)": "/FIXED:NO",
+        "Image must be loaded at a fixed address (/FIXED)": "/FIXED",
+        "Yes (/FIXED)": "/FIXED",
+    },
+    "$subsystem": {
+        "Console (/SUBSYSTEM:CONSOLE)": "/SUBSYSTEM:CONSOLE",
+        "Windows (/SUBSYSTEM:WINDOWS)": "/SUBSYSTEM:WINDOWS",
+        "Native (/SUBSYSTEM:NATIVE)": "/SUBSYSTEM:NATIVE",
+        "EFI Application (/SUBSYSTEM:EFI_APPLICATION)": "/SUBSYSTEM:EFI_APPLICATION",
+        "EFI Boot Service Driver (/SUBSYSTEM:EFI_BOOT_SERVICE_DRIVER)": "/SUBSYSTEM:EFI_BOOT_SERVICE_DRIVER",
+        "EFI ROM (/SUBSYSTEM:EFI_ROM)": "/SUBSYSTEM:EFI_ROM",
+        "EFI Runtime (/SUBSYSTEM:EFI_RUNTIME_DRIVER)": "/SUBSYSTEM:EFI_RUNTIME_DRIVER",
+        "WindowsCE (/SUBSYSTEM:WINDOWSCE)": "/SUBSYSTEM:WINDOWSCE",
+        "POSIX (/SUBSYSTEM:POSIX)": "/SUBSYSTEM:POSIX",
+    },
+    "$targetmachine": {
+        "MachineARM (/MACHINE:ARM)": "/MACHINE:ARM",
+        "MachineEBC (/MACHINE:EBC)": "/MACHINE:EBC",
+        "MachineIA64 (/MACHINE:IA64)": "/MACHINE:IA64",
+        "MachineMIPS (/MACHINE:MIPS)": "/MACHINE:MIPS",
+        "MachineMIPS16 (/MACHINE:MIPS16)": "/MACHINE:MIPS16",
+        "MachineMIPSFPU (/MACHINE:MIPSFPU)": "/MACHINE:MIPSFPU",
+        "MachineMIPSFPU16 (/MACHINE:MIPSFPU16)": "/MACHINE:MIPSFPU16",
+        "MachineSH4 (/MACHINE:SH4)": "/MACHINE:SH4",
+        "MachineTHUMB (/MACHINE:THUMB)": "/MACHINE:THUMB",
+        "MachineX64 (/MACHINE:AMD64)": "/MACHINE:AMD64",
+        "MachineX86 (/MACHINE:I386)": "/MACHINE:I386",
+    },
+    "$runtimelibrary": {
+        "Multi-threaded (/MT)": "/MT",
+        "Multi-threaded Debug (/MTd)": "/MTd",
+        "Multi-threaded DLL (/MD)": "/MD",
+        "Multi-threaded Debug DLL (/MDd)": "/MDd",
+    },
+    "$errorreporting": {
+        "Do Not Send Report (/errorReport:none)": "/errorReport:none",
+        "Prompt Immediately (/errorReport:prompt)": "/errorReport:prompt",
+        "Queue For Next Login (/errorReport:queue)": "/errorReport:queue",
+        "Send Automatically (/errorReport:send)": "/errorReport:send",
+    
+        "Do Not Send Report (/ERRORREPORT:NONE)": "/ERRORREPORT:NONE",
+        "Prompt Immediately (/ERRORREPORT:PROMPT)": "/ERRORREPORT:PROMPT",
+        "Queue For Next Login (/ERRORREPORT:QUEUE)": "/ERRORREPORT:QUEUE",
+        "Send Automatically (/ERRORREPORT:SEND)": "/ERRORREPORT:SEND",
+    },
+    "$enableincrementallinking": {
+        "Yes (/INCREMENTAL)": "/INCREMENTAL",
+        "No (/INCREMENTAL:NO)": "/INCREMENTAL:NO",
+    },
+    "$floatingpointmodel": {
+        "Precise (/fp:precise)": "/fp:precise",
+        "Strict (/fp:strict)": "/fp:strict",
+        "Fast (/fp:fast)": "/fp:fast",
+    },
+    
+    # basically bool options
+    "$enablefunctionlevellinking":          {"Yes (/Gy)": "/Gy"},
+    "$enablestringpooling":                 {"Yes (/GF)": "/GF"},
+    
+    "$suppressstartupbanner":               {"Yes (/NOLOGO)": "/NOLOGO",    "Yes (/nologo)": "/nologo"},
+    "$excludedfrombuild":                   {"Yes": "True",                 "No": "False"},
+    "$imagehassafeexceptionhandlers":       {"true": "/SAFESEH",            "false": "/SAFESEH:NO"},
 }
 
 OPTION_PREFIX_ADD = {
@@ -634,14 +653,10 @@ def convert_project_group_recurse(depth, block_items, qpc_base_file):
 
 
 def create_directory(directory: str):
-    try:
+    if not os.path.isdir(directory):
         os.makedirs(directory)
         if args.verbose:
             print("Created Directory: " + directory)
-    except FileExistsError:
-        pass
-    except FileNotFoundError:
-        pass
 
 
 def write_project(directory, filename, project_lines, base_file=False):
@@ -763,8 +778,13 @@ class ConfigOption:
                 for index, value in enumerate(values):
                     if value != "\\n":
                         values[index] = value.replace("\\", "/")
+                        
                     if values[index] != '""' and values[index].endswith('""'):
                         values[index] = values[index][:-1]
+
+                    if "/\"" in values[index][1:-1]:
+                        value = value.replace("/\"", "\\\"")
+                        values[index] = value
             
             # might be added already
             for added_value in self.value:
@@ -1013,11 +1033,11 @@ def normalize_platform_conditions(cond: str) -> str:
         
         parsed_cond = _remove_platform_archs(parsed_cond, "$WINDOWS", "$WIN32", "$WIN64")
         # parsed_cond = _remove_platform_archs(parsed_cond, "$LINUX", "$LINUX32", "$LINUX64")
-        parsed_cond = _remove_platform_archs(parsed_cond, "$MACOS", "$OSX32", "$OSX64")
+        # parsed_cond = _remove_platform_archs(parsed_cond, "$MACOS", "$OSX32", "$OSX64")
         
         parsed_cond = _replace_archs_with_platform(parsed_cond, "$WINDOWS", "$WIN32", "$WIN64")
         # parsed_cond = _replace_archs_with_platform(parsed_cond, "$LINUX", "$LINUX32", "$LINUX64")
-        parsed_cond = _replace_archs_with_platform(parsed_cond, "$MACOS", "$OSX32", "$OSX64")
+        # parsed_cond = _replace_archs_with_platform(parsed_cond, "$MACOS", "$OSX32", "$OSX64")
         
         # replace OSX64 with MACOS
         parsed_cond = _replace_name(parsed_cond, "$MACOS", "$OSX64")
@@ -1040,8 +1060,8 @@ def normalize_platform_conditions(cond: str) -> str:
         parsed_cond = _replace_archs_with_platform(parsed_cond, "$POSIX", "$LINUX", "$MACOS")
         
         # this doesn't exist in qpc
-        parsed_cond = _remove_arch(parsed_cond, "$OSX64")
-        parsed_cond = _remove_arch(parsed_cond, "$OSX32")
+        # parsed_cond = _remove_arch(parsed_cond, "$OSX64")
+        # parsed_cond = _remove_arch(parsed_cond, "$OSX32")
         
         cond = parsed_cond_to_string(parsed_cond)
         
@@ -1168,7 +1188,6 @@ def parsed_cond_to_string(cond_list: list) -> str:
     return final_string
 
 
-# is there any point to this?
 def parse_condition(cond: str, full: bool = False, nested_lists: bool = True) -> list:
     return _parse_condition_nested(cond, 0, full, nested_lists)[1]
 
@@ -1307,7 +1326,6 @@ def write_include(vpc_include, qpc_project):
     qpc_include_path = os.path.normpath(qpc_include_path)
     qpc_include_path = convert_macro_casing(qpc_include_path)
     
-    # HARDCODING
     if not args.no_hardcoding:
         qpc_include_path = qpc_include_path.replace("vpc_scripts", "_qpc_scripts")
     
@@ -1483,24 +1501,17 @@ def parse_config_option(condition, option_block, qpc_option, option_values: list
             base.debug_assert(not ass.startswith("/") and not ass.startswith("-") and ass != "")
         
     # ew
-    if option_block.key.casefold() == "$multiprocessorcompilation":
-        if option_block.values and option_block.values[0] == "True":
-            option_values = ["/MP"]
-    # ew again
-    elif option_block.key.casefold() == "$disablespecificwarnings":
+    if option_block.key.casefold() == "$disablespecificwarnings":
         if option_block.values:
             option_values = [option_block.values[0].replace(";", ";/ignore:")]
-    # ew yet again
-    elif option_block.key.casefold() == "$excludedfrombuild":
-        if option_block.values:
-            if option_block.values[0] == "No":
-                option_values = "True"
-            elif option_block.values[0] == "Yes":
-                option_values = "False"
+
+
+    for index, value in enumerate(option_values):
+        option_values[index] = value.replace('&quot;', '\\"').replace(';&quot', '\\"').replace('&quot', '\\"')
     
     if option_block.key.casefold() == "$commandline":
         for index, value in enumerate(option_values):
-            option_values[index] = value.replace('"', '\\"').replace('$QUOTE', '\\"')
+            option_values[index] = value.replace('"', '\\"')  # .replace('&quot', '\\"')
         
         # don't split this into a list
         qpc_option.set_value(option_values, condition, False)
@@ -1546,7 +1557,10 @@ def parse_configuration(vpc_config: reader.QPCBlock, qpc_config, dependencies: d
             elif not option_name or option_name == "options":
                 if not option_block.values:
                     continue
-                option_values = convert_to_qpc_option(option_block.values)
+                    
+                option_values = convert_config_option(option_block, False)
+                if not option_values:
+                    option_values = legacy_convert_to_command_line(option_block.values, option_block.key.casefold())
                 
                 if not option_values and not option_name:
                     # option_block.warning("Unknown config option: " + option_block.key.casefold())
@@ -1555,9 +1569,7 @@ def parse_configuration(vpc_config: reader.QPCBlock, qpc_config, dependencies: d
                 else:
                     option_name = "options"
             else:
-                option_values = convert_bool_to_vs_cmd(option_block)
-                if not option_values:
-                    option_values = convert_option(option_block.values)
+                option_values = convert_config_option(option_block)
             
             if option_values:
                 if option_block.key.casefold() == "$additionalprojectdependencies":
@@ -1630,45 +1642,36 @@ def convert_config_group_name(group_name: str) -> str:
 
 def convert_config_option_name(option_name) -> str:
     option_name = option_name.casefold()
-    try:
+    if option_name in OPTION_NAME_CONVERT_DICT:
         return OPTION_NAME_CONVERT_DICT[option_name]
-    except KeyError:
-        pass
-
-
-def convert_option(option_value: list) -> list:
-    if option_value:
-        try:
-            return [OPTION_VALUE_CONVERT_DICT[option_value[0]]]
-        except KeyError:
-            return option_value
 
 
 def convert_vpc_group(option_name: str, current_group) -> str:
     option_name = option_name.casefold()
-    try:
+    if option_name in CONFIG_GROUP_CONVERT_DICT:
         return CONFIG_GROUP_CONVERT_DICT[option_name]
-    except KeyError:
-        # convert it again, since we might of changed it in the previous option
-        return convert_config_group_name(current_group)
+    # convert it again, since we might of changed it in the previous option
+    return convert_config_group_name(current_group)
 
 
-def convert_to_qpc_option(option_value: str):
-    if option_value:
-        try:
-            return [CMD_CONVERT[option_value[0]]]
-        except KeyError:
-            return None
-    else:
-        return None
-
-
-def convert_bool_to_vs_cmd(option_block: reader.QPCBlock) -> list:
+# see comment at CONFIG_OPTION_CONVERT_DICT and comment below
+def convert_config_option(option_block: reader.QPCBlock, return_not_found: bool = True) -> list:
     if option_block.key and option_block.values:
-        try:
-            return [VS_BOOL_CONVERT[option_block.key.casefold()][option_block.values[0]]]
-        except KeyError:
-            pass
+        key = option_block.key.casefold()
+        if key in CONFIG_OPTION_CONVERT_DICT and option_block.values[0] in CONFIG_OPTION_CONVERT_DICT[key]:
+            return [CONFIG_OPTION_CONVERT_DICT[key][option_block.values[0]]]
+    if return_not_found:
+        return option_block.values
+
+
+# this is marked as legacy and is a fallback, since all the values are just in one big list, all unsorted
+# eventually, i'll move them all into CONFIG_OPTION_CONVERT_DICT
+# where all the keys is the option name, and then the values to convert to are in there
+# the only reason this exists is due to laziness
+def legacy_convert_to_command_line(option_value: str, key: str):
+    if option_value and option_value[0] in CMD_CONVERT:
+        return [CMD_CONVERT[option_value[0]]]
+    return None
 
 
 def add_options_prefix(option_block: reader.QPCBlock, option_values: list) -> list:
@@ -1687,7 +1690,8 @@ def write_config_option(indent: str, option):
             option_lines = []
             cond_values = {}
             for value_obj in option.value:
-                base.add_dict_value(cond_values, value_obj.condition, list)
+                if value_obj.condition not in cond_values:
+                    cond_values[value_obj.condition] = []
                 cond_values[value_obj.condition].append(value_obj.value)
                 # option_lines.append(indent + "\t\t\t" + value_obj.value + '')
                 # WriteCondition( value_obj.condition, option_lines )
