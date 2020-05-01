@@ -305,7 +305,7 @@ class ProjectContainer:
         # shared across configs, used as a base for them
         self.macros = {
             "$PROJECT_NAME": name,
-            "$PROJECT_DIR": project_path,
+            "$PROJECT_DIR": self.out_dir,
             "$SCRIPT_NAME": name,
             "$ROOT_DIR": args.root_dir,
             **get_arg_macros()
