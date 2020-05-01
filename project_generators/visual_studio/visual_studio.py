@@ -246,21 +246,16 @@ def create_vcxproj(project_list: ProjectContainer, project_passes: list):
     setup_project_configurations(vcxproj, project_passes)
     setup_globals(vcxproj, project_list)
     
-    elem_import = et.SubElement(vcxproj, "Import")
-    elem_import.set("Project", "$(VCTargetsPath)\\Microsoft.Cpp.Default.props")
+    et.SubElement(vcxproj, "Import").set("Project", "$(VCTargetsPath)\\Microsoft.Cpp.Default.props")
     
     setup_property_group_configurations(vcxproj, project_passes)
     
-    elem_import = et.SubElement(vcxproj, "Import")
-    elem_import.set("Project", "$(VCTargetsPath)\\Microsoft.Cpp.props")
-    
-    extension_settings = et.SubElement(vcxproj, "ImportGroup")
-    extension_settings.set("Label", "ExtensionSettings")
+    et.SubElement(vcxproj, "Import").set("Project", "$(VCTargetsPath)\\Microsoft.Cpp.props")
+    et.SubElement(vcxproj, "ImportGroup").set("Label", "ExtensionSettings")
     
     setup_property_sheets(vcxproj)
     
-    user_macros = et.SubElement(vcxproj, "PropertyGroup")
-    user_macros.set("Label", "UserMacros")
+    et.SubElement(vcxproj, "PropertyGroup").set("Label", "UserMacros")
     
     setup_general_properties(vcxproj, project_passes)
     setup_item_definition_groups(vcxproj, project_passes)
@@ -295,10 +290,8 @@ def create_vcxproj(project_list: ProjectContainer, project_passes: list):
         create_file_item_groups("None", none_list, vcxproj, condition)
     
     # other vstudio stuff idk
-    elem_import = et.SubElement(vcxproj, "Import")
-    elem_import.set("Project", "$(VCTargetsPath)\\Microsoft.Cpp.targets")
-    import_group = et.SubElement(vcxproj, "ImportGroup")
-    import_group.set("Label", "ExtensionTargets")
+    et.SubElement(vcxproj, "Import").set("Project", "$(VCTargetsPath)\\Microsoft.Cpp.targets")
+    et.SubElement(vcxproj, "ImportGroup").set("Label", "ExtensionTargets")
     
     return vcxproj, full_include_list, full_res_list, full_none_list
 
@@ -358,7 +351,7 @@ def setup_property_group_configurations(vcxproj, project_passes: list):
         if config.general.compiler and config.general.compiler in COMPILER_DICT:
             toolset.text = COMPILER_DICT[config.general.compiler]
         else:
-            toolset.text = "v142"
+            toolset.text = COMPILER_DICT["msvc"]
 
         defs = config.compiler.preprocessor_definitions
         if "MBCS" in defs or "_MBCS" in defs:
@@ -508,11 +501,16 @@ def setup_item_definition_groups(vcxproj: et.Element, project_passes: list):
 
         if cfg.pre_link:
             et.SubElement(et.SubElement(item_def_group, "PreLinkEvent"), "Command").text = '\n'.join(cfg.pre_link)
+            
+            
+PRECOMPILED_HEADER_DICT =  {
+    PrecompiledHeader.NONE: "NotUsing",
+    PrecompiledHeader.USE: "Use",
+    PrecompiledHeader.CREATE: "Create"
+}
 
 
-# TODO: this needs to have some default visual studio info,
-#  because visual studio can't fucking pick default info when none is set for them in the vcxproj
-def add_compiler_options(compiler_elem, compiler, general=None):
+def add_compiler_options(compiler_elem: et.SubElement, compiler, general=None):
     added_option = False
     
     if compiler.preprocessor_definitions:
@@ -523,12 +521,7 @@ def add_compiler_options(compiler_elem, compiler, general=None):
     
     if compiler.precompiled_header:
         added_option = True
-        # Compiler, PrecompiledHeader, ConfigType, Language
-        et.SubElement(compiler_elem, "PrecompiledHeader").text = {
-            PrecompiledHeader.NONE: "NotUsing",
-            PrecompiledHeader.USE: "Use",
-            PrecompiledHeader.CREATE: "Create"
-        }[compiler.precompiled_header]
+        et.SubElement(compiler_elem, "PrecompiledHeader").text = PRECOMPILED_HEADER_DICT[compiler.precompiled_header]
     
     if compiler.precompiled_header_file:
         added_option = True
