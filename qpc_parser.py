@@ -4,7 +4,8 @@ import qpc_hash
 from qpc_reader import read_file, QPCBlock, QPCBlockBase
 from qpc_args import args, get_arg_macros
 from qpc_base import Platform, Arch, check_file_path_glob
-from qpc_project import ProjectContainer, ProjectPass, ProjectDefinition, ProjectGroup, replace_macros
+from qpc_project import ProjectContainer, ProjectPass, ProjectDefinition, ProjectGroup, BuildEvent, \
+                        replace_macros, replace_macros_list
 from enum import Enum
 from time import perf_counter
 
@@ -472,6 +473,9 @@ class Parser:
                         else:
                             project.add_dependencies(block.key, *block.values)
             
+                elif project_block.key == "build_event":
+                    self._parse_build_event(project_block, project)
+                    
                 elif project_block.key == "include":
                     # Ah shit, here we go again.
                     include_path = project.replace_macros(project_block.values[0])
@@ -499,6 +503,40 @@ class Parser:
             print(indent + "Parsing: " + include_path)
     
         return include_file
+        
+    @staticmethod
+    def _parse_build_event(project_block: QPCBlock, project: ProjectPass):
+        if not project_block.values and not args.hide_warnings:
+            project_block.warning("build_event has no name")
+    
+        # is this a definition?
+        elif project_block.items:
+            # check to see if it's already defined
+            if project_block.values[0] in project.build_events:
+                if not args.hide_warnings:
+                    project_block.warning("build_event already defined, redefining")
+            
+            build_event = BuildEvent(*replace_macros_list(project.macros, *project_block.values))
+            
+            for item in project_block.items:
+                command_list = replace_macros_list(project.macros, *item.get_item_list_condition(project.macros))
+                if item.key == "pre_build":
+                    build_event.pre_build.extend(command_list)
+                elif item.key == "pre_link":
+                    build_event.pre_link.extend(command_list)
+                elif item.key == "post_build":
+                    build_event.post_build.extend(command_list)
+                elif not args.hide_warnings:
+                    project_block.warning("invalid event in build_event:"
+                                          "options are pre_build, pre_link, and post_build")
+                    
+            project.build_events[project_block.values[0]] = build_event
+    
+        # it's not, we are calling a build event
+        elif project_block.values[0] in project.build_events:
+            project.call_build_event(*project_block.values)
+        elif not args.hide_warnings:
+            project_block.warning("undefined build_event")
     
     def _parse_files(self, files_block: QPCBlock, project: ProjectPass, folder_list: list) -> None:
         if files_block.solve_condition(project.macros):

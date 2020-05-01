@@ -113,6 +113,7 @@ class ProjectPass:
         self.files = {}
         self.hash_list = {}
         self._glob_files = set()
+        self.build_events = {}
 
         self.macros = container.macros.copy()
         self.macros.update({
@@ -124,9 +125,6 @@ class ProjectPass:
         
         self.generators = set()
         self.add_generator(gen_macro, gen_id)
-        
-        # testing of something similar to CustomBuildStep in vpc
-        self.build_events = {}
         
     def check_pass(self, config: str, platform: Platform, arch: Arch, generator_macro: str, gen_id: int) -> bool:
         # is this even setup right?
@@ -233,6 +231,30 @@ class ProjectPass:
     
     def remove_dependencies(self, *qpc_paths) -> None:
         [self.remove_dependency(qpc_path) for qpc_path in qpc_paths]
+        
+    def is_build_event_defined(self, name: str):
+        return name in self.build_events
+        
+    def call_build_event(self, event_name: str, *event_args):
+        if event_name in self.build_events:
+            event_args = replace_macros_list(self.macros, *event_args)
+            arg_list = []
+            has_glob_and_none_found = False
+            
+            for index, event_macro in enumerate(event_args):
+                if check_file_path_glob(event_macro):
+                    found_files = glob.glob(event_macro, recursive=True)
+                    has_glob_and_none_found = not bool(found_files)
+                    for found_file in found_files:
+                        # TODO: multiple wildcards that don't find anything might act odd here
+                        current_list = [*event_args[index:], found_file, *event_args[:index]]
+                        arg_list.append(current_list)
+            else:
+                if not arg_list and not has_glob_and_none_found:
+                    arg_list = [list(event_args)]
+                    
+            for item in arg_list:
+                self.build_events[event_name].call_event(self, *item)
     
     # Gets every single folder in the project, splitting each one as well
     # this function is awful
@@ -662,9 +684,31 @@ def convert_enum_option(old_value: Enum, option_block: QPCBlock, enum_list: Enum
     
     
 class BuildEvent:
-    def __init__(self, name: str, *event_args):
+    def __init__(self, name: str, *event_macros):
         self.name = name
-        self.args = event_args
+        self.macros = ["$" + event_macro for event_macro in event_macros]
+        self.pre_build = []
+        self.pre_link = []
+        self.post_build = []
+        
+    def call_event(self, project: ProjectPass, *event_macros):
+        macro_dict = {}
+        for index, macro_value in enumerate(event_macros):
+            if index < len(self.macros):
+                macro_dict[self.macros[index]] = macro_value
+            else:
+                # tf are you doing
+                break
+                
+        # todo later: maybe handle undefined stuff? probably going to forget about this
+            
+        self._add_event(project.config, macro_dict, "pre_build")
+        self._add_event(project.config, macro_dict, "pre_link")
+        self._add_event(project.config, macro_dict, "post_build")
+    
+    def _add_event(self, config: Configuration, macros: dict, event_name: str):
+        event_list = replace_macros_list(macros, *self.__dict__[event_name])
+        config.__dict__[event_name].extend(event_list)
         
         
 def check_if_file_exists(file_path: str, option_warning: classmethod):
