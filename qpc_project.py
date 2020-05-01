@@ -298,16 +298,15 @@ class ProjectPass:
         return file_list
     
     def get_file_folder(self, file_path) -> str:
-        try:
-            return self.files[self.replace_macros(file_path)]
-        except KeyError:
-            pass
+        file_path = self.replace_macros(file_path)
+        if file_path in self.files:
+            return self.files[file_path]
+        return ""
     
     def get_source_file(self, file_path) -> SourceFile:
-        try:
-            return self.source_files[norm_path(self.replace_macros(file_path))]
-        except KeyError:
-            pass
+        file_path = self.replace_macros(file_path)
+        if file_path in self.source_files:
+            return self.source_files[file_path]
         
     def get_glob_files(self) -> set:
         return self._glob_files
