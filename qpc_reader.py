@@ -241,7 +241,7 @@ def replace_macros_condition(split_string, macros):
     return split_string
 
 
-def solve_condition(qpcblock: QPCBlock, condition: str, macros: dict) -> int:
+def solve_condition(qpcblock: QPCBlockBase, condition: str, macros: dict) -> int:
     if not condition:
         return True
     
