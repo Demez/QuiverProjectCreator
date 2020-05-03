@@ -115,13 +115,18 @@ class ProjectPass:
         self._glob_files = set()
         self.build_events = {}
 
-        self.macros = container.macros.copy()
-        self.macros.update({
+        self.macros = {
+            **container.macros,
             **self.base_info.macros,
-            "$" + config.upper(): "1",  # this doesn't have to be uppercase, but it's mainly for consistency
-            "$" + platform.name: "1",
-            "$" + arch.name: "1",
-        })
+            
+            "$" + config.upper():   "1",  # this doesn't have to be uppercase, but it's mainly for consistency
+            "$" + platform.name:    "1",
+            "$" + arch.name:        "1",
+            
+            "$QPC_CONFIG":          config,
+            "$QPC_PLATFORM":        platform.name,
+            "$QPC_ARCH":            arch.name,
+        }
         
         self.generators = set()
         self.add_generator(gen_macro, gen_id)
