@@ -169,9 +169,9 @@ class BaseInfoPlatform:
                     if project.name not in unwanted_projects:
                         unwanted_projects[project.name] = project
             
-            elif removed_item in self.shared.unsorted_projects:
-                if self.shared.unsorted_projects[removed_item] in self._projects_all:
-                    unwanted_projects[removed_item] = self.shared.unsorted_projects[removed_item]
+            elif removed_item in self.shared.projects_all:
+                if self.shared.projects_all[removed_item] in self._projects_all:
+                    unwanted_projects[removed_item] = self.shared.projects_all[removed_item]
             else:
                 for project in self._projects_all:
                     if removed_item in project.script_list:
@@ -187,9 +187,9 @@ class BaseInfoPlatform:
                     for project in self.shared.groups[added_item].projects:
                         self._use_project(project, unwanted_projects)
                         
-                elif added_item in self.shared.unsorted_projects:
-                    if self.shared.unsorted_projects[added_item] in self._projects_all:
-                        self._use_project(self.shared.unsorted_projects[added_item], unwanted_projects)
+                elif added_item in self.shared.projects_all:
+                    if self.shared.projects_all[added_item] in self._projects_all:
+                        self._use_project(self.shared.projects_all[added_item], unwanted_projects)
                 else:
                     for project in self._projects_all:
                         if added_item in project.script_list:
@@ -203,7 +203,7 @@ class BaseInfoPlatform:
 
 class BaseInfo:
     def __init__(self):
-        self._projects_all = {}
+        self.projects_all = {}
         self.projects = {}  # maybe remove?
         self.groups = {}
         # maybe add something for archs?
@@ -243,11 +243,11 @@ class BaseInfo:
         return self.projects
     
     def add_project(self, project_name: str) -> ProjectDefinition:
-        if project_name in self._projects_all:
-            project_def = self._projects_all[project_name]
+        if project_name in self.projects_all:
+            project_def = self.projects_all[project_name]
         else:
             project_def = ProjectDefinition(project_name)
-            self._projects_all[project_name] = project_def
+            self.projects_all[project_name] = project_def
         return project_def
 
     def get_base_info(self, platform: Platform) -> BaseInfoPlatform:
