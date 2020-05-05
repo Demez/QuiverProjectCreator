@@ -102,20 +102,29 @@ class BaseInfoPlatform:
             if not project_def.folder_list:
                 project_def.folder_list = tuple(folder_list)
             project_group.project_defined(project_def)
-        else:
+            project_def.add_group(project_group)
+        # is this a script?
+        elif not self.add_project_by_script(project_name):
             project_def = ProjectDefinition(project_name, *folder_list)
             self._projects_all.append(project_def)
-        project_def.add_group(project_group)
+            project_def.add_group(project_group)
+        
+    def add_project_by_script(self, project_path: str) -> bool:
+        if check_file_path_glob(project_path):
+            for found_file in glob.glob(project_path):
+                self.add_project(os.path.splitext(os.path.basename(found_file))[0], found_file)
+            return True
+        elif os.path.isfile(project_path):
+            self.add_project(os.path.splitext(os.path.basename(project_path))[0], project_path)
+            return True
+        # elif not self.is_project_added(project_path) and project_path not in self.shared.groups:
+        return False
         
     def init_args(self):
         for project_path in args.add:
-            if check_file_path_glob(project_path):
-                for found_file in glob.glob(project_path):
-                    self.add_project(os.path.splitext(os.path.basename(found_file))[0], found_file)
-            elif os.path.isfile(project_path):
-                self.add_project(os.path.splitext(os.path.basename(project_path))[0], project_path)
-            elif not self.is_project_added(project_path) and project_path not in self.shared.groups:
-                print("Project, Group, or File does not exist: " + project_path)
+            if not self.add_project_by_script(project_path):
+                if not self.is_project_added(project_path) and project_path not in self.shared.groups:
+                    print("Project, Group, or File does not exist: " + project_path)
 
         if not self.configurations:
             self.configurations.append("Default")
