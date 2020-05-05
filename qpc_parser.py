@@ -84,13 +84,16 @@ class BaseInfoPlatform:
         self.project_dependencies = {}
 
     def add_project(self, project_name: str, *project_paths) -> None:
+        self.add_project_include_dir("", project_name, *project_paths)
+        
+    def add_project_include_dir(self, include_dir: str, project_name: str, *project_paths) -> None:
         # TODO: check if script path is already used
         project_def = self.shared.add_project(project_name)
         project_def.platforms.add(self.platform)
     
         for script_path in project_paths:
             script_path = replace_macros(script_path, self.macros)
-            if not project_def.add_script(script_path) and not args.hide_warnings:
+            if not project_def.add_script(script_path, include_dir + script_path) and not args.hide_warnings:
                 print("Script does not exist: " + script_path)
 
         project_def.update_groups()
@@ -408,11 +411,13 @@ class Parser:
             
     @staticmethod
     def _base_project_define(block: QPCBlock, info: BaseInfoPlatform, include_dir: str = ""):
+        scripts = [replace_macros(item.key, info.macros) for item in block.items if item.solve_condition(info.macros)]
+        scripts += [replace_macros(script, info.macros) for script in block.values[1:]]
         if include_dir:
             include_dir += "/"
-        scripts = [include_dir + replace_macros(item.key, info.macros) for item in block.items if item.solve_condition(info.macros)]
-        scripts += [include_dir + replace_macros(script, info.macros) for script in block.values[1:]]
-        info.add_project(block.values[0], *scripts)
+            info.add_project_include_dir(include_dir, block.values[0], *scripts)
+        else:
+            info.add_project(block.values[0], *scripts)
 
     @staticmethod
     def _check_plat_condition(condition: str) -> bool:

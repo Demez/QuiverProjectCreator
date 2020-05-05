@@ -62,8 +62,8 @@ class ProjectDefinition:
         # list would be faster here
         [group.project_defined(self) for group in self.groups]
     
-    def add_script(self, script_path: str) -> bool:
-        if os.path.isfile(script_path):
+    def add_script(self, script_path_cwd: str, script_path: str) -> bool:
+        if os.path.isfile(script_path_cwd):
             self.script_list[posix_path(script_path)] = None
             return True
         return False
