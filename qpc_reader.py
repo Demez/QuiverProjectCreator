@@ -357,10 +357,14 @@ def parse_recursive(lexer, block, path):
         key, line_num = lexer.next_key()
         
         if not key:
-            if lexer.next_symbol() == "}" or lexer.char_num == lexer.file_len:
+            if lexer.next_symbol() == "}":
                 return
-            print("empty key? might work, who knows")
-            block.print_info()
+            elif lexer.char_num >= lexer.file_len:
+                if type(block) == QPCBlock:
+                    block.warning("brackets do not close")
+                return
+            # print("WARNING: script is probably incorrect somewhere, no key specified, or a reader error")
+            # block.print_info()
         
         # line_num = lexer.line_num
         values = lexer.next_value_list()
@@ -572,14 +576,14 @@ class QPCLexer:
         char = self.file[self.char_num]
         if char == '/':
             # keep going until \n
-            while True:
+            while self.char_num < self.file_len:
                 self.char_num += 1
                 if self.file[self.char_num] == "\n":
                     self.line_num += 1
                     break
         
         elif char == '*':
-            while True:
+            while self.char_num < self.file_len:
                 char = self.file[self.char_num]
                 
                 if char == '*' and self.next_char() == '/':
