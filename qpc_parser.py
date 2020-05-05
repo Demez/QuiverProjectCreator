@@ -98,16 +98,18 @@ class BaseInfoPlatform:
         
     def add_project_to_group(self, project_name: str, project_group: ProjectGroup, folder_list: list):
         project_def = self.get_project(project_name)
+        if not project_def and self.add_project_by_script(project_name):
+            project_def = self.get_project(project_name)
+                
         if project_def:
             if not project_def.folder_list:
                 project_def.folder_list = tuple(folder_list)
             project_group.project_defined(project_def)
-            project_def.add_group(project_group)
-        # is this a script?
-        elif not self.add_project_by_script(project_name):
+        else:
             project_def = ProjectDefinition(project_name, *folder_list)
             self._projects_all.append(project_def)
-            project_def.add_group(project_group)
+            
+        project_def.add_group(project_group)
         
     def add_project_by_script(self, project_path: str) -> bool:
         if check_file_path_glob(project_path):
