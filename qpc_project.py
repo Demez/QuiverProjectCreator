@@ -511,8 +511,8 @@ def clean_path(string: str, macros: dict) -> str:
 
 class General:
     def __init__(self, file_name: str, platform: Platform):
-        self.out_dir = None
-        self.build_dir = None
+        self.out_dir = "build"
+        self.build_dir = "build"
         self.out_name = file_name
 
         # i want to make these configuration options unaffected by config and platform macros,
@@ -750,8 +750,11 @@ def replace_macros_list(macros, *value_list):
 
 def replace_macros(string, macros):
     if "$" in string:
-        for macro, macro_value in macros.items():
-            if macro in string:
-                string_split = string.split(macro)
-                string = macro_value.join(string_split)
+        potential_macros = [macro for macro in macros if macro in string]
+        while potential_macros:
+            # use the longest length macros to shortest
+            best_macro = max(potential_macros)
+            if best_macro in string:
+                string = string.replace(best_macro, macros[best_macro])
+            potential_macros.remove(best_macro)
     return string
