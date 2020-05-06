@@ -131,6 +131,10 @@ class BaseInfoPlatform:
                 if not self.is_project_added(project_path) and project_path not in self.shared.groups:
                     print("Project, Group, or File does not exist: " + project_path)
 
+        for config in args.configs:
+            if config not in self.configurations:
+                self.configurations.append(config)
+
         if not self.configurations:
             self.configurations.append("Default")
 
