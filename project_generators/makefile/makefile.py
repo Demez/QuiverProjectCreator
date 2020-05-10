@@ -237,8 +237,7 @@ def gen_project_config_definitions(project: ProjectPass) -> str:
     objects = {}
     build_dir = project.config.general.build_dir if project.config.general.build_dir else "build"
     for i in project.source_files:
-        objects[build_dir + "/" + '.'.join(
-            i.split('.')[:-1]).replace('/', '\\/').replace('..', ('\\.\\.').replace(' ', '\\ ')) + '.o'] = i
+        objects[build_dir + "/" + os.path.splitext(os.path.basename(i))[0] + ".o"] = i
     
     headers = [i for i in project.files if i.split('.')[-1] in header_extensions]
     nonheader_files = [i for i in project.files if i not in headers]
