@@ -98,7 +98,7 @@ MACRO_CONVERT = {
     "PROJNAME": "PROJECT_NAME",
     "LOADADDRESS_DEVELOPMENT": "LOADADDRESS_DEVELOPMENT",
     "LOADADDRESS_RETAIL": "LOADADDRESS_RETAIL",
-    "PLATSUBDIR": "PLATFORM",
+    # "PLATSUBDIR": "PLATFORM",
     
     "_DLL_EXT": "_BIN_EXT",
     "_EXE_EXT": "_APP_EXT",
@@ -146,7 +146,7 @@ IGNORE_CONFIG_KEYS = {
 OPTION_NAME_CONVERT_DICT = {
     "$targetname": "out_name",
     "$outputdirectory": "out_dir",
-    "$intermediatedirectory": "int_dir",
+    "$intermediatedirectory": "build_dir",
     "$configurationtype": "configuration_type",
     
     "$additionalincludedirectories": "include_directories",
@@ -686,7 +686,7 @@ class Configuration:
         general.options = [
             ConfigOption("out_name"),
             ConfigOption("out_dir"),
-            ConfigOption("int_dir"),
+            ConfigOption("build_dir"),
             ConfigOption("configuration_type", False, False),
             ConfigOption("language"),
             ConfigOption("compiler"),
