@@ -216,14 +216,14 @@ class ProjectPass:
                 # if self.source_files[file_path].folder == "/".join(folder_list):
                 del self.source_files[file_path]
             elif not args.hide_warnings:
-                file_block.warning("Trying to remove a file that hasn't been added yet: " + file_path)
+                file_block.warning(f"Trying to remove a file that isn't added: \"{file_path}\"")
         else:
             if file_path in self.files:
                 # is this even a good idea? might just be annoying
                 # if self.files[file_path] == "/".join(folder_list):
                 del self.files[file_path]
             elif not args.hide_warnings:
-                file_block.warning("Trying to remove a file that hasn't been added yet: " + file_path)
+                file_block.warning(f"Trying to remove a file that isn't added: \"{file_path}\"")
 
     def add_dependency(self, qpc_path: str) -> None:
         self.container.add_dependency(replace_macros(self._convert_dependency_path(qpc_path), self.macros))
@@ -672,7 +672,7 @@ def convert_bool_option(old_value: bool, option_block: QPCBlock) -> bool:
     elif value == "false":
         return False
     else:
-        option_block.invalid_option("true", "false")
+        option_block.invalid_option(value, "true", "false")
         return old_value
     
     
@@ -683,7 +683,7 @@ def convert_enum_option(old_value: Enum, option_block: QPCBlock, enum_list: Enum
         if value == enum.name.lower():
             return enum
     else:
-        option_block.invalid_option(*[enum.name.lower() for enum in enum_list])
+        option_block.invalid_option(value, *[enum.name.lower() for enum in enum_list])
         return old_value
     
     

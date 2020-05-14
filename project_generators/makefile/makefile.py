@@ -8,6 +8,7 @@ from project_generators.shared.cmd_line_gen import get_compiler
 from qpc_base import BaseProjectGenerator, Platform, Arch, is_arch_64bit
 from qpc_project import ConfigType, Language, ProjectContainer, ProjectPass, Configuration
 from qpc_parser import BaseInfo
+from qpc_logging import warning, error, verbose, print_color, Color
 
 import qpc_c_parser as cp
 
@@ -35,7 +36,7 @@ class MakefileGenerator(BaseProjectGenerator):
         if not project_passes:
             return
         
-        print("Creating: " + project.file_name + MAKEFILE_EXT)
+        print_color(Color.CYAN, "Creating: " + project.file_name + MAKEFILE_EXT)
         compiler = get_compiler(project_passes[0].config.general.compiler,
                                 project_passes[0].config.general.language)
         makefile = gen_defines(project, compiler, project.base_info.get_base_info(self._platforms[0]).configurations)
@@ -53,7 +54,7 @@ class MakefileGenerator(BaseProjectGenerator):
         return master_file_path + MAKEFILE_EXT
 
     def create_master_file(self, info: BaseInfo, master_file_path: str) -> None:
-        print("Creating Master File: " + master_file_path)
+        print_color(Color.GREEN, "Creating Master File: " + master_file_path)
 
         out_dir_dict = {}
         dependency_dict = {}
@@ -142,7 +143,7 @@ def gen_cflags(conf: Configuration, libs: bool = True, defs: bool = True, includ
     if conf.compiler.preprocessor_definitions and defs:
         mk += ' -D ' + ' -D '.join(conf.compiler.preprocessor_definitions)
     if conf.linker.libraries and libs:
-        mk += ' -l' + ' -l'.join(['.'.join(i.split('.')[:-1]) for i in conf.linker.libraries])
+        mk += ' -l' + ' -l'.join([os.path.splitext(i)[0] for i in conf.linker.libraries])
     if conf.general.library_directories and libs:
         mk += ' -L' + ' -L'.join(conf.general.library_directories)
     if conf.general.include_directories and includes:

@@ -8,6 +8,7 @@ import qpc_hash
 from qpc_base import BaseProjectGenerator, Platform, create_directory
 from qpc_project import ConfigType, Language, ProjectContainer, ProjectPass, Configuration
 from qpc_parser import BaseInfo
+from qpc_logging import warning, error, verbose, print_color, Color
 from ..shared import cmd_line_gen
 
 
@@ -32,7 +33,7 @@ class CompileCommandsGenerator(BaseProjectGenerator):
         print("------------------------------------------------------------------------")
         create_directory("compile_commands")
         for label, commands_list in self.commands_list.items():
-            print("Writing: " + f"compile_commands/{label}.json")
+            print_color(Color.GREEN, "Writing: " + f"compile_commands/{label}.json")
             compile_commands = json.dumps(commands_list, indent=4)
             with open(f"compile_commands/{label}.json", "w") as file_io:
                 file_io.write(compile_commands)
@@ -42,7 +43,7 @@ class CompileCommandsGenerator(BaseProjectGenerator):
         if not project_passes:
             return
 
-        print("Adding to Compile Commands: " + project.file_name)
+        print_color(Color.CYAN, "Adding to Compile Commands: " + project.file_name)
         
         for proj_pass in project_passes:
             self.cmd_gen.set_mode(proj_pass.config.general.compiler)

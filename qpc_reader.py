@@ -2,6 +2,7 @@
 
 import os
 from re import compile
+from qpc_logging import warning, error, verbose
 
 
 def posix_path(string: str) -> str:
@@ -73,28 +74,28 @@ class QPCBlockBase:
         return items
     
     # TODO: shorten these 4 function names?
-    def get_items_condition(self, macros: list):
+    def get_items_condition(self, macros: dict):
         items = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):
                 items.append(item)
         return items
     
-    def get_item_keys_condition(self, macros: list):
+    def get_item_keys_condition(self, macros: dict):
         items = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):
                 items.append(item.key)
         return items
     
-    def get_item_values_condition(self, macros: list):
+    def get_item_values_condition(self, macros: dict):
         items = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):
                 items.extend(item.values)
         return items
     
-    def get_item_list_condition(self, macros: list):
+    def get_item_list_condition(self, macros: dict):
         items = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):
@@ -109,6 +110,9 @@ class QPCBlockBase:
             return self.items.index(qpc_item)
         except IndexError:
             return None
+        
+    def get_file_name(self) -> str:
+        return os.path.basename(self.file_path)
         
     def print_info(self):
         print("unfinished qpc_reader.py QPCBlockBase.print_info()")
@@ -180,41 +184,20 @@ class QPCBlock(QPCBlockBase):
     def solve_condition(self, macros: dict):
         return solve_condition(self, self.condition, macros)
     
-    def invalid_option(self, *valid_option_list):
-        print("WARNING: Invalid Option")
-        print("\tValid Options:\n\t\t" + '\n\t\t'.join(valid_option_list))
-        self.print_info()
+    def invalid_option(self, value: str, *valid_option_list):
+        warning(self.get_file_info(), f"Invalid Option: {value}", "Valid Options:", *valid_option_list)
     
-    # would be cool if i could change the colors on this
-    def fatal_error(self, message):
-        print("FATAL ERROR: " + message)
-        self.print_info()
-        quit()
-    
-    # should Error and FatalError be the same?
     def error(self, message):
-        print("ERROR: " + message)
-        self.print_info()
+        error(self.get_file_info(), message)
     
     def warning(self, message):
-        print("WARNING: " + message)
-        self.print_info()
+        warning(self.get_file_info(), message)
         
-    def get_formatted_info(self) -> str:
-        # TODO: this path is relative to the current directory
-        final_string = f"\tFile Path: {self.file_path}\n"   \
-                       f"\tLine: {str(self.line_num)}\n"    \
-                       f"\tKey: {self.key}"
-    
-        if self.values:
-            # if there is only one value, write it on the same line
-            final_string += "\n\tValues:"
-            final_string += f" {self.values[0]}" if len(self.values) == 1 else "\n\t\t" + '\n\t\t'.join(self.values)
-                
-        return final_string
+    def get_file_info(self) -> str:
+        return f"File \"{self.file_path}\" : Line {str(self.line_num)} : Key \"{self.key}\""
     
     def print_info(self):
-        print(self.get_formatted_info())
+        print(self.get_file_info() + " this should not be called anymore")
 
 
 # maybe make a comment object so when you re-write the file, you don't lose comments

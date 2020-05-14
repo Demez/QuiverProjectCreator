@@ -14,6 +14,7 @@ from qpc_generator_handler import GeneratorHandler
 from qpc_parser import Parser, ProjectDefinition
 from qpc_args import args, parse_args
 from qpc_base import BaseProjectGenerator, create_directory, Platform, Arch
+import qpc_logging
 
 import qpc_hash
 
@@ -195,6 +196,7 @@ if __name__ == "__main__":
     qpc_hash.post_args_init()
     main()
     
-    print("" + PRINT_LINE + "\n"
-          " Finished\n" +
-          PRINT_LINE)
+    if not args.hide_warnings:
+        print(f"{PRINT_LINE}\nFinished - {qpc_logging.WARNING_COUNT} Warnings\n{PRINT_LINE}")
+    else:
+        print(f"{PRINT_LINE}\nFinished {PRINT_LINE}")

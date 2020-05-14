@@ -6,6 +6,7 @@ from qpc_args import args, get_arg_macros
 from qpc_base import Platform, Arch, check_file_path_glob
 from qpc_project import ProjectContainer, ProjectPass, ProjectDefinition, ProjectGroup, BuildEvent, \
                         replace_macros, replace_macros_list
+from qpc_logging import warning, error, verbose, print_color
 from enum import Enum
 from time import perf_counter
 
@@ -94,7 +95,7 @@ class BaseInfoPlatform:
         for script_path in project_paths:
             script_path = replace_macros(script_path, self.macros)
             if not project_def.add_script(script_path, include_dir + script_path) and not args.hide_warnings:
-                print("Script does not exist: " + script_path)
+                warning("Script does not exist: " + script_path)
 
         project_def.update_groups()
         self._projects_all.append(project_def)
@@ -129,7 +130,7 @@ class BaseInfoPlatform:
         for project_path in args.add:
             if not self.add_project_by_script(project_path):
                 if not self.is_project_added(project_path) and project_path not in self.shared.groups:
-                    print("Project, Group, or File does not exist: " + project_path)
+                    warning("Project, Group, or File does not exist: " + project_path)
 
         for config in args.configs:
             if config not in self.configurations:
@@ -196,7 +197,7 @@ class BaseInfoPlatform:
                         unwanted_projects[project.name] = project
                         break
                 else:
-                    print("Project, Group, or Script does not exist: " + removed_item)
+                    warning("Project, Group, or Script does not exist: " + removed_item)
         
         # TODO: clean up this mess
         if add_list:
@@ -214,7 +215,7 @@ class BaseInfoPlatform:
                             self._use_project(project, unwanted_projects)
                             break
                     else:
-                        print("Project, Group, or Script does not exist: " + added_item)
+                        warning("Project, Group, or Script does not exist: " + added_item)
         else:
             raise Exception("No projects were added to generate for")
 
@@ -326,16 +327,14 @@ class Parser:
         info = BaseInfo()
 
         if base_file_path:
-            if args.verbose:
-                print("\nReading: " + args.base_file)
+            verbose("\nReading: " + args.base_file)
 
             base_file = self.read_file(base_file_path)
             if not base_file:
-                print("Base File does not exist: " + base_file_path)
+                warning("Base File does not exist: " + base_file_path)
             else:
-                if args.verbose:
-                    print("\nParsing: " + args.base_file)
-
+                verbose("\nParsing: " + args.base_file)
+                
                 [self._parse_base_info_recurse(info_plat, base_file) for info_plat in info.info_list]
 
         info.finish_parsing()
@@ -384,14 +383,12 @@ class Parser:
                     if os.path.isdir(new_include_dir):
                         os.chdir(new_include_dir)
                 
-                if args.verbose:
-                    print("Reading: " + file_path)
+                verbose("Reading: " + file_path)
             
                 try:
                     include_file = read_file(file_path)
             
-                    if args.verbose:
-                        print("Parsing... ")
+                    verbose("Parsing... ")
                 
                     self._parse_base_info_recurse(info, include_file, new_include_dir)
                 except FileNotFoundError:
@@ -452,7 +449,7 @@ class Parser:
         project_block = self.read_file(project_filename)
 
         if project_block is None:
-            print("Script does not exist: " + project_script)
+            warning("Script does not exist: " + project_script)
             return
 
         project_name = os.path.splitext(project_filename)[0]
@@ -462,11 +459,8 @@ class Parser:
             project_pass.hash_list[project_filename] = qpc_hash.make_hash(project_filename)
             self._parse_project(project_block, project_pass)
             self.counter += 1
-
-        # self._merge_project_passes(project_container)
     
-        if args.verbose:
-            print("Parsed: " + project_container.get_display_name())
+        verbose("Parsed: " + project_container.get_display_name())
 
         if args.time:
             print(str(round(perf_counter() - start_time, 4)) + " - Parsed: " + project_script)
@@ -499,28 +493,27 @@ class Parser:
                 elif project_block.key == "include":
                     # Ah shit, here we go again.
                     include_path = project.replace_macros(project_block.values[0])
-                    include_file = self._include_file(include_path, project, project_file.file_path, indent + "    ")
+                    include_file = self._include_file(include_path, project, indent + "    ")
                     if include_file:
                         try:
                             self._parse_project(include_file, project, indent + "    ")
                         except RecursionError:
                             raise RecursionError("Recursive Includes found:\n" + project_block.get_formatted_info())
-                        if args.verbose:
-                            print(indent + "    " + "Finished Parsing")
+                        verbose(indent + "    " + "Finished Parsing")
+                    else:
+                        project_block.warning(f"File does not exist: {include_path}")
                     
-                elif not args.hide_warnings:
+                else:
                     project_block.warning("Unknown key: ")
     
-    def _include_file(self, include_path: str, project: ProjectPass, project_path: str, indent: str) -> QPCBlockBase:
+    def _include_file(self, include_path: str, project: ProjectPass, indent: str) -> QPCBlockBase:
         project.hash_list[include_path] = qpc_hash.make_hash(include_path)
         include_file = self.read_file(include_path)
     
         if not include_file:
-            print("File does not exist:\n\tScript: {0}\n\tFile: {1}".format(project_path, include_path))
             return None
     
-        if args.verbose:
-            print(indent + "Parsing: " + include_path)
+        verbose(indent + "Parsing: " + include_path)
     
         return include_file
         
@@ -546,7 +539,7 @@ class Parser:
                     build_event.pre_link.extend(command_list)
                 elif item.key == "post_build":
                     build_event.post_build.extend(command_list)
-                elif not args.hide_warnings:
+                else:
                     project_block.warning("invalid event in build_event:"
                                           "options are pre_build, pre_link, and post_build")
                     
@@ -555,7 +548,7 @@ class Parser:
         # it's not, we are calling a build event
         elif project_block.values[0] in project.build_events:
             project.call_build_event(*project_block.values)
-        elif not args.hide_warnings:
+        else:
             project_block.warning("undefined build_event")
     
     def _parse_files(self, files_block: QPCBlock, project: ProjectPass, folder_list: list) -> None:
@@ -590,11 +583,7 @@ class Parser:
             if config_block.solve_condition(project.macros):
             
                 if config_block.key == "configuration":
-                    # if not args.hide_warnings:
-                    #     config_block.warning("Legacy Source File compiler info syntax\n"
-                    #                          "Remove \"configuration { compiler {\", ")
                     for group_block in config_block.items:
-                    
                         if group_block.key != "compiler":
                             group_block.error("Invalid Group, can only use compiler")
                             continue

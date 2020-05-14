@@ -8,6 +8,7 @@ from qpc_args import args
 from qpc_base import BaseProjectGenerator, Platform, Arch
 from qpc_project import PrecompiledHeader, ConfigType, Language, ProjectContainer
 from qpc_parser import BaseInfo
+from qpc_logging import warning, error, verbose, print_color, Color
 from enum import Enum
 
 
@@ -43,36 +44,36 @@ class VisualStudioGenerator(BaseProjectGenerator):
         if args.time:
             start_time = perf_counter()
         else:
-            print("Creating: " + project.file_name + ".vcxproj")
+            print_color(Color.CYAN, "Creating: " + project.file_name + ".vcxproj")
 
         vcx_project, include_list, res_list, none_list = create_vcxproj(project, project_passes)
         write_project(project, out_dir, vcx_project, ".vcxproj")
         
         if args.time:
-            print(timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj")
+            print_color(Color.CYAN, timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj")
         
         if args.time:
             start_time = perf_counter()
         else:
-            print("Creating: " + project.file_name + ".vcxproj.filters")
+            print_color(Color.CYAN, "Creating: " + project.file_name + ".vcxproj.filters")
             
         vcxproject_filters = create_vcxproj_filters(project, project_passes, include_list, res_list, none_list)
         write_project(project, out_dir, vcxproject_filters, ".vcxproj.filters")
 
         if args.time:
-            print(timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj.filters")
+            print_color(Color.CYAN, timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj.filters")
         
         if self.has_debug_commands(project_passes):
             if args.time:
                 start_time = perf_counter()
             else:
-                print("Creating: " + project.file_name + ".vcxproj.user")
+                print_color(Color.CYAN, "Creating: " + project.file_name + ".vcxproj.user")
                 
             vcxproject_user = create_vcxproj_user(project, project_passes)
             write_project(project, out_dir, vcxproject_user, ".vcxproj.user")
 
             if args.time:
-                print(timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj.user")
+                print_color(Color.CYAN, timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj.user")
         
         # return out_dir
         
@@ -97,7 +98,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         return master_file_path + ".sln"
     
     def create_master_file(self, info: BaseInfo, master_file_path: str) -> None:
-        print("Creating Solution File: " + master_file_path)
+        print_color(Color.GREEN, "Creating Solution File: " + master_file_path)
     
         # slow?
         self.out_dir_dict = {}
