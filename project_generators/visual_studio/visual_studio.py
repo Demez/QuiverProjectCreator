@@ -98,7 +98,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         return master_file_path + ".sln"
     
     def create_master_file(self, info: BaseInfo, master_file_path: str) -> None:
-        print_color(Color.GREEN, "Creating Solution File: " + master_file_path)
+        print_color(Color.CYAN, "Creating Solution File: " + master_file_path)
     
         # slow?
         self.out_dir_dict = {}

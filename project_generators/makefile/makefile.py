@@ -54,7 +54,7 @@ class MakefileGenerator(BaseProjectGenerator):
         return master_file_path + MAKEFILE_EXT
 
     def create_master_file(self, info: BaseInfo, master_file_path: str) -> None:
-        print_color(Color.GREEN, "Creating Master File: " + master_file_path)
+        print_color(Color.CYAN, "Creating Master File: " + master_file_path)
 
         out_dir_dict = {}
         dependency_dict = {}

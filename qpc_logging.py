@@ -30,7 +30,7 @@ class Color(Enum):
         CYAN = "3"  # or 9
     
         DEFAULT = "7"
-    else:  # linux
+    else:  # ansi escape chars
         RED = "\033[0;31m"
         GREEN = "\033[0;32m"
         YELLOW = "\033[0;33m"  # color 6?
@@ -42,8 +42,6 @@ class Color(Enum):
 
 
 class Severity(Enum):
-    VERBOSE = Color.MAGENTA
-    DEFAULT = Color.DEFAULT
     WARNING = Color.YELLOW
     ERROR = Color.RED
     
@@ -65,7 +63,7 @@ def error(*text):
 
 def verbose(*text):
     if args.verbose:
-        print_color(Severity.VERBOSE.value, "".join(text))
+        print("".join(text))
 
 
 def _print_severity(level: Severity, spacing: str, *text):

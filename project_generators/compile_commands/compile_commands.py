@@ -33,7 +33,7 @@ class CompileCommandsGenerator(BaseProjectGenerator):
         print("------------------------------------------------------------------------")
         create_directory("compile_commands")
         for label, commands_list in self.commands_list.items():
-            print_color(Color.GREEN, "Writing: " + f"compile_commands/{label}.json")
+            print_color(Color.CYAN, "Writing: " + f"compile_commands/{label}.json")
             compile_commands = json.dumps(commands_list, indent=4)
             with open(f"compile_commands/{label}.json", "w") as file_io:
                 file_io.write(compile_commands)
