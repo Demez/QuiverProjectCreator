@@ -42,7 +42,7 @@ class Color(Enum):
 
 
 class Severity(Enum):
-    VERBOSE = Color.GREEN
+    VERBOSE = Color.MAGENTA
     DEFAULT = Color.DEFAULT
     WARNING = Color.YELLOW
     ERROR = Color.RED
@@ -65,11 +65,11 @@ def error(*text):
 
 def verbose(*text):
     if args.verbose:
-        _print_severity(Severity.VERBOSE, *text)
+        print_color(Severity.VERBOSE.value, "".join(text))
 
 
 def _print_severity(level: Severity, spacing: str, *text):
-    print_color(level.value, f"[{level.name}] {text[0]}{spacing}{spacing.join(text[1:])}\n")
+    print_color(level.value, f"[{level.name}] {spacing.join(text)}\n")
         
         
 def win32_set_fore_color(color: int):
