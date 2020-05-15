@@ -6,7 +6,7 @@ from qpc_args import args, get_arg_macros
 from qpc_base import Platform, Arch, check_file_path_glob
 from qpc_project import ProjectContainer, ProjectPass, ProjectDefinition, ProjectGroup, BuildEvent, \
                         replace_macros, replace_macros_list
-from qpc_logging import warning, error, verbose, print_color
+from qpc_logging import warning, error, verbose, verbose_color, print_color, Color
 from enum import Enum
 from time import perf_counter
 
@@ -65,9 +65,8 @@ class BaseInfoPlatform:
         self.platform = platform
         self.macros = {**get_arg_macros(), **get_platform_macros(platform)}
         
-        if args.verbose:
-            print()
-            [print('Set Macro: {0} = "{1}"'.format(name, value)) for name, value in self.macros.items()]
+        verbose("")
+        [verbose_color(Color.DGREEN, 'Set Macro: {0} = "{1}"'.format(name, value)) for name, value in self.macros.items()]
         
         self._projects_all = []
         # self._projects_undefined = {}
@@ -442,7 +441,7 @@ class Parser:
     def parse_project(self, project_def: ProjectDefinition, project_script: str, info: BaseInfo, generator_list: list) -> ProjectContainer:
         if args.time:
             start_time = perf_counter()
-        else:
+        elif not args.verbose:
             print("Parsing: " + project_script)
 
         project_filename = os.path.split(project_script)[1]
@@ -456,6 +455,12 @@ class Parser:
         project_container = ProjectContainer(project_name, project_script, info, project_def, generator_list)
         
         for project_pass in project_container._passes:
+            verbose(f"\n ---- Parsing Project - "
+                    f"Config: \"{project_pass.config_name}\" "
+                    f"Platform: \"{project_pass.platform.name}\" "
+                    f"Arch: \"{project_pass.arch.name}\" ---- \n")
+
+            verbose("Parsing: " + project_script)
             project_pass.hash_list[project_filename] = qpc_hash.make_hash(project_filename)
             self._parse_project(project_block, project_pass)
             self.counter += 1
@@ -472,7 +477,7 @@ class Parser:
             if project_block.solve_condition(project.macros):
             
                 if project_block.key == "macro":
-                    project.add_macro(*project.replace_macros_list(*project_block.values))
+                    project.add_macro(indent, *project.replace_macros_list(*project_block.values))
             
                 elif project_block.key == "configuration":
                     self._parse_config(project_block, project)

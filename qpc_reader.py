@@ -2,7 +2,7 @@
 
 import os
 from re import compile
-from qpc_logging import warning, error, verbose
+from qpc_logging import warning, error, verbose, verbose_color, print_color, Color
 
 
 def posix_path(string: str) -> str:
@@ -209,19 +209,25 @@ class Comment:
 def replace_macros_condition(split_string, macros):
     # for macro, macro_value in macros.items():
     for index, item in enumerate(split_string):
-        if item in macros or item[1:] in macros:
-            if str(item).startswith("!"):
+        flip_value = str(item).startswith("!")
+        if item in macros or (flip_value and item[1:] in macros):
+            if flip_value:
                 split_string[index] = str(int(not macros[item[1:]]))
             else:
                 split_string[index] = macros[item]
         
-        elif item.startswith("!"):
+        elif flip_value:
             split_string[index] = "1"
         
         elif item.startswith("$"):
             split_string[index] = "0"
     
     return split_string
+
+
+def _print_solved_condition(split_string: list, result: int):
+    pass
+    # verbose_color(Color.BLUE, f"Solved Condition: \"[{' '.join(split_string)}]\" -> \"{result}\"")
 
 
 def solve_condition(qpcblock: QPCBlockBase, condition: str, macros: dict) -> int:
@@ -237,23 +243,24 @@ def solve_condition(qpcblock: QPCBlockBase, condition: str, macros: dict) -> int
     
     split_string = COND_OPERATORS.split(solved_cond)
     
-    solved_cond = replace_macros_condition(split_string, macros)
+    solved_cond = replace_macros_condition(split_string.copy(), macros)
     
     if len(solved_cond) == 1:
         try:
-            return int(solved_cond[0])
+            solved_cond[0] = int(solved_cond[0])
         except ValueError:
+            _print_solved_condition(split_string, 1)
             return 1
     
     while len(solved_cond) > 1:
         try:
             solved_cond = _solve_single_condition(solved_cond)
         except Exception as F:
-            raise Exception(f'Error Solving Condition: {str(F)}\n'
-                            f'\tCondition: [{condition}]\n'
-                            f'\tProgress:  [{" ".join(solved_cond)}]\n\n' +
-                            qpcblock.get_formatted_info())
-    
+            qpcblock.error(f'Error Solving Condition: {str(F)}\n'
+                           f'\tCondition: [{condition}] -> [{" ".join(solved_cond)}]\n')
+            return 0
+
+    _print_solved_condition(split_string, solved_cond[0])
     return solved_cond[0]
 
 

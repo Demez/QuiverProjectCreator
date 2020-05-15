@@ -23,19 +23,21 @@ if os.name == "nt":
 class Color(Enum):
     if _win32_legacy_con:
         RED = "4"
-        GREEN = "2"
+        DGREEN = "2"
+        GREEN = "10"
         YELLOW = "6"
         BLUE = "1"
-        MAGENTA = "5"
+        MAGENTA = "13"
         CYAN = "3"  # or 9
     
         DEFAULT = "7"
     else:  # ansi escape chars
         RED = "\033[0;31m"
-        GREEN = "\033[0;32m"
-        YELLOW = "\033[0;33m"  # color 6?
+        DGREEN = "\033[0;32m"
+        GREEN = "\033[1;32m"
+        YELLOW = "\033[0;33m"
         BLUE = "\033[0;34m"
-        MAGENTA = "\033[0;35m"
+        MAGENTA = "\033[1;35m"
         CYAN = "\033[0;36m"
         
         DEFAULT = "\033[0m"
@@ -64,6 +66,11 @@ def error(*text):
 def verbose(*text):
     if args.verbose:
         print("".join(text))
+
+
+def verbose_color(color: Color, *text):
+    if args.verbose:
+        print_color(color, "".join(text))
 
 
 def _print_severity(level: Severity, spacing: str, *text):

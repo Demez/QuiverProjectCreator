@@ -10,6 +10,7 @@ import qpc_hash
 from qpc_reader import solve_condition, read_file, QPCBlock
 from qpc_args import args, get_arg_macros
 from qpc_base import posix_path, norm_path, Platform, Arch, PLATFORM_ARCHS, check_file_path_glob
+from qpc_logging import warning, error, verbose, verbose_color, print_color, Color
 from enum import EnumMeta, Enum, auto
 from time import perf_counter
 
@@ -146,22 +147,30 @@ class ProjectPass:
     def _convert_dependency_path(self, key: str) -> str:
         return self.base_info.get_dependency_path(key)
     
-    def add_macro(self, macro_name: str, macro_value: str = "") -> None:
-        key_name = "$" + macro_name.upper()
-        
+    def add_macro(self, indent: str, macro_name: str, macro_value: str = "") -> None:
+        key_name = "$" + macro_name
         if macro_value:
-            self.macros[key_name] = macro_value
-        else:
-            if key_name not in self.macros:
-                self.macros[key_name] = ''
+            self._set_macro(indent, key_name, macro_value)
+        elif key_name not in self.macros:
+            self._set_macro(indent, key_name)
+            
+    def _set_macro(self, indent: str, macro_name: str, macro_value: str = ""):
+        self.macros[macro_name] = macro_value
+        verbose_color(Color.DGREEN, f"{indent}    Set Macro: {macro_name} = \"{self.macros[macro_name]}\"")
+        self._replace_undefined_macros(indent)
 
-        self._replace_undefined_macros()
-    
-    def _replace_undefined_macros(self) -> None:
+    def _replace_undefined_macros(self, indent: str) -> None:
         # this could probably be sped up
         # TODO: add scanning of files and certain config info
         for macro, value in self.macros.items():
-            self.macros[macro] = replace_macros(value, self.macros)
+            if args.verbose:
+                old_value = self.macros[macro]
+                self.macros[macro] = replace_macros(value, self.macros)
+                if old_value != self.macros[macro]:
+                    verbose_color(Color.GREEN,
+                                  f"{indent}    Updated Macro: {macro} - \"{old_value}\" -> \"{self.macros[macro]}\"")
+            else:
+                self.macros[macro] = replace_macros(value, self.macros)
             
     def replace_macros(self, string: str) -> str:
         return replace_macros(string, self.macros)
