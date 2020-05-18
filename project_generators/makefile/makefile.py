@@ -187,7 +187,7 @@ def gen_project_targets(conf) -> str:
         makefile += f"\t@echo '$(CYAN)Compiling static library {target_name}.a$(NC)'\n"
         makefile += '\t' + '\n\t'.join(gen_compile_stat(compiler, conf).split('\n'))
     
-    makefile += "\n\t" + "\n\t".join(conf.post_build)
+    makefile += "\n\t" + "\n\t".join(conf.post_build.commands)
     
     return makefile
 
@@ -225,10 +225,10 @@ clean:
 
 def gen_script_targets(conf: Configuration) -> str:
     makefile = "\n\n__PREBUILD:\n"
-    makefile += '\t' + '\n\t'.join(conf.pre_build) + "\n\n"
+    makefile += '\t' + '\n\t'.join(conf.pre_build.commands) + "\n\n"
     
     makefile += "\n\n__PRELINK:\n"
-    makefile += '\t' + '\n\t'.join(conf.pre_link) + "\n\n"
+    makefile += '\t' + '\n\t'.join(conf.pre_link.commands) + "\n\n"
     
     return makefile
 

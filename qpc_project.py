@@ -469,9 +469,9 @@ class Configuration:
         self.general = General(project.container.file_name, project.platform)
         self.compiler = ConfigCompiler()
         self.linker = Linker()
-        self.pre_build = []
-        self.pre_link = []
-        self.post_build = []
+        self.pre_build = ConfigBuildEvent()
+        self.pre_link = ConfigBuildEvent()
+        self.post_build = ConfigBuildEvent()
         
     def add_build_event_options(self, group_block: QPCBlock, option_block: QPCBlock):
         value = replace_macros(option_block.key, self._project.macros)
@@ -484,10 +484,7 @@ class Configuration:
 
     def parse_config_option(self, group_block: QPCBlock, option_block: QPCBlock):
         if group_block.key in self.__dict__ and group_block.key != "_project":
-            if group_block.key in {"post_build", "pre_build", "pre_link"}:
-                self.add_build_event_options(group_block, option_block)
-            else:
-                self.__dict__[group_block.key].parse_option(self._project.macros, option_block)
+            self.__dict__[group_block.key].parse_option(self._project.macros, option_block)
         elif group_block.key == "global":
             pass
         else:
@@ -672,6 +669,31 @@ class Linker:
     def _fix_lib_path_and_ext(macros: dict, lib_path: str) -> str:
         lib_path = clean_path(lib_path, macros)
         return os.path.splitext(lib_path)[0] + macros["$_STATICLIB_EXT"]
+        
+        
+class ConfigBuildEvent:
+    def __init__(self):
+        self.commands = []
+        self.install = []
+        
+    def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
+        if option_block.key in self.__dict__:
+            for item in option_block.items:
+                if item.solve_condition(macros):
+                    if item.key == "-":
+                        self._remove_value(macros, item, option_block.key)
+                    else:
+                        self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
+        else:
+            option_block.error("Unknown Build Event Option: ")
+            
+    def _remove_value(self, macros: dict, item: QPCBlock, key_name: str):
+        value_list = replace_macros_list(macros, *item.get_list())
+        for value in value_list:
+            if value not in self.__dict__[key_name]:
+                self.__dict__[key_name].remove(value)
+            else:
+                item.warning(f"Trying to remove item not added to \"{key_name}\": \"{value}\"")
     
     
 def convert_bool_option(old_value: bool, option_block: QPCBlock) -> bool:

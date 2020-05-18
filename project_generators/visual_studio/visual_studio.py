@@ -495,13 +495,13 @@ def setup_item_definition_groups(vcxproj: et.Element, project_passes: list):
         # PreBuildEvent, PostBuildEvent PreLinkEvent
         
         if cfg.pre_build:
-            et.SubElement(et.SubElement(item_def_group, "PreBuildEvent"), "Command").text = '\n'.join(cfg.pre_build)
+            et.SubElement(et.SubElement(item_def_group, "PreBuildEvent"), "Command").text = '\n'.join(cfg.pre_build.commands)
 
         if cfg.post_build:
-            et.SubElement(et.SubElement(item_def_group, "PostBuildEvent"), "Command").text = '\n'.join(cfg.post_build)
+            et.SubElement(et.SubElement(item_def_group, "PostBuildEvent"), "Command").text = '\n'.join(cfg.post_build.commands)
 
         if cfg.pre_link:
-            et.SubElement(et.SubElement(item_def_group, "PreLinkEvent"), "Command").text = '\n'.join(cfg.pre_link)
+            et.SubElement(et.SubElement(item_def_group, "PreLinkEvent"), "Command").text = '\n'.join(cfg.pre_link.commands)
             
             
 PRECOMPILED_HEADER_DICT =  {

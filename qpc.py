@@ -196,7 +196,4 @@ if __name__ == "__main__":
     qpc_hash.post_args_init()
     main()
     
-    if not args.hide_warnings:
-        print(f"{PRINT_LINE}\nFinished - {qpc_logging.WARNING_COUNT} Warnings\n{PRINT_LINE}")
-    else:
-        print(f"{PRINT_LINE}\nFinished {PRINT_LINE}")
+    print(f"{PRINT_LINE}\nFinished - {qpc_logging.WARNING_COUNT} Warnings\n{PRINT_LINE}")
