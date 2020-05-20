@@ -7,6 +7,7 @@ from enum import Enum
 import qpc_hash
 from qpc_base import BaseProjectGenerator, Platform, create_directory
 from qpc_project import ConfigType, Language, ProjectContainer, ProjectPass, Configuration
+from project_generators.shared.cmd_line_gen import get_compiler
 from qpc_parser import BaseInfo
 from qpc_logging import warning, error, verbose, print_color, Color
 from ..shared import cmd_line_gen
@@ -34,7 +35,7 @@ class NinjaGenerator(BaseProjectGenerator):
         create_directory("build_ninja")
         for label, commands_list in self.commands_list.items():
             print_color(Color.CYAN, "Writing: " + f"build_ninja/{label}.ninja")
-            script = json.dumps(commands_list, indent=4)
+            script = '\n\n'.join(commands_list)
             with open(f"build_ninja/{label}.ninja", "w") as file_io:
                 file_io.write(script)
     
@@ -46,22 +47,64 @@ class NinjaGenerator(BaseProjectGenerator):
         print_color(Color.CYAN, "Adding to Ninja: " + project.file_name)
         
         for proj_pass in project_passes:
+            conf = proj_pass.config
             self.cmd_gen.set_mode(proj_pass.config.general.compiler)
             label = f"{proj_pass.config_name.lower()}_{proj_pass.platform.name.lower()}_{proj_pass.arch.name.lower()}"
             if label not in self.all_files:
                 self.all_files[label] = set()
             if label not in self.commands_list:
                 self.commands_list[label] = []
+
+            compiler = get_compiler(proj_pass.config.general.compiler,
+                                    proj_pass.config.general.language)
+
+            self.commands_list[label].append(self.gen_header(conf, project, compiler))
                 
             for file in proj_pass.source_files:
                 if file not in self.all_files[label]:
                     self.all_files[label].add(file)
                     self.commands_list[label].append(self.handle_file(file, proj_pass))
 
+            self.commands_list[label].append(self.handle_target(conf, proj_pass.source_files))
+
+    def gen_header(self, conf, project, compiler):
+        outname = conf.general.out_name if conf.general.out_name else project.container.file_name
+        return f"""#!/usr/bin/env ninja -f
+# variables
+srcdir = {os.getcwd()}
+out_file = {outname}
+compiler = {compiler}
+
+# rules
+rule cc
+    command = $compiler -c -o $out $in $cflags
+
+rule exe
+    command = $compiler -o $out $in $cflags
+
+rule ar
+    command = ar rcs $out $in
+
+rule so
+    command = $compiler -o $out $in -fPIC -shared $cflags
+"""
+
+    def handle_target(self, conf, source_files) -> str:
+        target_name = conf.linker.output_file if conf.linker.output_file else "$out_file"
+        objs = ' '.join([ a + '.o'  for a in source_files ])
+        type, ext = {
+            ConfigType.APPLICATION: ('exe', ''),
+            ConfigType.DYNAMIC_LIBRARY: ('so', '.so'),
+            ConfigType.STATIC_LIBRARY: ('ar', '.a')
+        }[conf.general.configuration_type]
+
+        return f"build {target_name}{ext}: {type} {objs}\n"
+
     # Build definition for file
     # TODO: only supports objects rn, add so and exe support
     def handle_file(self, file: str, project: ProjectPass) -> str:
-        cmd = f"build {file}.o: cc {file}\n"
+        print(os.getcwd(), project)
+        cmd = f"build {file}.o: cc $srcdir/{file}\n"
         
         defs = " ".join(self.cmd_gen.convert_defines(project.config.compiler.preprocessor_definitions))
         includes = " ".join(self.cmd_gen.convert_includes(project.config.general.include_directories))
