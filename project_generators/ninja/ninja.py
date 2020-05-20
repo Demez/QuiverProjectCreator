@@ -99,20 +99,20 @@ out_file = {outname}
 
     def handle_target(self, conf, source_files) -> str:
         target_name = conf.linker.output_file if conf.linker.output_file else "$out_file"
-        objs = ' '.join([ a + '.o'  for a in source_files ])
+        objs = ' '.join([ os.path.abspath(a) + '.o'  for a in source_files ])
         type, ext = {
             ConfigType.APPLICATION: ('exe', ''),
             ConfigType.DYNAMIC_LIBRARY: ('so', '.so'),
             ConfigType.STATIC_LIBRARY: ('ar', '.a')
         }[conf.general.configuration_type]
 
-        return f"build {target_name}{ext}: {type} {objs}\n"
+        return f"build {os.path.abspath(target_name)}{ext}: {type} {objs}\n"
 
     # Build definition for file
     # TODO: only supports objects rn, add so and exe support
     def handle_file(self, file: str, project: ProjectPass, proj_name: str) -> str:
         print(os.getcwd(), project)
-        cmd = f"build {file}.o: cc ${proj_name}_srcdir/{file}\n"
+        cmd = f"build {os.path.abspath(file)}.o: cc {os.path.abspath(file)}\n"
         
         defs = " ".join(self.cmd_gen.convert_defines(project.config.compiler.preprocessor_definitions))
         includes = " ".join(self.cmd_gen.convert_includes(project.config.general.include_directories))
