@@ -48,12 +48,6 @@ This is based off of Valve's VPC (Valve Project Creator), which is really bad in
 -r  --remove [projects/groups]  Don't use these projects or groups
 ```
 
-### Setting Macros in the command line:
-
-```
-
-```
-
 ### Generating for other platforms and architectures
 
 This option allows you to generate projects for multiple different platforms and architectures at a time
