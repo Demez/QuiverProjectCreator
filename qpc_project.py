@@ -97,7 +97,7 @@ class ProjectGroup:
 class SourceFile:
     def __init__(self, folder_list: list):
         self.folder = "/".join(folder_list)
-        self.compiler = ConfigCompiler()
+        self.compiler = SourceFileCompile()
 
 
 class ProjectPass:
@@ -463,7 +463,7 @@ class Configuration:
         self._project = project
         self.debug = Debug()
         self.general = General(project.container.file_name, project.platform)
-        self.compiler = ConfigCompiler()
+        self.compiler = Compile()
         self.linker = Linker()
         self.pre_build = []
         self.pre_link = []
@@ -582,7 +582,7 @@ class General:
         self.language = convert_enum_option(self.language, option, Language)
 
 
-class ConfigCompiler:
+class Compile:
     def __init__(self):
         self.preprocessor_definitions = []
         self.precompiled_header = None  # PrecompiledHeader.NONE
@@ -605,6 +605,18 @@ class ConfigCompiler:
     
         else:
             option_block.error("Unknown Compiler Option: ")
+    
+    
+class SourceFileCompile(Compile):
+    def __init__(self):
+        super().__init__()
+        self.build = True
+        
+    def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
+        if option_block.key == "build":
+            self.build = convert_bool_option(self.build, option_block)
+        else:
+            super().parse_option(macros, option_block)
 
 
 class Linker:
