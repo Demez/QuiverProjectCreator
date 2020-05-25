@@ -205,33 +205,29 @@ class ProjectPass:
 
     def _add_file_internal(self, folder_list: list, file_path: str, file_block: QPCBlock):
         if os.path.splitext(file_path)[1] in EXTS_C:
-            if file_path in self.source_files:
-                if not args.hide_warnings:
-                    file_block.warning("File already added: " + file_path)
-            else:
-                check_if_file_exists(file_path, file_block.warning)
+            if not self._check_file_added(file_path, file_block, self.source_files):
                 self.source_files[file_path] = SourceFile(folder_list)
-        else:
-            if file_path in self.files:
-                if not args.hide_warnings:
-                    file_block.warning("File already added: " + file_path)
-            else:
-                check_if_file_exists(file_path, file_block.warning)
-                self.files[file_path] = "/".join(folder_list)
+        elif not self._check_file_added(file_path, file_block, self.files):
+            self.files[file_path] = "/".join(folder_list)
 
+    @staticmethod
+    def _check_file_added(file_path: str, file_block: QPCBlock, file_dict: dict) -> bool:
+        if file_path in file_dict:
+            file_block.warning("File already added: " + file_path)
+            return True
+        else:
+            return not check_if_file_exists(file_path, file_block.warning)
+                
     def _remove_file_internal(self, folder_list: list, file_path: str, file_block: QPCBlock):
         if os.path.splitext(file_path)[1] in EXTS_C:
             if file_path in self.source_files:
-                # if self.source_files[file_path].folder == "/".join(folder_list):
                 del self.source_files[file_path]
-            elif not args.hide_warnings:
+            else:
                 file_block.warning(f"Trying to remove a file that isn't added: \"{file_path}\"")
         else:
             if file_path in self.files:
-                # is this even a good idea? might just be annoying
-                # if self.files[file_path] == "/".join(folder_list):
                 del self.files[file_path]
-            elif not args.hide_warnings:
+            else:
                 file_block.warning(f"Trying to remove a file that isn't added: \"{file_path}\"")
 
     def add_dependency(self, qpc_path: str) -> None:
@@ -724,12 +720,12 @@ class BuildEvent:
         config.__dict__[event_name].extend(event_list)
         
         
-def check_if_file_exists(file_path: str, option_warning: classmethod):
+def check_if_file_exists(file_path: str, option_warning: classmethod) -> bool:
     if args.check_files:
         if not os.path.isfile(file_path):
-            if not args.hide_warnings:
-                # raise FileNotFoundError("File does not exist: " + file_path)
-                option_warning("File does not exist: ")
+            option_warning("File does not exist: ")
+            return False
+    return True
 
 
 def split_folders(path_list):
