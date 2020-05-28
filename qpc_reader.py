@@ -60,11 +60,11 @@ class QPCBlockBase:
                 return item
         return None
     
-    def get_item_values(self, item_key):
+    def get_item_values(self, item_key) -> list:
         for item in self.items:
             if item.key == item_key:
                 return item.values
-        return None
+        return []
     
     def get_items(self, item_key):
         items = []
@@ -88,11 +88,12 @@ class QPCBlockBase:
                 items.append(item.key)
         return items
     
-    def get_item_values_condition(self, macros: dict):
+    def get_item_values_condition(self, macros: dict, key: str = ""):
         items = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):
-                items.extend(item.values)
+                if not key or key == item.key:
+                    items.extend(item.values)
         return items
     
     def get_item_list_condition(self, macros: dict):

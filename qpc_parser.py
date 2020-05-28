@@ -536,17 +536,8 @@ class Parser:
             
             build_event = BuildEvent(*replace_macros_list(project.macros, *project_block.values))
             
-            for item in project_block.items:
-                command_list = replace_macros_list(project.macros, *item.get_item_list_condition(project.macros))
-                if item.key == "pre_build":
-                    build_event.pre_build.extend(command_list)
-                elif item.key == "pre_link":
-                    build_event.pre_link.extend(command_list)
-                elif item.key == "post_build":
-                    build_event.post_build.extend(command_list)
-                else:
-                    project_block.warning("invalid event in build_event:"
-                                          "options are pre_build, pre_link, and post_build")
+            command_list = replace_macros_list(project.macros, *project_block.get_item_list_condition(project.macros))
+            build_event.build.extend(command_list)
                     
             project.build_events[project_block.values[0]] = build_event
     
@@ -618,6 +609,9 @@ class Parser:
         if project_block.solve_condition(project.macros):
             for group_block in project_block.items:
                 if group_block.solve_condition(project.macros):
-                    for option_block in group_block.items:
-                        if option_block.solve_condition(project.macros):
-                            project.config.parse_config_option(group_block, option_block)
+                    if project.config.check_build_step(group_block):
+                        project.config.parse_build_step(group_block)
+                    else:
+                        for option_block in group_block.items:
+                            if option_block.solve_condition(project.macros):
+                                project.config.parse_config_option(group_block, option_block)

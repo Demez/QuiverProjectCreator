@@ -247,26 +247,27 @@ class ProjectPass:
     def is_build_event_defined(self, name: str):
         return name in self.build_events
         
-    def call_build_event(self, event_name: str, *event_args):
+    def call_build_event(self, warning_func: classmethod, step: list, event_name: str, *event_args):
         if event_name in self.build_events:
             event_args = replace_macros_list(self.macros, *event_args)
-            arg_list = []
-            has_glob_and_none_found = False
-            
+            for item in [list(event_args)]:
+                self.build_events[event_name].call_event(warning_func, step, *item)
+    
+    def call_build_event_item(self, items: list, step: list, event_name: str):
+        if event_name not in self.build_events:
+            return
+        
+        for option in items:
+            if not option.solve_condition(self.macros):
+                continue
+                
+            event_args = replace_macros_list(self.macros, *option.get_list())
             for index, event_macro in enumerate(event_args):
                 if check_file_path_glob(event_macro):
-                    found_files = glob.glob(event_macro, recursive=True)
-                    has_glob_and_none_found = not bool(found_files)
-                    for found_file in found_files:
-                        # TODO: multiple wildcards that don't find anything might act odd here
-                        current_list = [*event_args[index:], found_file, *event_args[:index]]
-                        arg_list.append(current_list)
-            else:
-                if not arg_list and not has_glob_and_none_found:
-                    arg_list = [list(event_args)]
-                    
-            for item in arg_list:
-                self.build_events[event_name].call_event(self, *item)
+                    files = glob.glob(event_macro, recursive=True)
+                    [self.build_events[event_name].call_event(option.warning, step, file) for file in files]
+                else:
+                    self.build_events[event_name].call_event(option.warning, step, event_macro)
     
     # Gets every single folder in the project, splitting each one as well
     # this function is awful
@@ -456,10 +457,6 @@ class ProjectContainer:
         return all_files
 
 
-# TODO: maybe add some enums for options with specific values?
-#  though how would writers get all the available values? maybe a seperate file
-
-
 class Configuration:
     def __init__(self, project: ProjectPass):
         self._project = project
@@ -467,9 +464,9 @@ class Configuration:
         self.general = General(project.container.file_name, project.platform)
         self.compiler = Compile()
         self.linker = Linker()
-        self.pre_build = ConfigBuildEvent()
-        self.pre_link = ConfigBuildEvent()
-        self.post_build = ConfigBuildEvent()
+        self.pre_build = []
+        self.pre_link = []
+        self.post_build = []
         
     def add_build_event_options(self, group_block: QPCBlock, option_block: QPCBlock):
         value = replace_macros(option_block.key, self._project.macros)
@@ -480,13 +477,32 @@ class Configuration:
             value = value.replace("\\n", "\n")
             self.__dict__[group_block.key].append(value)
 
-    def parse_config_option(self, group_block: QPCBlock, option_block: QPCBlock):
-        if group_block.key in self.__dict__ and group_block.key != "_project":
-            self.__dict__[group_block.key].parse_option(self._project.macros, option_block)
-        elif group_block.key == "global":
-            pass
+    def parse_config_option(self, group: QPCBlock, option: QPCBlock):
+        if group.key in self.__dict__ and group.key != "_project":
+            self.__dict__[group.key].parse_option(self._project.macros, option)
         else:
-            group_block.error("Unknown Configuration Group: ")
+            group.warning("Unknown Configuration Group: ")
+            
+    @staticmethod
+    def check_build_step(group: QPCBlock):
+        return group.key in {"pre_build", "pre_link", "post_build"}
+            
+    def _parse_build_step_internal(self, step_name: str, event_name: str, group: QPCBlock, *event_args):
+        if event_name in self._project.build_events:
+            event = self.__dict__[step_name]
+            if group.items:
+                self._project.call_build_event_item(group.items, event, event_name)
+            else:
+                self._project.call_build_event(group.warning, event, event_name, *event_args)
+        else:
+            group.warning("Undefined build event: ")
+            
+    def parse_build_step(self, group: QPCBlock):
+        if group.values:
+            self._parse_build_step_internal(group.key, group.values[0], group, *group.values[1:])
+        else:
+            for option in group.items:
+                self._parse_build_step_internal(group.key, option.key, group, *option.values)
 
 
 # idea, for debug options in the editor used (if it can debug)
@@ -679,31 +695,6 @@ class Linker:
     def _fix_lib_path_and_ext(macros: dict, lib_path: str) -> str:
         lib_path = clean_path(lib_path, macros)
         return os.path.splitext(lib_path)[0] + macros["$_STATICLIB_EXT"]
-        
-        
-class ConfigBuildEvent:
-    def __init__(self):
-        self.commands = []
-        self.install = []
-        
-    def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
-        if option_block.key in self.__dict__:
-            for item in option_block.items:
-                if item.solve_condition(macros):
-                    if item.key == "-":
-                        self._remove_value(macros, item, option_block.key)
-                    else:
-                        self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
-        else:
-            option_block.error("Unknown Build Event Option: ")
-            
-    def _remove_value(self, macros: dict, item: QPCBlock, key_name: str):
-        value_list = replace_macros_list(macros, *item.get_list())
-        for value in value_list:
-            if value not in self.__dict__[key_name]:
-                self.__dict__[key_name].remove(value)
-            else:
-                item.warning(f"Trying to remove item not added to \"{key_name}\": \"{value}\"")
     
     
 def convert_bool_option(old_value: bool, option_block: QPCBlock) -> bool:
@@ -732,28 +723,36 @@ class BuildEvent:
     def __init__(self, name: str, *event_macros):
         self.name = name
         self.macros = ["$" + event_macro for event_macro in event_macros]
-        self.pre_build = []
-        self.pre_link = []
-        self.post_build = []
+        self.build = []
         
-    def call_event(self, project: ProjectPass, *event_macros):
+    def call_event(self, warning_func: classmethod, step: list, *event_macros):
         macro_dict = {}
         for index, macro_value in enumerate(event_macros):
             if index < len(self.macros):
                 macro_dict[self.macros[index]] = macro_value
             else:
-                # tf are you doing
+                warning_func(f"Calling build event \"{self.name}\" with extra arguments")
                 break
                 
-        # todo later: maybe handle undefined stuff? probably going to forget about this
-            
-        self._add_event(project.config, macro_dict, "pre_build")
-        self._add_event(project.config, macro_dict, "pre_link")
-        self._add_event(project.config, macro_dict, "post_build")
-    
-    def _add_event(self, config: Configuration, macros: dict, event_name: str):
-        event_list = replace_macros_list(macros, *self.__dict__[event_name])
-        config.__dict__[event_name].extend(event_list)
+        if len(macro_dict) < len(self.macros):
+            warning_func(f"Calling build event \"{self.name}\" with too few arguments")
+
+        event_list = replace_macros_list(macro_dict, *self.build)
+        
+        index = 0
+        while index < len(event_list):
+            event = event_list[index]
+            if event == "-":
+                if index + 1 < len(event_list):
+                    if event_list[index + 1] in step:
+                        step.remove(event_list[index + 1])
+                    else:
+                        warning_func("Attempting to remove command that doesn't exist: ", event_list[index + 1])
+                    index += 2
+                    continue
+                
+            step.append(event)
+            index += 1
         
         
 def check_if_file_exists(file_path: str, option_warning: classmethod) -> bool:
