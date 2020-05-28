@@ -6,7 +6,7 @@ import lxml.etree as et
 from time import perf_counter
 from qpc_args import args
 from qpc_base import BaseProjectGenerator, Platform, Arch
-from qpc_project import PrecompiledHeader, ConfigType, Language, ProjectContainer
+from qpc_project import PrecompiledHeader, ConfigType, Language, ProjectContainer, Compile, SourceFileCompile
 from qpc_parser import BaseInfo
 from qpc_logging import warning, error, verbose, print_color, Color
 from enum import Enum
@@ -511,8 +511,12 @@ PRECOMPILED_HEADER_DICT =  {
 }
 
 
-def add_compiler_options(compiler_elem: et.SubElement, compiler, general=None):
+def add_compiler_options(compiler_elem: et.SubElement, compiler: Compile, general=None):
     added_option = False
+    
+    if type(compiler) == SourceFileCompile and not compiler.build:
+        added_option = True
+        et.SubElement(compiler_elem, "ExcludedFromBuild").text = str(not compiler.build).lower()
     
     if compiler.preprocessor_definitions:
         added_option = True

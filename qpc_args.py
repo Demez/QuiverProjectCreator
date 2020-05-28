@@ -90,7 +90,15 @@ def _convert_to_enum(arg_list: list, enum_list: EnumMeta) -> list:
 
 
 def get_arg_macros() -> dict:
+    from qpc_logging import warning  # avoids circular imports
     arg_macros = {}
     for macro in args.macros:
-        arg_macros["$" + macro] = "1"
+        name = macro
+        value = "1"
+        if "=" in macro:
+            name, value = macro.split("=", 1)
+            if not value:
+                warning(f"Macro \"{macro}\" has trailing equals sign, setting to 1")
+                value = "1"
+        arg_macros["$" + name] = value
     return arg_macros
