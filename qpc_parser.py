@@ -527,7 +527,7 @@ class Parser:
         if not project_block.values and not args.hide_warnings:
             project_block.warning("build_event has no name")
     
-        # is this a definition?
+        # can only define it here
         elif project_block.items:
             # check to see if it's already defined
             if project_block.values[0] in project.build_events:
@@ -540,12 +540,6 @@ class Parser:
             build_event.build.append(command_list)
                     
             project.build_events[project_block.values[0]] = build_event
-    
-        # it's not, we are calling a build event
-        elif project_block.values[0] in project.build_events:
-            project.call_build_event(*project_block.values)
-        else:
-            project_block.warning("undefined build_event")
     
     def _parse_files(self, files_block: QPCBlock, project: ProjectPass, folder_list: list) -> None:
         if files_block.solve_condition(project.macros):
@@ -605,13 +599,8 @@ class Parser:
     
     # awful
     @staticmethod
-    def _parse_config(project_block: QPCBlock, project: ProjectPass) -> None:
-        if project_block.solve_condition(project.macros):
-            for group_block in project_block.items:
-                if group_block.solve_condition(project.macros):
-                    if project.config.check_build_step(group_block):
-                        project.config.parse_build_step(group_block)
-                    else:
-                        for option_block in group_block.items:
-                            if option_block.solve_condition(project.macros):
-                                project.config.parse_config_option(group_block, option_block)
+    def _parse_config(config: QPCBlock, project: ProjectPass) -> None:
+        if config.solve_condition(project.macros):
+            for group in config.get_items_cond(project.macros):
+                for option_block in group.get_items_cond(project.macros):
+                    project.config.parse_config_option(group, option_block)

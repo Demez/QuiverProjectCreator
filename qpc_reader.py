@@ -74,7 +74,7 @@ class QPCBlockBase:
         return items
     
     # TODO: shorten these 4 function names?
-    def get_items_condition(self, macros: dict):
+    def get_items_cond(self, macros: dict):
         items = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):

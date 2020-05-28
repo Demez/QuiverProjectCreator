@@ -246,39 +246,6 @@ class ProjectPass:
         
     def is_build_event_defined(self, name: str):
         return name in self.build_events
-        
-    def call_build_event(self, warning_func: classmethod, step: list, event_name: str, *event_args):
-        if event_name in self.build_events:
-            event_args = replace_macros_list(self.macros, *event_args)
-            for item in [list(event_args)]:
-                self.build_events[event_name].call_event(warning_func, step, *item)
-    
-    def call_build_event_item(self, items: list, step: list, event_name: str):
-        if event_name not in self.build_events:
-            return
-        
-        for option in items:
-            if not option.solve_condition(self.macros):
-                continue
-
-            if option.items:
-                for nested in option.items:
-                    if not nested.solve_condition(self.macros):
-                        continue
-                    self._call_build_event_item_internal(nested, step, event_name, *nested.get_list())
-            elif option.key == event_name:
-                self._call_build_event_item_internal(option, step, event_name, *option.values)
-            else:
-                self._call_build_event_item_internal(option, step, event_name, *option.get_list())
-        
-    def _call_build_event_item_internal(self, warning_func: classmethod, step: list, event_name: str, *arg_list):
-        event_args = replace_macros_list(self.macros, *arg_list)
-        for index, event_macro in enumerate(event_args):
-            if check_file_path_glob(event_macro):
-                files = glob.glob(event_macro, recursive=True)
-                [self.build_events[event_name].call_event(warning_func, step, file) for file in files]
-            else:
-                self.build_events[event_name].call_event(warning_func, step, event_macro)
     
     # Gets every single folder in the project, splitting each one as well
     # this function is awful
@@ -470,7 +437,7 @@ class ProjectContainer:
 
 class Configuration:
     def __init__(self, project: ProjectPass):
-        self._project = project
+        self._proj = project
         self.debug = Debug()
         self.general = General(project.container.file_name, project.platform)
         self.compiler = Compile()
@@ -480,40 +447,46 @@ class Configuration:
         self.post_build = []
         
     def add_build_event_options(self, group_block: QPCBlock, option_block: QPCBlock):
-        value = replace_macros(option_block.key, self._project.macros)
+        value = replace_macros(option_block.key, self._proj.macros)
         if option_block.values:
-            value += " " + replace_macros(" ".join(option_block.values), self._project.macros)
+            value += " " + replace_macros(" ".join(option_block.values), self._proj.macros)
         if value:
             # TODO: improve this, what if \\n is used in the file? it would just become \ and then new line, awful
             value = value.replace("\\n", "\n")
             self.__dict__[group_block.key].append(value)
 
     def parse_config_option(self, group: QPCBlock, option: QPCBlock):
-        if group.key in self.__dict__ and group.key != "_project":
-            self.__dict__[group.key].parse_option(self._project.macros, option)
+        if self.check_build_step(group):
+            self.parse_build_step(self.__dict__[group.key], option)
+        elif group.key in self.__dict__ and group.key != "_proj":
+            self.__dict__[group.key].parse_option(self._proj.macros, option)
         else:
             group.warning("Unknown Configuration Group: ")
             
     @staticmethod
     def check_build_step(group: QPCBlock):
         return group.key in {"pre_build", "pre_link", "post_build"}
-            
-    def _parse_build_step_internal(self, step_name: str, event_name: str, group: QPCBlock, *event_args):
-        if event_name in self._project.build_events:
-            event = self.__dict__[step_name]
-            if group.items:
-                self._project.call_build_event_item(group.items, event, event_name)
+
+    def _parse_build_step_glob(self, warning_func: classmethod, step: list, event_name: str, *arg_list):
+        event_args = replace_macros_list(self._proj.macros, *arg_list)
+        for index, event_macro in enumerate(event_args):
+            if check_file_path_glob(event_macro):
+                files = glob.glob(event_macro, recursive=True)
+                [self._proj.build_events[event_name].call_event(warning_func, step, file) for file in files]
             else:
-                self._project.call_build_event(group.warning, event, event_name, *event_args)
-        else:
-            group.warning("Undefined build event: ")
+                self._proj.build_events[event_name].call_event(warning_func, step, event_macro)
             
-    def parse_build_step(self, group: QPCBlock):
-        if group.values:
-            self._parse_build_step_internal(group.key, group.values[0], group, *group.values[1:])
+    def parse_build_step(self, step: list, event: QPCBlock):
+        if event.key not in self._proj.build_events:
+            event.warning("Undefined build event: " + event.key)
+            return
+    
+        if event.items:
+            for value in event.get_items_cond(self._proj.macros):
+                self._parse_build_step_glob(value, step, event.key, *value.get_list())
         else:
-            for option in group.items:
-                self._parse_build_step_internal(group.key, option.key, group, *option.values)
+            event_args = replace_macros_list(self._proj.macros, *event.values)
+            self._proj.build_events[event.key].call_event(event.warning, step, *event_args)
 
 
 # idea, for debug options in the editor used (if it can debug)
@@ -563,14 +536,12 @@ class General:
     def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
         # multiple path options
         if option_block.key in {"include_directories", "library_directories", "options"}:
-            for item in option_block.items:
-                if item.solve_condition(macros):
-                    self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
+            for item in option_block.get_items_cond(macros):
+                self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
 
         elif option_block.key == "options":
-            for item in option_block.items:
-                if item.solve_condition(macros):
-                    self.options.extend(item.get_list())
+            for item in option_block.get_items_cond(macros):
+                self.options.extend(item.get_list())
 
         if not option_block.values:
             return
