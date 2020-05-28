@@ -537,7 +537,7 @@ class Parser:
             build_event = BuildEvent(*replace_macros_list(project.macros, *project_block.values))
             
             command_list = replace_macros_list(project.macros, *project_block.get_item_list_condition(project.macros))
-            build_event.build.extend(command_list)
+            build_event.build.append(command_list)
                     
             project.build_events[project_block.values[0]] = build_event
     

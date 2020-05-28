@@ -260,14 +260,25 @@ class ProjectPass:
         for option in items:
             if not option.solve_condition(self.macros):
                 continue
-                
-            event_args = replace_macros_list(self.macros, *option.get_list())
-            for index, event_macro in enumerate(event_args):
-                if check_file_path_glob(event_macro):
-                    files = glob.glob(event_macro, recursive=True)
-                    [self.build_events[event_name].call_event(option.warning, step, file) for file in files]
-                else:
-                    self.build_events[event_name].call_event(option.warning, step, event_macro)
+
+            if option.items:
+                for nested in option.items:
+                    if not nested.solve_condition(self.macros):
+                        continue
+                    self._call_build_event_item_internal(nested, step, event_name, *nested.get_list())
+            elif option.key == event_name:
+                self._call_build_event_item_internal(option, step, event_name, *option.values)
+            else:
+                self._call_build_event_item_internal(option, step, event_name, *option.get_list())
+        
+    def _call_build_event_item_internal(self, warning_func: classmethod, step: list, event_name: str, *arg_list):
+        event_args = replace_macros_list(self.macros, *arg_list)
+        for index, event_macro in enumerate(event_args):
+            if check_file_path_glob(event_macro):
+                files = glob.glob(event_macro, recursive=True)
+                [self.build_events[event_name].call_event(warning_func, step, file) for file in files]
+            else:
+                self.build_events[event_name].call_event(warning_func, step, event_macro)
     
     # Gets every single folder in the project, splitting each one as well
     # this function is awful
@@ -737,22 +748,20 @@ class BuildEvent:
         if len(macro_dict) < len(self.macros):
             warning_func(f"Calling build event \"{self.name}\" with too few arguments")
 
-        event_list = replace_macros_list(macro_dict, *self.build)
+        event_list = [replace_macros_list(macro_dict, *line) for line in self.build]
         
-        index = 0
-        while index < len(event_list):
-            event = event_list[index]
-            if event == "-":
-                if index + 1 < len(event_list):
-                    if event_list[index + 1] in step:
-                        step.remove(event_list[index + 1])
-                    else:
-                        warning_func("Attempting to remove command that doesn't exist: ", event_list[index + 1])
-                    index += 2
-                    continue
+        for line in event_list:
+            if line[0] == "-":
+                if len(line) > 1:
+                    for event in line:
+                        if event in step:
+                            step.remove(event)
+                        else:
+                            warning_func("Attempting to remove command that doesn't exist: " + event)
+                else:
+                    warning_func(f"Attempting to remove nothing in \"{self.name}\": ")
                 
-            step.append(event)
-            index += 1
+            step.extend(line)
         
         
 def check_if_file_exists(file_path: str, option_warning: classmethod) -> bool:
