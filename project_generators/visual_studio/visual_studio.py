@@ -63,17 +63,19 @@ class VisualStudioGenerator(BaseProjectGenerator):
         if args.time:
             print_color(Color.CYAN, timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj.filters")
         
-        if self.has_debug_commands(project_passes):
-            if args.time:
-                start_time = perf_counter()
-            else:
-                print_color(Color.CYAN, "Creating: " + project.file_name + ".vcxproj.user")
-                
-            vcxproject_user = create_vcxproj_user(project, project_passes)
-            write_project(project, out_dir, vcxproject_user, ".vcxproj.user")
+        if not self.has_debug_commands(project_passes):
+            return
+        
+        if args.time:
+            start_time = perf_counter()
+        else:
+            print_color(Color.CYAN, "Creating: " + project.file_name + ".vcxproj.user")
+            
+        vcxproject_user = create_vcxproj_user(project, project_passes)
+        write_project(project, out_dir, vcxproject_user, ".vcxproj.user")
 
-            if args.time:
-                print_color(Color.CYAN, timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj.user")
+        if args.time:
+            print_color(Color.CYAN, timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj.user")
         
         # return out_dir
         
