@@ -124,9 +124,9 @@ class ProjectPass:
             "$" + platform.name:    "1",
             "$" + arch.name:        "1",
             
-            "$QPC_CONFIG":          config,
-            "$QPC_PLATFORM":        platform.name,
-            "$QPC_ARCH":            arch.name,
+            "$CONFIG":              config,
+            "$PLATFORM":            platform.name,
+            "$ARCH":                arch.name,
         }
         
         self.generators = set()
@@ -315,11 +315,14 @@ class ProjectContainer:
         # self.dependency_convert = dependency_dict
         self.dependencies = set()
         # shared across configs, used as a base for them
+        root_dir = "/".join([".."] * len(self.out_dir.split("/")))
+        
         self.macros = {
             "$PROJECT_NAME": name,
             "$PROJECT_DIR": self.out_dir,
             "$SCRIPT_NAME": name,
-            "$ROOT_DIR": args.root_dir,
+            "$ROOT_DIR_ABS": args.root_dir,
+            "$ROOT_DIR": root_dir,
             **get_arg_macros()
         }
         
