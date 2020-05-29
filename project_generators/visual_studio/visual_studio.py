@@ -349,8 +349,11 @@ def setup_property_group_configurations(vcxproj, project_passes: list):
         
         toolset = et.SubElement(property_group, "PlatformToolset")
         
-        if config.general.compiler and config.general.compiler in COMPILER_DICT:
-            toolset.text = COMPILER_DICT[config.general.compiler]
+        if config.general.compiler:
+            if config.general.compiler in COMPILER_DICT:
+                toolset.text = COMPILER_DICT[config.general.compiler]
+            else:
+                toolset.text = config.general.compiler
         else:
             toolset.text = COMPILER_DICT["msvc"]
 
