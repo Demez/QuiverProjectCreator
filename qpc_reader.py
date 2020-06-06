@@ -503,7 +503,7 @@ class QPCLexer:
         return string, line_num
     
     def next_symbol(self):
-        while self.char_num < self.file_len:
+        while self.char_num <= self.file_len:
             char = self.file[self.char_num]
             
             if char in self.chars_item:
