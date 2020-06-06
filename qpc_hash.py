@@ -4,6 +4,7 @@ from qpc_args import args
 from qpc_base import posix_path, QPC_DIR, QPC_GENERATOR_DIR
 from qpc_reader import QPCBlockBase, QPCBlock
 from qpc_generator_handler import GENERATOR_PATHS, GENERATOR_LIST
+from qpc_logging import verbose
 import qpc_parser
 import qpc_project
 import glob
@@ -80,7 +81,7 @@ def get_rebuild_info(project_path: str, rebuild_generators: list) -> dict:
     return CHECKED_HASHES[project_path]
 
 
-def check_hash(project_path: str, print_valid: bool = True) -> bool:
+def check_hash(project_path: str, print_allowed: bool = True) -> bool:
     if project_path in CHECKED_HASHES:
         return CHECKED_HASHES[project_path]["result"]
     
@@ -121,20 +122,20 @@ def check_hash(project_path: str, print_valid: bool = True) -> bool:
                 result = _check_glob_files(project_dir, block.items)
                 CHECKED_HASHES[project_path]["rebuild_all"] = not result
                 
-            elif print_valid:
+            elif print_allowed:
                 # how would this happen
                 block.warning("Unknown Key in Hash: ")
 
         if total_blocks == sorted(blocks_found):
-            if print_valid:
+            if print_allowed:
                 print("Valid: " + project_path + get_hash_file_ext(project_path))
             CHECKED_HASHES[project_path]["result"] = True
             return True
         CHECKED_HASHES[project_path]["result"] = False
         return False
     else:
-        if args.verbose and print_valid:
-            print("Hash File does not exist")
+        if print_allowed:
+            verbose("Hash File does not exist")
         CHECKED_HASHES[project_path]["result"] = False
         CHECKED_HASHES[project_path]["rebuild_all"] = True
         return False
@@ -155,8 +156,7 @@ def _project_check_file_hash(project_dir: str, hash_list: list, project_path: st
                     CHECKED_HASHES[project_path]["generators"].append(generator_name)
             else:
                 CHECKED_HASHES[project_path]["rebuild_all"] = True
-            if args.verbose:
-                print("Invalid: " + hash_block.values[0])
+            verbose("File Modified: " + hash_block.values[0])
             result = False
     return result
     
@@ -204,8 +204,7 @@ def check_master_file_hash(project_path: str, base_info, generator, hash_list: d
             return True
         return False
     else:
-        if args.verbose:
-            print("Hash File does not exist")
+        verbose("Hash File does not exist")
         return False
     
     
@@ -285,8 +284,7 @@ def _check_file_hash(project_dir: str, hash_list: list) -> bool:
             project_file_path = posix_path(os.path.normpath(project_dir + "/" + hash_block.values[0]))
         
         if hash_block.key != make_hash(project_file_path):
-            if args.verbose:
-                print("Invalid: " + hash_block.values[0])
+            verbose("File Modified: " + hash_block.values[0])
             return False
     return True
 
@@ -310,8 +308,7 @@ def _check_master_file_dependencies(project_dir: str, dependency_list: list) -> 
         
         project_dep_list.sort()
         if script_path.values[0] != hash_from_string(' '.join(project_dep_list)):
-            if args.verbose:
-                print("Invalid: " + script_path.values[0])
+            verbose("Dependencies Changed: " + script_path.values[0])
             return False
     return True
     
@@ -332,8 +329,7 @@ def _check_files(project_dir, hash_file_list, file_list, project_def_list: tuple
             hash_path = posix_path(os.path.normpath(project_dir + "/" + hash_path))
             
         if hash_path not in file_list.values():
-            if args.verbose:
-                print("New project added to master file: " + file_block.key)
+            verbose("New project added: " + file_block.key)
             return False
         
         elif folder and project_def_list:
@@ -346,6 +342,7 @@ def _check_files(project_dir, hash_file_list, file_list, project_def_list: tuple
         if not project_dep_list:
             if dependency_hash:  # and not script_path.values[0] == "":
                 # all dependencies were removed from it, and we think it has some still, rebuild
+                verbose("Outdated dependency list: " + file_block.key)
                 return False
             continue
         elif not dependency_hash and project_dep_list:
@@ -354,8 +351,7 @@ def _check_files(project_dir, hash_file_list, file_list, project_def_list: tuple
 
         project_dep_list.sort()
         if dependency_hash != hash_from_string(' '.join(project_dep_list)):
-            if args.verbose:
-                print("Invalid: " + dependency_hash)
+            verbose("Dependencies Changed: " + dependency_hash)
             return False
             
     return True
@@ -373,8 +369,7 @@ def _check_glob_files(project_dir: str, file_list: list) -> bool:
         glob_list.sort()
 
         if file_hash != hash_from_string(' '.join(glob_list)):
-            if args.verbose:
-                print("Files found are different: " + file_glob)
+            verbose("Files found are different: " + file_glob)
             return False
         
     return True
