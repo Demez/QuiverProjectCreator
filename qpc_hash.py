@@ -287,30 +287,6 @@ def _check_file_hash(project_dir: str, hash_list: list) -> bool:
             verbose("File Modified: " + hash_block.values[0])
             return False
     return True
-
-
-def _check_master_file_dependencies(project_dir: str, dependency_list: list) -> bool:
-    for script_path in dependency_list:
-        if os.path.isabs(script_path.key) or not project_dir:
-            project_file_path = posix_path(os.path.normpath(script_path.key))
-        else:
-            project_file_path = posix_path(os.path.normpath(project_dir + "/" + script_path.key))
-
-        project_dep_list = get_project_dependencies(project_file_path)
-        if not project_dep_list:
-            if script_path.values:  # and not script_path.values[0] == "":
-                # all dependencies were removed from it, and we think it has some still, rebuild
-                return False
-            continue
-        elif not script_path.values and project_dep_list:
-            # project has dependencies now, and we think it doesn't, rebuild
-            return False
-        
-        project_dep_list.sort()
-        if script_path.values[0] != hash_from_string(' '.join(project_dep_list)):
-            verbose("Dependencies Changed: " + script_path.values[0])
-            return False
-    return True
     
     
 def _check_files(project_dir, hash_file_list, file_list, project_def_list: tuple = None) -> bool:
@@ -351,7 +327,7 @@ def _check_files(project_dir, hash_file_list, file_list, project_def_list: tuple
 
         project_dep_list.sort()
         if dependency_hash != hash_from_string(' '.join(project_dep_list)):
-            verbose("Dependencies Changed: " + dependency_hash)
+            verbose(f"Dependencies Changed: \"{file_block.key}\"")
             return False
             
     return True
