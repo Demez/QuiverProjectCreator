@@ -53,10 +53,7 @@ WARNING_COUNT = 0
 
 
 def warning(*text):
-    if not args.hide_warnings:
-        _print_severity(Severity.WARNING, "\n          ", *text, "\n")
-    global WARNING_COUNT
-    WARNING_COUNT += 1
+    warning_no_line(*text, "\n")
 
 
 def warning_no_line(*text):
