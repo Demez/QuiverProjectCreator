@@ -1,4 +1,5 @@
 import os
+import sys
 import platform
 from qpc_args import args
 from enum import Enum
@@ -53,13 +54,20 @@ WARNING_COUNT = 0
 
 def warning(*text):
     if not args.hide_warnings:
+        _print_severity(Severity.WARNING, "\n          ", *text, "\n")
+    global WARNING_COUNT
+    WARNING_COUNT += 1
+
+
+def warning_no_line(*text):
+    if not args.hide_warnings:
         _print_severity(Severity.WARNING, "\n          ", *text)
     global WARNING_COUNT
     WARNING_COUNT += 1
 
 
 def error(*text):
-    _print_severity(Severity.ERROR, "\n        ", *text)
+    _print_severity(Severity.ERROR, "\n        ", *text, "\n")
     quit(1)
 
 
@@ -74,19 +82,23 @@ def verbose_color(color: Color, *text):
 
 
 def _print_severity(level: Severity, spacing: str, *text):
-    print_color(level.value, f"[{level.name}] {spacing.join(text)}\n")
+    print_color(level.value, f"[{level.name}] {spacing.join(text)}")
         
         
 def win32_set_fore_color(color: int):
     if not ctypes.windll.kernel32.SetConsoleTextAttribute(_win32_handle, color):
         print(f"[ERROR] WIN32 Changing Colors Failed, Error Code: {str(ctypes.GetLastError())},"
               f" color: {color}, handle: {str(_win32_handle)}")
-    
-    
-def print_color(color: Color, *text):
+        
+        
+def stdout_color(color: Color, *text):
     if _win32_legacy_con:
         win32_set_fore_color(int(color.value))
-        print("".join(text))
+        sys.stdout.write("".join(text))
         win32_set_fore_color(int(Color.DEFAULT.value))
     else:
-        print(color.value + "".join(text) + Color.DEFAULT.value)
+        sys.stdout.write(color.value + "".join(text) + Color.DEFAULT.value)
+        
+    
+def print_color(color: Color, *text):
+    stdout_color(color, *text, "\n")
