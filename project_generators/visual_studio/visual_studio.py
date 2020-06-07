@@ -544,8 +544,6 @@ def add_compiler_options(compiler_elem: et.SubElement, compiler: Compile, genera
     # these are needed, because for some reason visual studio use shit stuff for default info
     if general:  # basically if not file
         added_option = True
-        basic_runtime_checks = et.SubElement(compiler_elem, "BasicRuntimeChecks")
-        basic_runtime_checks.text = "Default"
         
         if general.language:
             if general.language == Language.CPP:
@@ -573,11 +571,7 @@ def add_compiler_options(compiler_elem: et.SubElement, compiler: Compile, genera
             else:
                 option_key, option_value = command_to_compiler_option(option)
                 if option_key and option_value:
-                    
-                    if general and option_key == "BasicRuntimeChecks":
-                        basic_runtime_checks.text = option_value
-                    else:
-                        et.SubElement(compiler_elem, option_key).text = option_value
+                    et.SubElement(compiler_elem, option_key).text = option_value
                     remaining_options.remove(option)
                 else:
                     index += 1
@@ -589,38 +583,92 @@ def add_compiler_options(compiler_elem: et.SubElement, compiler: Compile, genera
         # now add any unchanged options
         et.SubElement(compiler_elem, "AdditionalOptions").text = ' '.join(remaining_options)
     
-    # TODO: convert options in the compiler.options list to options here
-    #  remove any option name from this list once you convert that option
-    # "InlineFunctionExpansion"
-    # "IntrinsicFunctions"
-    # "StringPooling"
-    # "MinimalRebuild"
-    # "BufferSecurityCheck"
-    # "FunctionLevelLinking"
-    # "EnableEnhancedInstructionSet"
-    # "ForceConformanceInForLoopScope"
-    # "RuntimeTypeInfo"
-    # "OpenMPSupport"
-    # "ExpandAttributedSource"
-    # "AssemblerOutput"
-    # "AssemblerListingLocation"
-    # "ObjectFileName"
-    # "ProgramDataBaseFileName"
-    # "GenerateXMLDocumentationFiles"
-    # "BrowseInformation"
-    # "DebugInformationFormat"
-    # "BrowseInformationFile"
-    # "ErrorReporting"
-    
     return added_option
 
-
-# TODO: maybe finish this? idk, at least add anything that would be preventing compilation (think i already have)
 COMPILER_OPTIONS = {
+
+    # GENERAL PANEL
+    "DebugInformationFormat": {
+        "/Zi": "ProgramDatabase",
+        "/ZI": "EditAndContinue",
+        "/Z7": "OldStyle",
+    },
+    
+    "SupportJustMyCode":            {"/JMC": "true"},
+    
+    "CompileAsManaged": {
+        "/clr": "true",
+        "/clr:safe": "Safe",
+        "/clr:pure": "Pure",
+    },
+    
+    "CompileAsWinRT":               {"/ZW": "true"},
+    
+    "SuppressStartupBanner": {
+        # we don't have a way to turn this off, actually, because nologo is the default...
+        "/nologo": "true",
+        # ... so let's make a hack with a nonexistant switch.
+        "/logo": "false",
+    },
     "WarningLevel": {
         "/W0": "TurnOffAllWarnings",
         "/W1": "Level1", "/W2": "Level2", "/W3": "Level3", "/W4": "Level4",
         "/Wall": "EnableAllWarnings",
+    },
+    "TreatWarningAsError": {
+        "/WX-": "false",
+        "/WX": "true",
+    },
+    "DiagnosticsFormat": {
+        "/diagnostics:caret": "Caret",
+        "/diagnostics:column": "Column",
+        "/diagnostics:classic": "Classic",
+    },
+    
+    "SDLCheck":                     {"/sdl-": "false", "/sdl": "true"},
+    "MultiProcessorCompilation":    {"/MP": "true"},
+
+    # OPTIMIZATION PANEL
+    "Optimization": {
+        "/Od": "Disabled",
+        "/O1": "MinSpace",
+        "/O2": "MaxSpeed",
+        "/Ox": "Full"
+    },
+    "InlineFunctionExpansion": {
+        "/Ob0": "Disabled",
+        "/Ob1": "OnlyExplicitInline",
+        "/Ob2": "AnySuitable",
+    },
+    "IntrinsicFunctions":           {"/Oi": "true"},
+    "FavorSizeOrSpeed":             {"/Os": "Size", "/Ot": "Speed"},
+    "OmitFramePointers":            {"/Oy-": "false", "/Oy": "true"},
+    "EnableFiberSafeOptimizations": {"/GT": "true"},
+    "WholeProgramOptimization":     {"/GL": "true"},  # also goes in Configuration PropertyGroup? tf
+
+    # PREPROCESSOR PANEL
+    "UndefineAllPreprocessorDefinitions": {"/u": "true"}, # who would. EVER. use this????
+    "IgnoreStandardIncludePath":    {"/X": "true"},
+    "PreprocessToFile":             {"/P": "true"),
+    "PreprocessSuppressLineNumbers": {"/EP": "true"},
+    "PreprocessKeepComments":       {"/C": "true"},
+
+    # CODE GENERATION PANEL
+    "StringPooling":                {"/GF-": "false", "/GF": "true"},
+    "MinimalRebuild":               {"/Gm-": "false", "/Gm": "true"},
+    "ExceptionHandling": {
+        "/EHa": "Async",
+        "/EHsc": "Sync",
+        "/EHs": "SyncCThrow",
+        "": "false"
+    },
+    "SmallerTypeCheck":             {"/RTCc": "true"},
+    "BasicRuntimeChecks": {
+        "/RTCs": "StackFrameRuntimeCheck",
+        "/RTCu": "UninitializedLocalUsageCheck",
+        "/RTC1": "EnableFastChecks", # synonyms
+        "/RTCsu": "EnableFastChecks", # synonyms
+        "": "Default"
     },
     "RuntimeLibrary": {
         "/MT": "MultiThreaded",
@@ -628,22 +676,82 @@ COMPILER_OPTIONS = {
         "/MD": "MultiThreadedDLL",
         "/MDd": "MultiThreadedDebugDLL",
     },
-    "DebugInformationFormat": {
-        "/Zi": "ProgramDatabase",
-        "/ZI": "EditAndContinue",
-        "/Z7": "OldStyle",
-        # "/": "None",
+    "StructMemberAlignment": {
+        "/Zp1": "1Byte",
+        "/Zp2": "2Bytes",
+        "/Zp4": "4Bytes",
+        "/Zp8": "8Bytes",
+        "/Zp16": "16Bytes",
     },
-    "Optimization":                 {"/Od": "Disabled", "/O1": "MinSpace", "/O2": "MaxSpeed", "/Ox": "Full"},
-    "MultiProcessorCompilation":    {"/MP": "true"},
-    "WholeProgramOptimization":     {"/GL": "true"},  # also goes in Configuration PropertyGroup? tf
-    "UseFullPaths":                 {"/FC": "true"},
+    "BufferSecurityCheck":          {"/GS-": "false", "/GS": "true"},
+    "ControlFlowGuard":             {"/guard:cf": "Guard"},
+    "FunctionLevelLinking":         {"/GY-": "false", "/GY": "true"},
+    "EnableParallelCodeGeneration": {"/Qpar-": "false", "/Qpar": "true"},
+    "EnableEnhancedInstructionSet": {
+        "/arch:SSE": "StreamingSIMDExtensions",
+        "/arch:SSE2": "StreamingSIMDExtensions2",
+        "/arch:AVX": "AdvancedVectorExtensions",
+        "/arch:AVX2": "StreamingSIMDExtensions2",
+        "/arch:IA32": "NoExtensions"
+    },
+    "FloatingPointModel":           {
+        "/fp:precise": "Precise",
+        "/fp:strict": "Strict",
+        "/fp:fast": "Fast"
+    },
+    "FloatingPointExceptions":      {"/fp:except-": "false", "/fp:except": "true"},
+    "CreateHotpatchableImage":      {"/hotpatch": "true"},
+    "SpectreMitigation":            {"/Qspectre": "Spectre"}, # NOTE!!!! this goes in the PROPERTYGROUP section in the project!!!
+
+    # LANGUAGE PANEL
+    "DisableLanguageExtensions":    {"/Za": "true"},
+    "ConformanceMode":              {"/permissive-": "true", "": "false"},
+    "TreatWChar_tAsBuiltInType":    {"/Zc:wchar_t-": "false", "/Zc:wchar_t": "true"},
+    "ForceConformanceInForLoopScope": {"/Zc:forScope-": "false", "/Zc:forScope": "true"},
+    "RemoveUnreferencedCodeData":   {"/Zc:inline-": "false", "/Zc:inline": "true"}, # another hack to disable this, since adding the option is the default and there's no actual inline-
+    "EnforceTypeConversionRules":   {"/Zc:rvalueCast-": "false", "/Zc:rvalueCast": "true"},
+    "RuntimeTypeInfo":              {"/GR-": "false", "/GR": "true"},
+    "OpenMPSupport":                {"/openmp-": "false", "/openmp": "true"},
+        # language standard is handled by QPC
+    "EnableModules":                {"/experimental:module": "true"},
+    
+    
+    
+    # PRECOMPILED HEADERS are handled seperately by QPC builtins
+
+    # OUTPUT FILES PANEL
+        # note: we also need to support file paths for this stuff eventually... right now they just use IntDir
+    "ExpandAttributedSource":       {"/Fx": "true"},
+    "AssemblerOutput": {
+        "/FA": "AssemblyCode",
+        "/FAc": "AssemblyAndMachineCode",
+        "/FAs": "AssemblyAndSourceCode",
+        "/FAcs": "All"
+    },
+    "UseUnicodeForAssemblerListing": {"/FAu": "true"},
+    "GenerateXMLDocumentationFiles": {"/doc": "true"},
+
+    # BROWSE INFORMATION PANEL
+        # note: we also need to support file paths for this stuff eventually... right now they just use IntDir
+    "BrowseInformation":            {"/FR": "true"},
+
+    # ADVANCED PANEL
+    "CallingConvention": {
+        "/Gd": "Cdecl", # the default
+        "/Gr": "FastCall",
+        "/Gz": "StdCall",
+        "/Gv": "VectorCall"
+    },
+        # Compile As is handled by QPC
     "ShowIncludes":                 {"/showincludes": "true"},
-    "FavorSizeOrSpeed":             {"/Os": "Size",             "/Ot": "Speed"},
-    "TreatWarningAsError":          {"/WX-": "false",           "/WX": "true"},
-    "TreatWChar_tAsBuiltInType":    {"/Zc:wchar_t-": "false",   "/Zc:wchar_t": "true"},
-    "FloatingPointModel":           {"/fp:precise": "Precise", "/fp:strict": "Strict", "/fp:fast": "Fast"},
-    "ExceptionHandling":            {"/EHa": "Async", "/EHsc": "Sync", "/EHs": "SyncCThrow", "": "false"},
+    "UseFullPaths":                 {"/FC-": "false", "/FC": "true"}, # /FC- is another nonexistant hack
+    "OmitDefaultLibName":           {"/ZI": "true"},
+    "ErrorReporting": {
+        "/errorReport:none": "None",
+        "/errorReport:prompt": "Prompt",
+        "/errorReport:queue": "Queue",
+        "/errorReport:send": "Send"
+    }
 }
 
 
