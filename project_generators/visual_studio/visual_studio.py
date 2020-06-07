@@ -602,8 +602,8 @@ def add_compiler_options(compiler_elem: et.SubElement, compiler: Compile, genera
     
     return added_option
 
-COMPILER_OPTIONS = {
 
+COMPILER_OPTIONS = {
     # GENERAL PANEL
     "DebugInformationFormat": {
         "/Zi": "ProgramDatabase",
@@ -769,6 +769,100 @@ COMPILER_OPTIONS = {
         "/errorReport:queue": "Queue",
         "/errorReport:send": "Send"
     }
+}
+
+
+LINK_OPTIONS = {
+    "TargetMachine": {
+        "/MACHINE:ARM":         "MachineARM",
+        "/MACHINE:EBC":         "MachineEBC",
+        "/MACHINE:IA64":        "MachineIA64",
+        "/MACHINE:MIPS":        "MachineIA64",
+        "/MACHINE:MIPS16":      "MachineMIPS16",
+        "/MACHINE:MIPSFPU":     "MachineMIPSFPU",
+        "/MACHINE:MIPSFPU16":   "MachineMIPSFPU16",
+        "/MACHINE:SH4":         "MachineSH4",
+        "/MACHINE:THUMB":       "MachineTHUMB",
+        "/MACHINE:X64":         "MachineX64",
+        "/MACHINE:X86":         "MachineX86",
+    },
+    "ShowProgress": {
+        "/VERBOSE":         "LinkVerbose",
+        "/VERBOSE:Lib":     "LinkVerboseLib",
+        "/VERBOSE:ICF":     "LinkVerboseICF",
+        "/VERBOSE:REF":     "LinkVerboseREF",
+        "/VERBOSE:SAFESEH": "LinkVerboseSAFESEH",
+        "/VERBOSE:CLR":     "LinkVerboseCLR",
+    },
+    "ForceFileOutput": {
+        "/FORCE":               "Enabled",
+        "/FORCE:MULTIPLE":      "MultiplyDefinedSymbolOnly",
+        "/FORCE:UNRESOLVED":    "UndefinedSymbolOnly",
+    },
+    "CreateHotPatchableImage": {
+        "/FUNCTIONPADMIN":      "Enabled",
+        "/FUNCTIONPADMIN:5":    "X86Image",
+        "/FUNCTIONPADMIN:6":    "X64Image",
+        "/FUNCTIONPADMIN:16":   "ItaniumImage",
+    },
+    "SubSystem": {
+        "/SUBSYSTEM:CONSOLE":                   "Console",
+        "/SUBSYSTEM:WINDOWS":                   "Windows",
+        "/SUBSYSTEM:NATIVE":                    "Native",
+        "/SUBSYSTEM:EFI_APPLICATION":           "EFI Application",
+        "/SUBSYSTEM:EFI_BOOT_SERVICE_DRIVER":   "EFI Boot Service Driver",
+        "/SUBSYSTEM:EFI_ROM":                   "EFI ROM",
+        "/SUBSYSTEM:EFI_RUNTIME_DRIVER":        "EFI Runtime",
+        "/SUBSYSTEM:WINDOWSCE":                 "WindowsCE",
+        "/SUBSYSTEM:POSIX":                     "POSIX",
+    },
+    "LinkTimeCodeGeneration": {
+        "/ltcg":                "UseLinkTimeCodeGeneration",
+        "/ltcg:pginstrument":   "PGInstrument",
+        "/ltcg:pgoptimize":     "PGOptimization",
+        "/ltcg:pgupdate":       "PGUpdate",
+    },
+    "CLRThreadAttribute": {
+        "/CLRTHREADATTRIBUTE:NONE": "DefaultThreadingAttribute",
+        "/CLRTHREADATTRIBUTE:MTA":  "MTAThreadingAttribute",
+        "/CLRTHREADATTRIBUTE:STA":  "STAThreadingAttribute",
+    },
+    "CLRImageType": {
+        "/CLRIMAGETYPE:IJW":    "ForceIJWImage",
+        "/CLRIMAGETYPE:PURE":   "ForcePureILImage",
+        "/CLRIMAGETYPE:SAFE":   "ForceSafeILImage",
+    },
+    "LinkErrorReporting": {
+        "/ERRORREPORT:PROMPT":  "PromptImmediately",
+        "/ERRORREPORT:QUEUE":   "QueueForNextLogin",
+        "/ERRORREPORT:SEND":    "SendErrorReport",
+        "/ERRORREPORT:NONE":    "NoErrorReport",
+    },
+    "CLRSupportLastError": {
+        "/CLRSupportLastError":             "Enabled",
+        "/CLRSupportLastError:NO":          "Disabled",
+        "/CLRSupportLastError:SYSTEMDLL":   "SystemDlls",
+    },
+    "AssemblyDebug": {
+        "/ASSEMBLYDEBUG:DISABLE":   "false",
+        "/ASSEMBLYDEBUG":           "true",
+    },
+    "LargeAddressAware": {
+        "/LARGEADDRESSAWARE:NO":    "false",
+        "/LARGEADDRESSAWARE":       "true",
+    },
+    "FixedBaseAddress": {
+        "/FIXED:NO":    "false",
+        "/FIXED":       "true",
+    },
+    "OptimizeReferences": {
+        "/OPT:NOREF":   "false",
+        "/OPT:REF":     "true",
+    },
+    "EnableCOMDATFolding": {
+        "/OPT:NOICF":   "false",
+        "/OPT:ICF":     "true",
+    },
 }
 
 
