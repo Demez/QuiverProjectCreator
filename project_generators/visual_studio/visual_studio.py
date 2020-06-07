@@ -451,8 +451,25 @@ def setup_item_definition_groups(vcxproj: et.Element, project_passes: list):
             link_lib = et.SubElement(item_def_group, "Lib")
         else:
             link_lib = et.SubElement(item_def_group, "Link")
+
+        if cfg.linker.options:
+            # copying here so we don't remove from the project object, would break for the next project type
+            remaining_options = [*cfg.linker.options]
+    
+            index = 0
+            # for index, option in enumerate(compiler.options):
+            while len(remaining_options) > index:
+                option = remaining_options[index]
+                option_key, option_value = command_to_link_option(option)
+                if option_key and option_value:
+                    et.SubElement(link_lib, option_key).text = option_value
+                    remaining_options.remove(option)
+                else:
+                    index += 1
+    
+            # now add any unchanged options
+            et.SubElement(link_lib, "AdditionalOptions").text = ' '.join(remaining_options)
         
-        et.SubElement(link_lib, "AdditionalOptions").text = ' '.join(cfg.linker.options)
         et.SubElement(link_lib, "AdditionalDependencies").text = ';'.join(cfg.linker.libraries) + \
                                                                  ";%(AdditionalDependencies)"
 
@@ -755,11 +772,19 @@ COMPILER_OPTIONS = {
 }
 
 
-def command_to_compiler_option(value: str) -> tuple:
-    for compiler_key, value_commands in COMPILER_OPTIONS.items():
+def command_to_option(option_dict: dict, value: str) -> tuple:
+    for compiler_key, value_commands in option_dict.items():
         if value in value_commands:
             return compiler_key, value_commands[value]
     return None, None
+
+
+def command_to_compiler_option(value: str) -> tuple:
+    return command_to_option(COMPILER_OPTIONS, value)
+
+
+def command_to_link_option(value: str) -> tuple:
+    return command_to_option(LINK_OPTIONS, value)
 
 
 def create_source_file_item_group(file_list, parent_elem, condition):
