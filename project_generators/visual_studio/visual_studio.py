@@ -6,7 +6,7 @@ import lxml.etree as et
 from time import perf_counter
 from qpc_args import args
 from qpc_base import BaseProjectGenerator, Platform, Arch
-from qpc_project import PrecompiledHeader, ConfigType, Language, ProjectContainer, Compile, SourceFileCompile
+from qpc_project import PrecompiledHeader, ConfigType, Language, Standard, ProjectContainer, Compile, SourceFileCompile
 from qpc_parser import BaseInfo
 from qpc_logging import warning, error, verbose, print_color, Color
 from enum import Enum
@@ -509,7 +509,7 @@ def setup_item_definition_groups(vcxproj: et.Element, project_passes: list):
             et.SubElement(et.SubElement(item_def_group, "PreLinkEvent"), "Command").text = '\n'.join(cfg.pre_link)
             
             
-PRECOMPILED_HEADER_DICT =  {
+PRECOMPILED_HEADER_DICT = {
     PrecompiledHeader.NONE: "NotUsing",
     PrecompiledHeader.USE: "Use",
     PrecompiledHeader.CREATE: "Create"
@@ -540,19 +540,22 @@ def add_compiler_options(compiler_elem: et.SubElement, compiler: Compile, genera
     if compiler.precompiled_header_output_file:
         added_option = True
         et.SubElement(compiler_elem, "PrecompiledHeaderOutputFile").text = compiler.precompiled_header_output_file
-    
-    if general and general.language:
-        added_option = True
-        if general.language == Language.CPP:
-            et.SubElement(compiler_elem, "CompileAs").text = "CompileAsCpp"
-        else:
-            et.SubElement(compiler_elem, "CompileAs").text = "CompileAsC"
-        
+
     # these are needed, because for some reason visual studio use shit stuff for default info
     if general:  # basically if not file
         added_option = True
         basic_runtime_checks = et.SubElement(compiler_elem, "BasicRuntimeChecks")
         basic_runtime_checks.text = "Default"
+        
+        if general.language:
+            if general.language == Language.CPP:
+                et.SubElement(compiler_elem, "CompileAs").text = "CompileAsCpp"
+            else:
+                et.SubElement(compiler_elem, "CompileAs").text = "CompileAsC"
+        
+        if general.standard:
+            standard = "stdcpplatest" if general.standard == Standard.CPP20 else f"std{general.standard.lower()}"
+            et.SubElement(compiler_elem, "LanguageStandard").text = standard
     
     if compiler.options:
         added_option = True

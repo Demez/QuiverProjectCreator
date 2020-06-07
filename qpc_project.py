@@ -28,21 +28,35 @@ EXTS_C = {".cpp", ".cxx", ".c", ".cc"}
 
 # maybe move to qpc_base with the other Enums?
 class ConfigType(Enum):
-    STATIC_LIBRARY = auto(),
-    # SHARED_LIBRARY = auto(),
-    DYNAMIC_LIBRARY = auto(),
+    STATIC_LIBRARY = auto()
+    DYNAMIC_LIBRARY = auto()  # could be SHARED_LIBRARY
     APPLICATION = auto()  # IDEA: rename all application stuff to executable?
 
 
 class PrecompiledHeader(Enum):
-    NONE = auto(),
-    CREATE = auto(),
+    NONE = auto()
+    CREATE = auto()
     USE = auto()
 
 
 class Language(Enum):
-    CPP = auto(),
+    CPP = auto()
     C = auto()
+
+
+class Standard(Enum):
+    CPP20 = auto()
+    CPP17 = auto()
+    CPP14 = auto()
+    CPP11 = auto()
+    CPP03 = auto()
+    CPP98 = auto()
+    
+    C11 = auto()
+    C99 = auto()
+    C95 = auto()
+    C90 = auto()
+    C89 = auto()
 
 
 class ProjectDefinition:
@@ -528,6 +542,7 @@ class General:
         # won't work, so im just leaving it as it is for now, hopefully i can get something better later on
         self.configuration_type = None
         self.language = None
+        self.standard = None
         self.compiler = "msvc" if platform == Platform.WINDOWS else "gcc"
         
         self.default_include_directories = True
@@ -579,7 +594,22 @@ class General:
         self.configuration_type = convert_enum_option(self.configuration_type, option, ConfigType)
 
     def set_language(self, option: QPCBlock) -> None:
-        self.language = convert_enum_option(self.language, option, Language)
+        self.set_standard(option)
+
+        value = option.values[0]
+        for enum in Language:
+            if value.startswith(enum.name.lower()):
+                self.language = enum
+                break
+        else:
+            option.invalid_option(
+                value,
+                *[enum.name.lower() for enum in Language],
+                *[enum.name.lower() for enum in Standard]
+            )
+
+    def set_standard(self, option: QPCBlock) -> None:
+        self.standard = convert_enum_option(self.language, option, Standard)
 
 
 class Compile:
