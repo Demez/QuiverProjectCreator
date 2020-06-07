@@ -609,7 +609,11 @@ class General:
             )
 
     def set_standard(self, option: QPCBlock) -> None:
-        self.standard = convert_enum_option(self.language, option, Standard)
+        value = option.values[0]
+        for enum in Standard:
+            if value == enum.name.lower():
+                self.standard = enum
+                break
 
 
 class Compile:
