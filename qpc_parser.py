@@ -187,16 +187,16 @@ class BaseInfoPlatform:
         for removed_item in remove_list:
             if removed_item in self.shared.groups:
                 for project in self.shared.groups[removed_item].projects:
-                    if project.name not in unwanted_projects:
-                        unwanted_projects[project.name] = project
+                    if project not in unwanted_projects:
+                        unwanted_projects[project] = None
             
             elif removed_item in self.shared.projects_all:
                 if self.shared.projects_all[removed_item] in self._projects_all:
-                    unwanted_projects[removed_item] = self.shared.projects_all[removed_item]
+                    unwanted_projects[removed_item] = None
             else:
                 for project in self._projects_all:
-                    if removed_item in project.script_list:
-                        unwanted_projects[project.name] = project
+                    if removed_item == project.path:
+                        unwanted_projects[project.name] = None
                         break
                 else:
                     warning("Project, Group, or Script does not exist: " + removed_item)
