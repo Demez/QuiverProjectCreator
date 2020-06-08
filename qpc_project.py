@@ -57,55 +57,42 @@ class Standard(Enum):
     C95 = auto()
     C90 = auto()
     C89 = auto()
+    
+    
+class BaseInfoProject:
+    # info is BaseInfo from qpc_parser.py
+    def __init__(self, info, name: str):
+        self.name = name
+        self.info = info
 
 
-class ProjectDefinition:
-    def __init__(self, project_name: str, *folder_list):
-        self.name = project_name
-        self.script_list = dict()  # dict keeps order set doesn't
+class ProjectDefinition(BaseInfoProject):
+    def __init__(self, info, project_name: str):
+        super().__init__(info, project_name)
+        self.path = ""  # original path in the base file
+        self.path_real = ""  # path relative to the actual root directory
         self.platforms = set()
-        self.groups = set()  # could be a list, depends on which is faster here, x in set? or for x in list?
-        
-        # this is just so it stops changing this outside of the function
-        self.folder_list = folder_list
-        
-    # group is ProjectGroup, right below
-    def add_group(self, group) -> None:
-        self.groups.add(group)
-        
-    def update_groups(self) -> None:
-        # list would be faster here
-        [group.project_defined(self) for group in self.groups]
-    
-    def add_script(self, script_path_cwd: str, script_path: str) -> bool:
-        if os.path.isfile(script_path_cwd):
-            self.script_list[posix_path(script_path)] = None
-            return True
-        return False
-    
-    def add_script_list(self, script_list) -> bool:
-        return all([self.add_script(script_path) for script_path in script_list])
 
 
-class ProjectGroup:
-    def __init__(self, group_name):
-        self.name = group_name
+class ProjectGroup(BaseInfoProject):
+    def __init__(self, info, group_name):
+        super().__init__(info, group_name)
         # dict keeps order, set doesn't as of 3.8, both faster than lists
         self.projects = dict()
-    
-    def project_defined(self, project_def: ProjectDefinition) -> None:
-        self.projects[project_def] = None
-    
-    def add_project(self, project_name: str, folder_list: list, unsorted_projects: dict) -> None:
-        if project_name in unsorted_projects:
-            project_def = unsorted_projects[project_name]
-            if not project_def.folder_list:
-                project_def.folder_list = tuple(folder_list)
-            self.project_defined(project_def)
-        else:
-            project_def = ProjectDefinition(project_name, *folder_list)
-            unsorted_projects[project_name] = project_def
-        project_def.add_group(self)
+        self._contains = dict()
+
+    def add_project(self, project_name: str, folder_list: list) -> None:
+        self.projects[project_name] = tuple(folder_list)
+
+    # group: ProjectGroup
+    def contains_group(self, group, folder_list: list):
+        self._contains[group] = folder_list.copy()
+            
+    def finished(self):
+        for group, group_folder in self._contains.items():
+            group.finished()
+            for project, folder in group.projects.items():
+                self.add_project(project, [*group_folder, *folder])
 
 
 class SourceFile:
@@ -626,9 +613,8 @@ class Compile:
 
     def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
         if option_block.key in ("preprocessor_definitions", "options"):
-            for item in option_block.items:
-                if item.solve_condition(macros):
-                    self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
+            for item in option_block.get_items_cond(macros):
+                self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
     
         elif option_block.key == "precompiled_header":
             if option_block.values:
@@ -666,15 +652,14 @@ class Linker:
 
     def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
         if option_block.key in {"options", "libraries", "ignore_libraries"}:
-            for item in option_block.items:
-                if item.solve_condition(macros):
-                    if option_block.key == "libraries":
-                        if item.key == "-":
-                            self.remove_lib(macros, item)
-                        else:
-                            self.add_lib(macros, item)
+            for item in option_block.get_items_cond(macros):
+                if option_block.key == "libraries":
+                    if item.key == "-":
+                        self.remove_lib(macros, item)
                     else:
-                        self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
+                        self.add_lib(macros, item)
+                else:
+                    self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
                     
         elif not option_block.values:
             return

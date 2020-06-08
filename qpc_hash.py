@@ -444,23 +444,22 @@ def write_master_file_hash(project_path: str, base_info, platforms: list, genera
     
     for info_platform in info_list:
         for project_def in info_platform.projects:
-            folder = "/".join(project_def.folder_list)
+            folder = "/".join(info_platform.project_folders[project_def.name])
             
-            for script_path in project_def.script_list:
-                script = files.add_item(script_path, [])
+            script = files.add_item(project_def.path, [])
+            
+            if project_def.path in base_info.project_hashes:
+                hash_path = base_info.project_hashes[project_def.path]
+                script.add_item("hash_path", hash_path)
                 
-                if script_path in base_info.project_hashes:
-                    hash_path = base_info.project_hashes[script_path]
-                    script.add_item("hash_path", hash_path)
-                    
-                # if project_def.folder_list:
-                script.add_item("folder", folder)
-                    
-                if script_path in base_info.project_dependencies:
-                    dependency_list = list(base_info.project_dependencies[script_path])
-                    dependency_list.sort()
-                    value = hash_from_string(" ".join(dependency_list)) if dependency_list else ""
-                    script.add_item("dependency_hash", value)
+            # if project_def.folder_list:
+            script.add_item("folder", folder)
+            
+            if project_def.path in base_info.project_dependencies:
+                dependency_list = list(base_info.project_dependencies[project_def.path])
+                dependency_list.sort()
+                value = hash_from_string(" ".join(dependency_list)) if dependency_list else ""
+                script.add_item("dependency_hash", value)
 
     with open(get_hash_file_path(project_path), mode="w", encoding="utf-8") as hash_file:
         hash_file.write(base_block.to_string(True, True))

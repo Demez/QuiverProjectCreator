@@ -115,8 +115,8 @@ class VisualStudioGenerator(BaseProjectGenerator):
 
             self.project_uuid_dict = {}
             self.project_folder_uuid = {}
-            
-            [self.sln_project_def_loop(project_def, info) for project_def in info_win.projects]
+
+            [self.sln_project_def_loop(project_def, info, info_win) for project_def in info_win.projects]
         
             # Write the folders as base_info because vstudio dumb
             # might have to make this a project def, idk
@@ -157,70 +157,68 @@ class VisualStudioGenerator(BaseProjectGenerator):
                 if project_def.name not in self.project_uuid_dict:
                     continue
             
-                # all_projects
-                for folder_index, project_folder in enumerate(project_def.folder_list):
-                    if project_def.folder_list[-(folder_index + 1)] in self.project_folder_uuid:
+                # get each individual folder (and individual sub folders),
+                # and set the project uuid to that folder uuid
+                for folder_index, project_folder in enumerate(info_win.project_folders[project_def.name]):
+                    if info_win.project_folders[project_def.name][-(folder_index + 1)] in self.project_folder_uuid:
                         folder_uuid = self.project_folder_uuid[project_folder]
-                        for project_uuid in self.project_uuid_dict[project_def.name]:
-                            global_folder_uuid_dict[project_uuid] = folder_uuid
+                        global_folder_uuid_dict[self.project_uuid_dict[project_def.name]] = folder_uuid
             
                 # sub folders, i have no clue how this works anymore and im not touching it unless i have to
-                if len(project_def.folder_list) > 1:
+                if len(info_win.project_folders[project_def.name]) > 1:
                     folder_index = -1
-                    while folder_index < len(project_def.folder_list):
-                        project_sub_folder = project_def.folder_list[folder_index]
+                    while folder_index < len(info_win.project_folders[project_def.name]):
+                        project_sub_folder = info_win.project_folders[project_def.name][folder_index]
                         try:
-                            project_folder = project_def.folder_list[folder_index - 1]
+                            project_folder = info_win.project_folders[project_def.name][folder_index - 1]
                         except IndexError:
                             break
                     
+                        # add the folder if it wasn't added here yet
                         if project_sub_folder in self.project_folder_uuid:
                             sub_folder_uuid = self.project_folder_uuid[project_sub_folder]
                             folder_uuid = self.project_folder_uuid[project_folder]
                             if sub_folder_uuid not in global_folder_uuid_dict:
                                 global_folder_uuid_dict[sub_folder_uuid] = folder_uuid
-                            folder_index -= 1
+                                
+                        folder_index -= 1
         
             sln_write_section(self.solution_file, "NestedProjects", global_folder_uuid_dict, False)
             self.solution_file.write("EndGlobal\n")
 
-    def sln_project_def_loop(self, project_def, info):
-        for folder in project_def.folder_list:
-            if folder not in self.project_folder_uuid:
-                self.project_folder_uuid[folder] = make_uuid()
-        
-        for script_path in project_def.script_list:
-            if script_path in self.out_dir_dict:
-                out_dir = self.out_dir_dict[script_path]
-            else:
-                continue
-            if out_dir is None:
-                continue
+    def sln_project_def_loop(self, project_def, info, info_win):
+        for folder_list in info_win.project_folders.values():
+            for folder in folder_list:
+                if folder not in self.project_folder_uuid:
+                    self.project_folder_uuid[folder] = make_uuid()
                 
-            vcxproj_path = out_dir + "/" + os.path.splitext(os.path.basename(script_path))[0] + ".vcxproj"
+        if project_def.path in self.out_dir_dict:
+            out_dir = self.out_dir_dict[project_def.path]
+        else:
+            return
+        if out_dir is None:
+            return
             
-            if not os.path.isfile(vcxproj_path):
-                print("Project does not exist: " + vcxproj_path)
-                continue
-            
-            tree = et.parse(vcxproj_path)
-            vcxproj = tree.getroot()
-            
-            project_name, project_uuid = get_name_and_uuid(vcxproj)
-            
-            if project_def.name not in self.project_uuid_dict:
-                self.project_uuid_dict[project_def.name] = []
-            self.project_uuid_dict[project_def.name].append(project_uuid)
-            
-            sln_write_project_line(self.solution_file, project_name, vcxproj_path, self.cpp_uuid, project_uuid)
-            
-            # TODO: add dependencies to the container class and then use that here
-            #  and have a GetDependencies() function for if the hash check _passes
-            # write any container dependencies
-            uuid_deps = get_project_dependencies(info.project_hashes, info.project_dependencies[script_path])
-            sln_write_section(self.solution_file, "ProjectDependencies", uuid_deps, True, True)
-            
-            self.solution_file.write("EndProject\n")
+        vcxproj_path = out_dir + "/" + os.path.splitext(os.path.basename(project_def.path))[0] + ".vcxproj"
+        
+        if not os.path.isfile(vcxproj_path):
+            print("Project does not exist: " + vcxproj_path)
+            return
+        
+        tree = et.parse(vcxproj_path)
+        vcxproj = tree.getroot()
+        
+        project_name, project_uuid = get_name_and_uuid(vcxproj)
+        self.project_uuid_dict[project_def.name] = project_uuid
+        sln_write_project_line(self.solution_file, project_name, vcxproj_path, self.cpp_uuid, project_uuid)
+        
+        # TODO: add dependencies to the container class and then use that here
+        #  and have a GetDependencies() function for if the hash check _passes
+        # write any container dependencies
+        uuid_deps = get_project_dependencies(info.project_hashes, info.project_dependencies[project_def.path])
+        sln_write_section(self.solution_file, "ProjectDependencies", uuid_deps, True, True)
+        
+        self.solution_file.write("EndProject\n")
 
 
 def convert_arch(arch: Arch) -> str:
