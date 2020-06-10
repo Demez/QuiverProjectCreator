@@ -6,9 +6,12 @@ For Linux, install lxml with `python3 -m pip intall lxml`
 
 Generates projects for different build systems, scroll down for supported build systems.
 
-This is inspired by Valve's VPC (Valve Project Creator). 
+This is inspired by Valve's VPC (Valve Project Creator).
+
 It aims to retain the good elements of VPC (simplicity, ease of use, extensibility and configurability, "direct" access to compiler options and the like)
+
 ...but improve the areas where VPC failed (multi-platform support, speed, syntax, modernization)
+
 We also want this to be better documented - eventually. Right now, you can look at some example scripts [here](https://github.com/Demez/demez_asw_base/tree/master/_qpc_scripts)
 
 ## Command Line Values:
