@@ -289,7 +289,7 @@ def _check_file_hash(project_dir: str, hash_list: list) -> bool:
     return True
     
     
-def _check_files(project_dir, hash_file_list, file_list, project_def_list: tuple = None) -> bool:
+def _check_files(project_dir, hash_file_list, file_list, project_def_list: dict = None) -> bool:
     if len(hash_file_list) != len(file_list):
         return False
     for file_block in hash_file_list:
@@ -310,8 +310,10 @@ def _check_files(project_dir, hash_file_list, file_list, project_def_list: tuple
         
         elif folder and project_def_list:
             for project_def in project_def_list:
-                if file_block.key in project_def.script_list and folder != "/".join(project_def.folder_list):
-                    return False
+                if file_block.key == project_def.path:
+                    if folder != "/".join(project_def_list[project_def]):
+                        return False
+                    break
 
         # Now check dependencies
         project_dep_list = get_project_dependencies(file_block.key)
