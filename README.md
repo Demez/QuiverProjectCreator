@@ -6,7 +6,13 @@ For Linux, install lxml with `python3 -m pip intall lxml`
 
 Generates projects for different build systems, scroll down for supported build systems.
 
-This is based off of Valve's VPC (Valve Project Creator), which is really bad in some areas, and this is an improvement of it.
+This is inspired by Valve's VPC (Valve Project Creator).
+
+It aims to retain the good elements of VPC (simplicity, ease of use, extensibility and configurability, "direct" access to compiler options and the like)
+
+...but improve the areas where VPC failed (multi-platform support, speed, syntax, modernization)
+
+We also want this to be better documented - eventually. Right now, you can look at some example scripts [here](https://github.com/Demez/demez_asw_base/tree/master/_qpc_scripts)
 
 ## Command Line Values:
  - all caps on a word like `NAME` is a single string
@@ -35,7 +41,7 @@ This is based off of Valve's VPC (Valve Project Creator), which is really bad in
 
 -mf --masterfile NAME   Create a master file to build all projects with (ex. vstudio solution)
 
--m  --macros [names]    Set global macros equal to 1 (ex: -m HL2 is equal to macro HL2 "1")
+-m  --macros [names]    Set global macros. (ex: -m HL2 is equal to macro HL2 "1", -m "VIDEOPROVIDER=MPV" is equal to macro VIDEOPROVIDER MPV)
 
 -c  --configs []        Set configs, if no configs are set in a basefile, qpc will use "Default"
 ```
