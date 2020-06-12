@@ -1,6 +1,6 @@
 # REQUIRES PYTHON 3.6+ AND LXML INSTALLED
 For Windows, install lxml with `py -m pip install lxml`
-For Linux, install lxml with `python3 -m pip intall lxml`
+For Linux, install lxml with `python3 -m pip install lxml`
 
 # Quiver Project Creator
 
