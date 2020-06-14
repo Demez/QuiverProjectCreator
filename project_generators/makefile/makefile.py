@@ -37,9 +37,8 @@ class MakefileGenerator(BaseProjectGenerator):
             return
         
         print_color(Color.CYAN, "Creating: " + project.file_name + MAKEFILE_EXT)
-        compiler = get_compiler(project_passes[0].config.general.compiler,
-                                project_passes[0].config.general.language)
-        makefile = gen_defines(project, compiler, project.base_info.get_base_info(self._platforms[0]).configurations)
+        compiler = get_compiler(project_passes[0].cfg.general.compiler, project_passes[0].cfg.general.language)
+        makefile = gen_defines(project, compiler, project.base_info.get_base_info(self._platforms[0]).configs)
         
         for p in project_passes:
             makefile += gen_project_config_definitions(p)
@@ -133,26 +132,27 @@ def make_ifeq(a, b, body) -> str:
     return f"\nifeq ({a},{b})\n{body}\nendif\n"
 
 
+# TODO: move to cmd line gen cleanly
 def gen_cflags(conf: Configuration, libs: bool = True, defs: bool = True, includes: bool = True) -> str:
     mk = ""
-    if conf.compiler.options:
-        mk += " " + " ".join(conf.compiler.options)
-    if conf.linker.options:
-        mk += " " + " ".join(conf.linker.options)
-    if conf.compiler.preprocessor_definitions and defs:
-        mk += ' -D ' + ' -D '.join(conf.compiler.preprocessor_definitions)
-    if conf.linker.libraries and libs:
-        mk += ' -l' + ' -l'.join([os.path.splitext(i)[0] for i in conf.linker.libraries])
-    if conf.general.library_directories and libs:
-        mk += ' -L' + ' -L'.join(conf.general.library_directories)
-    if conf.general.include_directories and includes:
-        mk += ' -I' + ' -I'.join(conf.general.include_directories)
+    if conf.compile.options:
+        mk += " " + " ".join(conf.compile.options)
+    if conf.link.options:
+        mk += " " + " ".join(conf.link.options)
+    if conf.compile.defines and defs:
+        mk += ' -D ' + ' -D '.join(conf.compile.defines)
+    if conf.link.libs and libs:
+        mk += ' -l' + ' -l'.join([os.path.splitext(i)[0] for i in conf.link.libs])
+    if conf.general.lib_dirs and libs:
+        mk += ' -L' + ' -L'.join(conf.general.lib_dirs)
+    if conf.general.inc_dirs and includes:
+        mk += ' -I' + ' -I'.join(conf.general.inc_dirs)
     return mk
 
 
 # TODO: add a non-gnu flag option (/ instead of --, etc)
 def gen_compile_exe(compiler: str, conf: Configuration) -> str:
-    entry = f"-Wl,--entry={conf.linker.entry_point}" if conf.linker.entry_point != "" else ""
+    entry = f"-Wl,--entry={conf.link.entry_point}" if conf.link.entry_point != "" else ""
     return f"@{compiler} -o $@ $(SOURCES) {entry} {gen_cflags(conf)}"
 
 
@@ -164,29 +164,29 @@ def gen_compile_stat(compiler: str, conf: Configuration) -> str:
     return f"@ar rcs $@ $(OBJECTS)"
 
 
-def gen_project_targets(conf) -> str:
+def gen_project_targets(cfg: Configuration) -> str:
     makefile = "\n\n# TARGETS\n\n"
-    target_name = conf.linker.output_file if conf.linker.output_file else "$(OUTNAME)"
+    target_name = cfg.link.output_file if cfg.link.output_file else "$(OUTNAME)"
     
-    # compiler = "g++" if conf.general.language == Language.CPP else "gcc"
-    compiler = get_compiler(conf.general.compiler, conf.general.language)
+    # compile = "g++" if cfg.general.language == Language.CPP else "gcc"
+    compiler = get_compiler(cfg.general.compiler, cfg.general.language)
     
-    if conf.general.configuration_type == ConfigType.APPLICATION:
+    if cfg.general.config_type == ConfigType.APPLICATION:
         makefile += f"{target_name}: __PREBUILD $(OBJECTS) $(FILES) __PRELINK\n"
         makefile += f"\t@echo '$(GREEN)Compiling executable {target_name}$(NC)'\n"
-        makefile += '\t' + '\n\t'.join(gen_compile_exe(compiler, conf).split('\n'))
+        makefile += '\t' + '\n\t'.join(gen_compile_exe(compiler, cfg).split('\n'))
     
-    elif conf.general.configuration_type == ConfigType.DYNAMIC_LIBRARY:
+    elif cfg.general.config_type == ConfigType.DYNAMIC_LIBRARY:
         makefile += f"$(addsuffix .so,{target_name}): __PREBUILD $(OBJECTS) $(FILES) __PRELINK\n"
         makefile += f"\t@echo '$(CYAN)Compiling dynamic library {target_name + '.so'}$(NC)'\n"
-        makefile += '\t' + '\n\t'.join(gen_compile_dyn(compiler, conf).split('\n'))
+        makefile += '\t' + '\n\t'.join(gen_compile_dyn(compiler, cfg).split('\n'))
     
-    elif conf.general.configuration_type == ConfigType.STATIC_LIBRARY:
+    elif cfg.general.config_type == ConfigType.STATIC_LIBRARY:
         makefile += f"$(addsuffix .a,{target_name}): __PREBUILD $(OBJECTS) $(FILES) __PRELINK\n"
         makefile += f"\t@echo '$(CYAN)Compiling static library {target_name}.a$(NC)'\n"
-        makefile += '\t' + '\n\t'.join(gen_compile_stat(compiler, conf).split('\n'))
+        makefile += '\t' + '\n\t'.join(gen_compile_stat(compiler, cfg).split('\n'))
     
-    makefile += "\n\t" + "\n\t".join(conf.post_build)
+    makefile += "\n\t" + "\n\t".join(cfg.post_build)
     
     return makefile
 
@@ -194,16 +194,17 @@ def gen_project_targets(conf) -> str:
 def gen_dependency_tree(objects, headers, conf: Configuration) -> str:
     makefile = "\n#DEPENDENCY TREE:\n\n"
     pic = ""
-    if conf.general.configuration_type == "shared_library":  # shared library is a thing?
+    if conf.general.config_type == "shared_library":  # shared library is a thing?
         pic = "-fPIC"
         
     for obj, path in objects.items():
-        makefile += f"\n{obj}: {path} {' '.join(cp.get_includes(path, conf.general.include_directories, headers))}\n"
+        # makefile += f"\n{obj}: {path} {' '.join(cp.get_includes(path, conf.general.inc_dirs, headers))}\n"
+        makefile += f"\n{obj}: {path}\n"
         makefile += f"\t@echo '$(CYAN)Building Object {path}$(NC)'\n"
         makefile += f"\t@$(COMPILER) -c {pic} -o $@ {path} {gen_cflags(conf, libs=False)}\n"
     
-    for h in headers:
-        makefile += f"\n{h}: {' '.join(cp.get_includes(h, conf.general.include_directories, headers))}\n"
+    # for h in headers:
+    #     makefile += f"\n{h}: {' '.join(cp.get_includes(h, conf.general.inc_dirs, headers))}\n"
     
     return makefile
 
@@ -235,7 +236,7 @@ def gen_script_targets(conf: Configuration) -> str:
 # TODO: less shit name
 def gen_project_config_definitions(project: ProjectPass) -> str:
     objects = {}
-    build_dir = project.config.general.build_dir if project.config.general.build_dir else "build"
+    build_dir = project.cfg.general.build_dir if project.cfg.general.build_dir else "build"
     for i in project.source_files:
         objects[build_dir + "/" + os.path.splitext(os.path.basename(i))[0] + ".o"] = i
     
@@ -243,13 +244,13 @@ def gen_project_config_definitions(project: ProjectPass) -> str:
     nonheader_files = [i for i in project.files if i not in headers]
 
     create_dirs = []
-    if project.config.linker.output_file:
-        create_dirs.append(os.path.split(project.config.linker.output_file)[0])
+    if project.cfg.link.output_file:
+        create_dirs.append(os.path.split(project.cfg.link.output_file)[0])
 
-    if project.config.linker.output_file:
-        makefile = f"\n# CREATE BIN DIR\n$(shell mkdir -p {os.path.split(project.config.linker.output_file)[0]})\n"
-    elif project.config.general.out_dir:
-        makefile = f"\n# CREATE BIN DIR\n$(shell mkdir -p {project.config.general.out_dir})\n"
+    if project.cfg.link.output_file:
+        makefile = f"\n# CREATE BIN DIR\n$(shell mkdir -p {os.path.split(project.cfg.link.output_file)[0]})\n"
+    elif project.cfg.general.out_dir:
+        makefile = f"\n# CREATE BIN DIR\n$(shell mkdir -p {project.cfg.general.out_dir})\n"
     else:
         makefile = ""
 
@@ -268,16 +269,16 @@ def gen_project_config_definitions(project: ProjectPass) -> str:
     makefile += "\n# MACROS:\n\n"
 
     makefile += "OUTNAME = "
-    makefile += project.config.general.out_name if project.config.general.out_name else project.container.file_name
+    makefile += project.cfg.general.out_name if project.cfg.general.out_name else project.container.file_name
     
-    makefile += gen_project_targets(project.config)
+    makefile += gen_project_targets(project.cfg)
     
     makefile += gen_clean_target()
     
-    makefile += gen_dependency_tree(objects, headers, project.config)
-    # print(container.config)
+    makefile += gen_dependency_tree(objects, headers, project.cfg)
+    # print(container.cfg)
     
-    makefile += gen_script_targets(project.config)
+    makefile += gen_script_targets(project.cfg)
     
     return make_ifeq(project.config_name, "$(CONFIG)",
                      make_ifeq(project.arch.name.lower(), "$(ARCH)", makefile))
@@ -312,7 +313,7 @@ def gen_defines(project: ProjectContainer, compiler: str, configs: list) -> str:
 
 # don't mess with this, might break stuff
 ARCH = {get_default_platform(project)}
-# change the config with CONFIG=[{','.join(configs)}] to make
+# change the cfg with CONFIG=[{','.join(configs)}] to make
 CONFIG = {configs[0]}
 # edit this in your QPC script configuration/general/compiler
 COMPILER = {compiler}

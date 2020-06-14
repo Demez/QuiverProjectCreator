@@ -26,24 +26,18 @@ def get_platform_macros(platform: Enum) -> dict:
     if platform == Platform.WINDOWS:
         return {
             "$WINDOWS": "1",
-            "$_BIN_EXT": ".dll",
-            # "$_DYNAMIC_LIB_EXT": ".dll",
-            "$_STATICLIB_EXT": ".lib",
-            "$_IMPLIB_EXT": ".lib",
-            "$_APP_EXT": ".exe",
-            # "$_EXE_EXT": ".exe",
-            # "$_DBG_EXT": ".pdb",
+            "$EXT_DLIB": ".dll",
+            "$EXT_SLIB": ".lib",
+            "$EXT_APP": ".exe",
         }
     
     elif platform == Platform.LINUX:
         return {
             "$POSIX": "1",
             "$LINUX": "1",
-            "$_BIN_EXT": ".so",
-            "$_STATICLIB_EXT": ".a",
-            "$_IMPLIB_EXT": ".so",
-            "$_APP_EXT": "",
-            # "$_DBG_EXT": ".dbg",
+            "$EXT_DLIB": ".so",
+            "$EXT_SLIB": ".a",
+            "$EXT_APP": "",
         }
     
     # TODO: finish setting up MacOS stuff here
@@ -51,11 +45,9 @@ def get_platform_macros(platform: Enum) -> dict:
         return {
             "$POSIX": "1",
             "$MACOS": "1",
-            "$_BIN_EXT": ".dylib",
-            "$_STATICLIB_EXT": ".a",
-            "$_IMPLIB_EXT": ".so",
-            "$_APP_EXT": "",
-            # "$_DBG_EXT": ".dbg",
+            "$EXT_DLIB": ".dylib",
+            "$EXT_SLIB": ".a",
+            "$EXT_APP": ".app",  # or is this .DMG?
         }
 
 
@@ -77,7 +69,7 @@ class BaseInfoPlatform:
         self.dependency_dict_original = {}
         
         # for generators and parts of qpc to use:
-        self.configurations = []
+        self.configs = []
         self.projects = []
         self.project_folders = {}
         
@@ -133,11 +125,11 @@ class BaseInfoPlatform:
                     warning("Project, Group, or File does not exist: " + project_path)
 
         for config in args.configs:
-            if config not in self.configurations:
-                self.configurations.append(config)
+            if config not in self.configs:
+                self.configs.append(config)
 
-        if not self.configurations:
-            self.configurations.append("Default")
+        if not self.configs:
+            self.configs.extend(["Debug", "Release"])
 
     def add_macro(self, project_block: QPCBlock):
         self.macros["$" + project_block.values[0]] = replace_macros(project_block.values[1], self.macros)
@@ -291,7 +283,7 @@ class BaseInfo:
 
     def get_configs(self) -> list:
         configurations = set()
-        [configurations.update(info.configurations) for info in self.info_list]
+        [configurations.update(info.configs) for info in self.info_list]
         return list(configurations)
     
     def get_projects(self, *platforms) -> tuple:
@@ -371,22 +363,14 @@ class Parser:
             elif project_block.key == "macro":
                 info.add_macro(project_block)
         
-            elif project_block.key == "configurations":
+            elif project_block.key == "configs":
                 configs = project_block.get_item_list_condition(info.macros)
-                [info.configurations.append(config) for config in configs if config not in info.configurations]
+                [info.configs.append(config) for config in configs if config not in info.configs]
         
             # obsolete
             elif project_block.key == "dependency_paths":
                 project_block.warning("dependency_paths is obsolete, now uses project paths directly")
-                continue
                 
-                temp_dir = include_dir + "/" if include_dir else ""
-                for dependency in project_block.items:
-                    if dependency.values and dependency.solve_condition(info.macros):
-                        info.dependency_dict[dependency.key] = temp_dir + dependency.values[0]
-                        if temp_dir:
-                            info.dependency_dict_original[dependency.values[0]] = dependency.key
-
             elif not project_block.values:
                 continue
 
@@ -422,8 +406,8 @@ class Parser:
                 if len(project_block.values) >= 2:
                     os.chdir(current_dir)
 
-            elif not args.hide_warnings:
-                project_block.warning("Unknown Key: ")
+            else:
+                project_block.warning(f"Unknown Key: \"{project_block.key}\"")
             
     def _base_group_define(self, group_block: QPCBlock, info: BaseInfoPlatform):
         if not group_block.values:
@@ -510,13 +494,13 @@ class Parser:
                 if project_block.key == "macro":
                     project.add_macro(indent, *project.replace_macros_list(*project_block.values))
             
-                elif project_block.key == "configuration":
+                elif project_block.key == "cfg":
                     self._parse_config(project_block, project)
             
                 elif project_block.key == "files":
                     self._parse_files(project_block, project, [])
             
-                elif project_block.key == "dependencies":
+                elif project_block.key == "requires":
                     for block in project_block.get_items_cond(project.macros):
                         if block.key == "-":
                             project.remove_dependencies(*block.values)
@@ -540,7 +524,7 @@ class Parser:
                         project_block.warning(f"File does not exist: {include_path}")
                     
                 else:
-                    project_block.warning("Unknown key: ")
+                    project_block.warning(f"Unknown Key: \"{project_block.key}\"")
     
     def _include_file(self, include_path: str, project: ProjectPass, indent: str) -> QPCBlockBase:
         project.hash_list[include_path] = qpc_hash.make_hash(include_path)
@@ -605,8 +589,8 @@ class Parser:
             
                 if config_block.key == "configuration":
                     for group_block in config_block.items:
-                        if group_block.key != "compiler":
-                            group_block.error("Invalid Group, can only use compiler")
+                        if group_block.key != "compile":
+                            group_block.warning("Invalid Group, can only use compile")
                             continue
                     
                         if group_block.solve_condition(project.macros):
@@ -614,7 +598,7 @@ class Parser:
                                 if option_block.solve_condition(project.macros):
                                     source_file.compiler.parse_option(project.macros, option_block)
                 else:
-                    # new, cleaner way, just assume it's compiler
+                    # new, cleaner way, just assume it's compile
                     source_file.compiler.parse_option(project.macros, config_block)
 
     def read_file(self, script_path: str) -> QPCBlockBase:
@@ -634,4 +618,4 @@ class Parser:
         if config.solve_condition(project.macros):
             for group in config.get_items_cond(project.macros):
                 for option_block in group.get_items_cond(project.macros):
-                    project.config.parse_config_option(group, option_block)
+                    project.cfg.parse_config_option(group, option_block)

@@ -38,7 +38,7 @@ def parse_args(generators: list) -> None:
     cmd_parser.add_argument("--checkfiles", "-cf", dest="check_files", action="store_true", help="Check if any added file exists")
     cmd_parser.add_argument("--skipprojects", "-sp", dest="skip_projects", action="store_true", help="Don't generate projects")
 
-    cmd_parser.add_argument("--configs", "-c", nargs="+", default=(), help="Select configurations, added to configs set in base files")
+    cmd_parser.add_argument("--configs", "-c", nargs="+", default=(), help="Select configs, added to configs set in base files")
     cmd_parser.add_argument("--platforms", "-p", nargs="+", default=(get_default_platform(),), choices=platforms,
                             help="Select platforms to generate for instead of the default")
     cmd_parser.add_argument("--archs", "-ar", nargs="+", default=get_default_archs(), choices=archs,

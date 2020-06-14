@@ -81,7 +81,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         
     def has_debug_commands(self, project_passes: list) -> bool:
         for project in project_passes:
-            if bool(project.config.debug):
+            if bool(project.cfg.debug):
                 return True
         return False
     
@@ -129,7 +129,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
             
             config_plat_list = []
             for plat in self._platforms:
-                for config in info.get_base_info(plat).configurations:
+                for config in info.get_base_info(plat).configs:
                     for arch in self._architectures:
                         config_plat_list.append(config + "|" + convert_arch(arch))
         
@@ -336,44 +336,49 @@ def setup_property_group_configurations(vcxproj, project_passes: list):
         property_group.set("Condition", make_conf_plat_cond(project.config_name, project.arch))
         property_group.set("Label", "Configuration")
         
-        config = project.config
+        cfg = project.cfg
         
         configuration_type = et.SubElement(property_group, "ConfigurationType")
         
-        if config.general.configuration_type == ConfigType.APPLICATION:
+        if cfg.general.config_type == ConfigType.APPLICATION:
             configuration_type.text = "Application"
-        elif config.general.configuration_type == ConfigType.STATIC_LIBRARY:
+        elif cfg.general.config_type == ConfigType.STATIC_LIBRARY:
             configuration_type.text = "StaticLibrary"
-        elif config.general.configuration_type == ConfigType.DYNAMIC_LIBRARY:
+        elif cfg.general.config_type == ConfigType.DYNAMIC_LIBRARY:
             configuration_type.text = "DynamicLibrary"
         
         toolset = et.SubElement(property_group, "PlatformToolset")
         
-        if config.general.compiler:
-            if config.general.compiler in COMPILER_DICT:
-                toolset.text = COMPILER_DICT[config.general.compiler]
+        if cfg.general.compiler:
+            if cfg.general.compiler in COMPILER_DICT:
+                toolset.text = COMPILER_DICT[cfg.general.compiler]
             else:
-                toolset.text = config.general.compiler
+                toolset.text = cfg.general.compiler
         else:
             toolset.text = COMPILER_DICT["msvc"]
 
-        defs = config.compiler.preprocessor_definitions
-        if "MBCS" in defs or "_MBCS" in defs:
-            et.SubElement(property_group, "CharacterSet").text = "MultiByte"
-            if "MBCS" in defs:
-                defs.remove("MBCS")
-            if "_MBCS" in defs:
-                defs.remove("_MBCS")
-
-        elif "UNICODE" in defs or "_UNICODE" in defs:
-            et.SubElement(property_group, "CharacterSet").text = "Unicode"
-            if "UNICODE" in defs:
-                defs.remove("UNICODE")
-            if "_UNICODE" in defs:
-                defs.remove("_UNICODE")
+        character_set = check_char_set(cfg.compile.defines.copy())
+        if character_set:
+            et.SubElement(property_group, "CharacterSet").text = character_set
         
         # "TargetName",
         # "WholeProgramOptimization",
+        
+        
+def check_char_set(defs: list) -> str:
+    if "MBCS" in defs or "_MBCS" in defs:
+        if "MBCS" in defs:
+            defs.remove("MBCS")
+        if "_MBCS" in defs:
+            defs.remove("_MBCS")
+        return "MultiByte"
+    
+    elif "UNICODE" in defs or "_UNICODE" in defs:
+        if "UNICODE" in defs:
+            defs.remove("UNICODE")
+        if "_UNICODE" in defs:
+            defs.remove("_UNICODE")
+        return "Unicode"
 
 
 def setup_property_sheets(vcxproj):
@@ -392,40 +397,43 @@ def setup_general_properties(vcxproj, project_passes: list):
     
     for project in project_passes:
         condition = make_conf_plat_cond(project.config_name, project.arch)
-        config = project.config
+        cfg = project.cfg
         
         property_group = et.SubElement(vcxproj, "PropertyGroup")
         property_group.set("Condition", condition)
         
         out_dir = et.SubElement(property_group, "OutDir")
-        out_dir.text = config.general.out_dir + os.sep
+        out_dir.text = cfg.general.out_dir + os.sep
         
         int_dir = et.SubElement(property_group, "IntDir")
-        int_dir.text = config.general.build_dir + os.sep
+        int_dir.text = cfg.general.build_dir + os.sep
         
-        et.SubElement(property_group, "TargetName").text = config.general.out_name
-        
+        et.SubElement(property_group, "TargetName").text = cfg.general.out_name
+
+        # TODO: this probably isn't needed and might be able to be nuked, idk
+        '''
         target_ext = et.SubElement(property_group, "TargetExt")
         
-        if config.general.configuration_type == ConfigType.APPLICATION:
+        if cfg.general.config_type == ConfigType.APPLICATION:
             target_ext.text = project.macros["$_APP_EXT"]
         
-        elif config.general.configuration_type == ConfigType.STATIC_LIBRARY:
+        elif cfg.general.config_type == ConfigType.STATIC_LIBRARY:
             target_ext.text = project.macros["$_STATICLIB_EXT"]
         
-        elif config.general.configuration_type == ConfigType.DYNAMIC_LIBRARY:
+        elif cfg.general.config_type == ConfigType.DYNAMIC_LIBRARY:
             target_ext.text = project.macros["$_BIN_EXT"]
+        '''
         
         include_paths = et.SubElement(property_group, "IncludePath")
-        include_paths.text = ';'.join(config.general.include_directories)
+        include_paths.text = ';'.join(cfg.general.inc_dirs)
         
-        if config.general.default_include_directories:
+        if cfg.general.default_inc_dirs:
             include_paths.text += ";$(IncludePath)"
         
         library_paths = et.SubElement(property_group, "LibraryPath")
-        library_paths.text = ';'.join(config.general.library_directories)
+        library_paths.text = ';'.join(cfg.general.lib_dirs)
         
-        if config.general.default_library_directories:
+        if cfg.general.default_lib_dirs:
             library_paths.text += ";$(LibraryPath)"
 
         # also why does WholeProgramOptimization go here and in ClCompile
@@ -434,28 +442,28 @@ def setup_general_properties(vcxproj, project_passes: list):
 def setup_item_definition_groups(vcxproj: et.Element, project_passes: list):
     for project in project_passes:
         condition = make_conf_plat_cond(project.config_name, project.arch)
-        cfg = project.config
+        cfg = project.cfg
         
         item_def_group = et.SubElement(vcxproj, "ItemDefinitionGroup")
         item_def_group.set("Condition", condition)
         
         # ------------------------------------------------------------------
-        # compiler - ClCompile
-        add_compiler_options(et.SubElement(item_def_group, "ClCompile"), cfg.compiler, cfg.general)
+        # compile - ClCompile
+        add_compiler_options(et.SubElement(item_def_group, "ClCompile"), cfg.compile, cfg.general)
         
         # ------------------------------------------------------------------
         # linker - Link or Lib
-        if cfg.general.configuration_type == ConfigType.STATIC_LIBRARY:
+        if cfg.general.config_type == ConfigType.STATIC_LIBRARY:
             link_lib = et.SubElement(item_def_group, "Lib")
         else:
             link_lib = et.SubElement(item_def_group, "Link")
 
-        if cfg.linker.options:
+        if cfg.link.options:
             # copying here so we don't remove from the project object, would break for the next project type
-            remaining_options = [*cfg.linker.options]
+            remaining_options = [*cfg.link.options]
     
             index = 0
-            # for index, option in enumerate(compiler.options):
+            # for index, option in enumerate(compile.options):
             while len(remaining_options) > index:
                 option = remaining_options[index]
                 option_key, option_value = command_to_link_option(option)
@@ -468,30 +476,22 @@ def setup_item_definition_groups(vcxproj: et.Element, project_passes: list):
             # now add any unchanged options
             et.SubElement(link_lib, "AdditionalOptions").text = ' '.join(remaining_options)
         
-        et.SubElement(link_lib, "AdditionalDependencies").text = ';'.join(cfg.linker.libraries) + \
-                                                                 ";%(AdditionalDependencies)"
+        et.SubElement(link_lib, "AdditionalDependencies").text = ';'.join(cfg.link.libs) + ";%(AdditionalDependencies)"
 
-        if cfg.linker.output_file:
-            output_file = os.path.splitext(cfg.linker.output_file)[0]
-            if cfg.general.configuration_type == ConfigType.DYNAMIC_LIBRARY:
-                et.SubElement(link_lib, "OutputFile").text = output_file + project.macros["$_BIN_EXT"]
-            elif cfg.general.configuration_type == ConfigType.STATIC_LIBRARY:
-                et.SubElement(link_lib, "OutputFile").text = output_file + project.macros["$_STATICLIB_EXT"]
-            elif cfg.general.configuration_type == ConfigType.APPLICATION:
-                et.SubElement(link_lib, "OutputFile").text = output_file + project.macros["$_APP_EXT"]
+        if cfg.link.output_file:
+            et.SubElement(link_lib, "OutputFile").text = cfg.link.output_file
 
-        if cfg.linker.debug_file:
-            et.SubElement(link_lib, "ProgramDatabaseFile").text = os.path.splitext(cfg.linker.debug_file)[0] + ".pdb"
+        if cfg.link.debug_file:
+            et.SubElement(link_lib, "ProgramDatabaseFile").text = os.path.splitext(cfg.link.debug_file)[0] + ".pdb"
         
-        if cfg.linker.import_library:
-            et.SubElement(link_lib, "ImportLibrary").text = os.path.splitext(cfg.linker.import_library)[0] + \
-                                                            project.macros["$_IMPLIB_EXT"]
+        if cfg.link.import_lib:
+            et.SubElement(link_lib, "ImportLibrary").text = cfg.link.import_lib
 
-        if cfg.linker.entry_point:
-            et.SubElement(link_lib, "EntryPointSymbol").text = cfg.linker.entry_point
+        if cfg.link.entry_point:
+            et.SubElement(link_lib, "EntryPointSymbol").text = cfg.link.entry_point
         
         # what does "IgnoreAllDefaultLibraries" do differently than this? is it a boolean? idk
-        et.SubElement(link_lib, "IgnoreSpecificDefaultLibraries").text = ';'.join(cfg.linker.ignore_libraries) + \
+        et.SubElement(link_lib, "IgnoreSpecificDefaultLibraries").text = ';'.join(cfg.link.ignore_libs) + \
                                                                          ";%(IgnoreSpecificDefaultLibraries)"
         
         # TODO: convert options in the linker.options list to options here
@@ -531,30 +531,29 @@ PRECOMPILED_HEADER_DICT = {
 }
 
 
-def add_compiler_options(compiler_elem: et.SubElement, compiler: Compile, general=None):
+def add_compiler_options(compiler_elem: et.SubElement, compile: Compile, general=None):
     added_option = False
     
-    if type(compiler) == SourceFileCompile and not compiler.build:
+    if type(compile) == SourceFileCompile and not compile.build:
         added_option = True
-        et.SubElement(compiler_elem, "ExcludedFromBuild").text = str(not compiler.build).lower()
+        et.SubElement(compiler_elem, "ExcludedFromBuild").text = str(not compile.build).lower()
     
-    if compiler.preprocessor_definitions:
+    if compile.defines:
         added_option = True
         preprocessor_definitions = et.SubElement(compiler_elem, "PreprocessorDefinitions")
-        preprocessor_definitions.text = ';'.join(compiler.preprocessor_definitions) + \
-                                        ";%(PreprocessorDefinitions)"
+        preprocessor_definitions.text = ';'.join(compile.defines) + ";%(PreprocessorDefinitions)"
     
-    if compiler.precompiled_header:
+    if compile.pch:
         added_option = True
-        et.SubElement(compiler_elem, "PrecompiledHeader").text = PRECOMPILED_HEADER_DICT[compiler.precompiled_header]
+        et.SubElement(compiler_elem, "PrecompiledHeader").text = PRECOMPILED_HEADER_DICT[compile.pch]
     
-    if compiler.precompiled_header_file:
+    if compile.pch_file:
         added_option = True
-        et.SubElement(compiler_elem, "PrecompiledHeaderFile").text = compiler.precompiled_header_file
+        et.SubElement(compiler_elem, "PrecompiledHeaderFile").text = compile.pch_file
     
-    if compiler.precompiled_header_output_file:
+    if compile.pch_out:
         added_option = True
-        et.SubElement(compiler_elem, "PrecompiledHeaderOutputFile").text = compiler.precompiled_header_output_file
+        et.SubElement(compiler_elem, "PrecompiledHeaderOutputFile").text = compile.pch_out
 
     # these are needed, because for some reason visual studio use shit stuff for default info
     if general:  # basically if not file
@@ -570,14 +569,14 @@ def add_compiler_options(compiler_elem: et.SubElement, compiler: Compile, genera
             standard = "stdcpplatest" if general.standard == Standard.CPP20 else f"std{general.standard.lower()}"
             et.SubElement(compiler_elem, "LanguageStandard").text = standard
     
-    if compiler.options:
+    if compile.options:
         added_option = True
         warnings_list = []
         # copying here so we don't remove from the project object, would break for the next project type
-        remaining_options = [*compiler.options]
+        remaining_options = [*compile.options]
 
         index = 0
-        # for index, option in enumerate(compiler.options):
+        # for index, option in enumerate(compile.options):
         while len(remaining_options) > index:
             option = remaining_options[index]
             if option.startswith("/ignore:"):
@@ -1078,7 +1077,7 @@ def write_solution_header(solution_file):
 def get_name_and_uuid(vcxproj):
     xmlns = "{http://schemas.microsoft.com/developer/msbuild/2003}"
     
-    # configurations = []
+    # configs = []
     # platforms_elems = []
     # platforms = []
     item_groups = vcxproj.findall(xmlns + "ItemGroup")

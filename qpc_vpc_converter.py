@@ -158,7 +158,7 @@ OPTION_NAME_CONVERT_DICT = {
     "$systemlibraries": "libraries",
     
     "$compileas": "language",
-    "$platformtoolset": "compiler",
+    "$platformtoolset": "compile",
     
     "$preprocessordefinitions": "preprocessor_definitions",
     "$characterset": "preprocessor_definitions",
@@ -344,7 +344,7 @@ CONFIG_GROUP_CONVERT_DICT = {
     "$additionalincludedirectories": "general",
     "$additionallibrarydirectories": "general",
     
-    "$characterset": "compiler",
+    "$characterset": "compile",
     "$outputfile": "linker",
 }
 
@@ -615,12 +615,12 @@ def convert_vgc(vgc_dir, vgc_filename, vgc_project):
         else:
             project_block.warning("Unknown Key:")
             
-    # add configurations block
+    # add configs block
     # HARDCODING
     if vgc_filename == "default":
         qpc_base_file.extend(
             ["",
-             "configurations",
+             "configs",
              "{",
              "\t\"Debug\"",
              "\t\"Release\"",
@@ -689,13 +689,13 @@ class Configuration:
             ConfigOption("build_dir"),
             ConfigOption("configuration_type", False, False),
             ConfigOption("language"),
-            ConfigOption("compiler"),
+            ConfigOption("compile"),
             ConfigOption("include_directories", True),
             ConfigOption("library_directories", True),
             ConfigOption("options", True, False),
         ]
         
-        compiler = ConfigGroup("compiler")
+        compiler = ConfigGroup("compile")
         compiler.options = [
             ConfigOption("preprocessor_definitions", True, False),
             ConfigOption("precompiled_header"),
@@ -717,7 +717,7 @@ class Configuration:
         
         self.groups = {
             "general": general.to_dict(),
-            "compiler": compiler.to_dict(),
+            "compile": compiler.to_dict(),
             "linker": linker.to_dict(),
         }
         
@@ -1412,7 +1412,7 @@ def write_file(file_block: reader.QPCBlock, qpc_project: list, indent: str):
         for file_config_block in file_block.items:
             parse_configuration(file_config_block, file_config)
 
-        config_lines = write_config_group(file_config.groups["compiler"], indent[:-1])
+        config_lines = write_config_group(file_config.groups["compile"], indent[:-1])
         qpc_project.extend(config_lines)
 
 
@@ -1627,7 +1627,7 @@ def convert_config_group_name(group_name: str) -> str:
     if group_name == "$general":
         return "general"
     elif group_name == "$compiler":
-        return "compiler"
+        return "compile"
     elif group_name == "$linker":
         return "linker"
     elif group_name == "$librarian":

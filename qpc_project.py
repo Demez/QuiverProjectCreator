@@ -18,7 +18,7 @@ from time import perf_counter
 # IDEA: be able to reference values from the configuration, like a macro
 # so lets say you set output directory in the configuration,
 # and you don't want to make that a macro just to use that somewhere else.
-# so, you do something like this instead: @config.general.out_dir
+# so, you do something like this instead: @cfg.general.out_dir
 # this would use the value of out_dir in the configuration
 # if it's invalid, just return None, or an empty string
 
@@ -110,7 +110,7 @@ class ProjectPass:
         self.base_info = container.base_info.get_base_info(platform)
         
         self.container = container
-        self.config = Configuration(self)
+        self.cfg = Configuration(self)
         self.source_files = {}
         self.files = {}
         self.hash_list = {}
@@ -162,7 +162,7 @@ class ProjectPass:
 
     def _replace_undefined_macros(self, indent: str) -> None:
         # this could probably be sped up
-        # TODO: add scanning of files and certain config info
+        # TODO: add scanning of files and certain cfg info
         for macro, value in self.macros.items():
             if args.verbose:
                 old_value = self.macros[macro]
@@ -338,7 +338,7 @@ class ProjectContainer:
             generator_platforms = generator.get_supported_platforms()
             for platform in project_def.platforms:
                 if platform in generator_platforms:
-                    for config in base_info.get_base_info(platform).configurations:
+                    for config in base_info.get_base_info(platform).configs:
                         for arch in PLATFORM_ARCHS[platform]:
                             if arch in args.archs:
                                 self.add_pass(config, platform, arch, macro, generator.id)
@@ -444,8 +444,8 @@ class Configuration:
         self._proj = project
         self.debug = Debug()
         self.general = General(project.container.file_name, project.platform)
-        self.compiler = Compile()
-        self.linker = Linker()
+        self.compile = Compile()
+        self.link = Link(self)
         self.pre_build = []
         self.pre_link = []
         self.post_build = []
@@ -491,6 +491,27 @@ class Configuration:
         else:
             event_args = replace_macros_list(self._proj.macros, *event.values)
             self._proj.build_events[event.key].call_event(event.warning, step, *event_args)
+            
+            
+class BaseConfigGroup:
+    def __init__(self):
+        self.__slots__ = ("_name_dict",)
+        self._name_dict = {}
+    
+    def _add_option(self, main_name: str, option_type, *other_names):
+        self.__slots__ = (*self.__slots__, main_name)
+        
+        self.__dict__[main_name] = option_type() if option_type is type else option_type
+        self._name_dict[main_name] = self.__dict__[main_name]
+        for name in other_names:
+            self._name_dict[name] = self.__dict__[main_name]
+            
+    def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
+        pass
+
+
+def clean_path(string: str, macros: dict) -> str:
+    return posix_path(os.path.normpath(replace_macros(string, macros)))
 
 
 # idea, for debug options in the editor used (if it can debug)
@@ -513,72 +534,68 @@ class Debug:
                 option_block.warning("Invalid Debug Option: ")
 
 
-def clean_path(string: str, macros: dict) -> str:
-    return posix_path(os.path.normpath(replace_macros(string, macros)))
-
-
 class General:
     def __init__(self, file_name: str, platform: Platform):
         self.out_dir = "build"
         self.build_dir = "build"
         self.out_name = file_name
 
-        # i want to make these configuration options unaffected by config and platform macros,
-        # and have it run before it goes through each config/platform
-        # except what if someone sets a macro with a config conditional and uses it in one of these?
+        # i want to make these configuration options unaffected by cfg and platform macros,
+        # and have it run before it goes through each cfg/platform
+        # except what if someone sets a macro with a cfg conditional and uses it in one of these?
         # won't work, so im just leaving it as it is for now, hopefully i can get something better later on
-        self.configuration_type = None
+        self.config_type = None
+        
         self.language = None
         self.standard = None
         self.compiler = "msvc" if platform == Platform.WINDOWS else "gcc"
         
-        self.default_include_directories = True
-        self.default_library_directories = True
-        self.include_directories = []
-        self.library_directories = []
+        self.default_inc_dirs = True
+        self.default_lib_dirs = True
+        self.inc_dirs = []
+        self.lib_dirs = []
         self.options = []
 
     def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
         # multiple path options
-        if option_block.key in {"include_directories", "library_directories", "options"}:
+        if option_block.key in {"inc_dirs", "lib_dirs", "options", "include_directories", "library_directories"}:
+            if option_block.key == "include_directories":
+                key = "inc_dirs"
+            elif option_block.key == "library_directories":
+                key = "lib_dirs"
+            else:
+                key = option_block.key
+            
+            if option_block.key in {"include_directories", "library_directories"}:
+                option_block.warning(f"Legacy Option: \"{option_block.key}\", use \"{key}\" instead")
+            
             for item in option_block.get_items_cond(macros):
-                self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
-
-        elif option_block.key == "options":
-            for item in option_block.get_items_cond(macros):
-                self.options.extend(item.get_list())
+                self.__dict__[key].extend(replace_macros_list(macros, *item.get_list()))
 
         if not option_block.values:
             return
         
-        if option_block.key in {"out_dir", "int_dir", "build_dir"}:
-            value = clean_path(option_block.values[0], macros)
-            if option_block.key in {"build_dir", "int_dir"}:
-                self.build_dir = value
-            else:
-                self.out_dir = value
+        if option_block.key in {"out_dir", "build_dir"}:
+            self.__dict__[option_block.key] = clean_path(option_block.values[0], macros)
             
         elif option_block.key == "out_name":
             self.out_name = replace_macros(option_block.values[0], macros)
         
-        elif option_block.key in {"default_include_directories", "default_library_directories"}:
+        elif option_block.key in {"default_inc_dirs", "default_lib_dirs"}:
             self.__dict__[option_block.key] = convert_bool_option(self.__dict__[option_block.key], option_block)
             
-        elif option_block.key == "configuration_type":
+        elif option_block.key == "config_type":
             self.set_type(option_block)
         elif option_block.key == "language":
             self.set_language(option_block)
-        elif option_block.key in {"toolset_version", "compiler"}:
-            if option_block.key == "toolset_version":
-                if not args.hide_warnings:
-                    option_block.warning("toolset_version is now compiler")
+        elif option_block.key == "compile":
             self.compiler = replace_macros(option_block.values[0], macros)
             
         else:
             option_block.error("Unknown General Option: ")
             
     def set_type(self, option: QPCBlock) -> None:
-        self.configuration_type = convert_enum_option(self.configuration_type, option, ConfigType)
+        self.config_type = convert_enum_option(self.config_type, option, ConfigType)
 
     def set_language(self, option: QPCBlock) -> None:
         self.set_standard(option)
@@ -605,26 +622,26 @@ class General:
 
 class Compile:
     def __init__(self):
-        self.preprocessor_definitions = []
-        self.precompiled_header = None  # PrecompiledHeader.NONE
-        self.precompiled_header_file = None
-        self.precompiled_header_output_file = None
+        self.defines = []
+        self.pch = None  # PrecompiledHeader.NONE
+        self.pch_file = None
+        self.pch_out = None
         self.options = []
 
     def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
-        if option_block.key in ("preprocessor_definitions", "options"):
+        if option_block.key in {"defines", "options"}:
             for item in option_block.get_items_cond(macros):
                 self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
     
-        elif option_block.key == "precompiled_header":
+        elif option_block.key == "pch":
             if option_block.values:
-                self.precompiled_header = convert_enum_option(self.precompiled_header, option_block, PrecompiledHeader)
+                self.pch = convert_enum_option(self.pch, option_block, PrecompiledHeader)
     
-        elif option_block.key in {"precompiled_header_file", "precompiled_header_output_file"}:
+        elif option_block.key in {"pch_file", "pch_out"}:
             self.__dict__[option_block.key] = replace_macros(option_block.values[0], macros)
     
         else:
-            option_block.error("Unknown Compiler Option: ")
+            option_block.warning("Unknown Compiler Option")
     
     
 class SourceFileCompile(Compile):
@@ -639,41 +656,52 @@ class SourceFileCompile(Compile):
             super().parse_option(macros, option_block)
 
 
-class Linker:
-    def __init__(self):
+class Link:
+    def __init__(self, config: Configuration):
+        self._parent = config
         self.output_file = None
         self.debug_file = None
-        self.import_library = None
-        self.ignore_import_library = False  # idk what the default should be
+        self.import_lib = None
+        self.ignore_import_lib = False
         self.entry_point = None
-        self.libraries = []
-        self.ignore_libraries = []  # maybe change to ignored_libraries?
+        self.libs = []
+        self.ignore_libs = []  # maybe change to ignored_libraries?
         self.options = []
 
     def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
-        if option_block.key in {"options", "libraries", "ignore_libraries"}:
+        if option_block.key in {"options", "libs", "ignore_libs"}:
             for item in option_block.get_items_cond(macros):
-                if option_block.key == "libraries":
-                    if item.key == "-":
-                        self.remove_lib(macros, item)
-                    else:
-                        self.add_lib(macros, item)
+                if item.key == "-":
+                    self._remove_item(macros, option_block, item)
                 else:
-                    self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
+                    if option_block.key == "libs":
+                        self.add_lib(macros, item)
+                    else:
+                        self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
                     
         elif not option_block.values:
             return
             
         elif option_block.key in {"output_file", "debug_file"}:
             # TODO: maybe split the extension for output_file, debug_file, or import_library?
-            self.__dict__[option_block.key] = clean_path(option_block.values[0], macros)
+            file_path = clean_path(option_block.values[0], macros)
+            file_name, file_ext = os.path.splitext(file_path)
+            if not file_ext:
+                config_type = self._parent.general.config_type
+                if config_type == ConfigType.DYNAMIC_LIBRARY:
+                    file_ext = macros["$EXT_DLL"]
+                elif config_type == ConfigType.DYNAMIC_LIBRARY:
+                    file_ext = macros["$EXT_LIB"]
+                elif config_type == ConfigType.DYNAMIC_LIBRARY:
+                    file_ext = macros["$EXT_APP"]
+            self.__dict__[option_block.key] = file_name + file_ext
             
-        elif option_block.key in {"import_library", "entry_point"}:
+        elif option_block.key in {"import_lib", "entry_point"}:
             # TODO: maybe split the extension for output_file, debug_file, or import_library?
             self.__dict__[option_block.key] = replace_macros(option_block.values[0], macros)
             
-        elif option_block.key == "ignore_import_library":
-            self.ignore_import_library = convert_bool_option(self.ignore_import_library, option_block)
+        elif option_block.key == "ignore_import_lib":
+            self.ignore_import_lib = convert_bool_option(self.ignore_import_lib, option_block)
     
         else:
             option_block.error("Unknown Linker Option: ")
@@ -681,24 +709,35 @@ class Linker:
     def add_lib(self, macros: dict, lib_block: QPCBlock) -> None:
         for lib_path in (lib_block.key, *lib_block.values):
             lib_path = self._fix_lib_path_and_ext(macros, lib_path)
-            if lib_path not in self.libraries:
-                self.libraries.append(lib_path)
+            if lib_path not in self.libs:
+                self.libs.append(lib_path)
             elif not args.hide_warnings:
                 lib_block.warning("Library already added")
+                
+    def _remove_item(self, macros: dict, option_block: QPCBlock, item: QPCBlock):
+        if option_block.key == "libs":
+            self.remove_lib(macros, item)
+        else:
+            for item_to_rm in item.values:
+                item_to_rm = replace_macros(item_to_rm, macros)
+                if item_to_rm in self.__dict__[option_block.key]:
+                    self.__dict__[option_block.key].remove(item_to_rm)
+                else:
+                    item.warning(f"Trying to remove {option_block.key[:1]} that was never added: \"{item_to_rm}\"")
 
     def remove_lib(self, macros: dict, lib_block: QPCBlock) -> None:
         for lib_path in lib_block.values:
             lib_path = self._fix_lib_path_and_ext(macros, lib_path)
-            if lib_path in self.libraries:
-                self.libraries.remove(lib_path)
-            elif not args.hide_warnings:
+            if lib_path in self.libs:
+                self.libs.remove(lib_path)
+            else:
                 lib_block.warning("Trying to remove a library that hasn't been added yet")
 
-    # actually do you even need the extension?
     @staticmethod
     def _fix_lib_path_and_ext(macros: dict, lib_path: str) -> str:
         lib_path = clean_path(lib_path, macros)
-        return os.path.splitext(lib_path)[0] + macros["$_STATICLIB_EXT"]
+        lib_name, lib_ext = os.path.splitext(lib_path)
+        return lib_name + lib_ext if lib_ext else macros["$BIN_SLIB"]
     
     
 def convert_bool_option(old_value: bool, option_block: QPCBlock) -> bool:
@@ -713,7 +752,6 @@ def convert_bool_option(old_value: bool, option_block: QPCBlock) -> bool:
     
     
 def convert_enum_option(old_value: Enum, option_block: QPCBlock, enum_list: EnumMeta) -> Enum:
-    # value = replace_macros(option_block.values[0])
     value = option_block.values[0]
     for enum in enum_list:
         if value == enum.name.lower():

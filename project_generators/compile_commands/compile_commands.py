@@ -46,7 +46,7 @@ class CompileCommandsGenerator(BaseProjectGenerator):
         print_color(Color.CYAN, "Adding to Compile Commands: " + project.file_name)
         
         for proj_pass in project_passes:
-            self.cmd_gen.set_mode(proj_pass.config.general.compiler)
+            self.cmd_gen.set_mode(proj_pass.cfg.general.compiler)
             label = f"{proj_pass.config_name.lower()}_{proj_pass.platform.name.lower()}_{proj_pass.arch.name.lower()}"
             if label not in self.all_files:
                 self.all_files[label] = set()
@@ -61,15 +61,15 @@ class CompileCommandsGenerator(BaseProjectGenerator):
     def handle_file(self, file: str, project: ProjectPass) -> dict:
         file_dict = {
             "directory": os.getcwd().replace("\\", "/"),
-            "command": cmd_line_gen.get_compiler(project.config.general.compiler, project.config.general.language) + " ",
+            "command": cmd_line_gen.get_compiler(project.cfg.general.compiler, project.cfg.general.language) + " ",
             "file": file
         }
         
-        file_dict["command"] += " ".join(self.cmd_gen.convert_defines(project.config.compiler.preprocessor_definitions))
-        file_dict["command"] += " " + " ".join(self.cmd_gen.convert_includes(project.config.general.include_directories))
+        file_dict["command"] += " ".join(self.cmd_gen.convert_defines(project.cfg.compile.defines))
+        file_dict["command"] += " " + " ".join(self.cmd_gen.convert_includes(project.cfg.general.inc_dirs))
         
-        file_dict["command"] += " " + " ".join(project.config.compiler.options)
-        if f"{self.cmd_gen.switch}c" not in project.config.compiler.options:
+        file_dict["command"] += " " + " ".join(project.cfg.compile.options)
+        if f"{self.cmd_gen.switch}c" not in project.cfg.compile.options:
             file_dict["command"] += f" {self.cmd_gen.switch}c"
             
         file_dict["command"] += " " + file
