@@ -53,7 +53,7 @@ WARNING_COUNT = 0
 
 
 def warning(*text):
-    warning_no_line(*text, "\n")
+    warning_no_line(*text[:-1], text[-1] + "\n")
 
 
 def warning_no_line(*text):
