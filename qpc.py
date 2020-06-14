@@ -111,11 +111,12 @@ def main():
     os.chdir(args.root_dir)
     
     parser = Parser()
-    if args.time:
-        start_time = perf_counter()
     
     info = parser.parse_base_info(args.base_file)
     generator_list = get_generators_all()
+    
+    if args.time:
+        start_time = perf_counter()
     
     for project_def in info.projects:
         project_script = project_def.path
