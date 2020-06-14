@@ -6,7 +6,7 @@ import lxml.etree as et
 from time import perf_counter
 from qpc_args import args
 from qpc_base import BaseProjectGenerator, Platform, Arch
-from qpc_project import PrecompiledHeader, ConfigType, Language, ProjectContainer
+from qpc_project import PrecompiledHeader, ConfigType, Language, Standard, ProjectContainer, Compile, SourceFileCompile
 from qpc_parser import BaseInfo
 from qpc_logging import warning, error, verbose, print_color, Color
 from enum import Enum
@@ -63,17 +63,19 @@ class VisualStudioGenerator(BaseProjectGenerator):
         if args.time:
             print_color(Color.CYAN, timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj.filters")
         
-        if self.has_debug_commands(project_passes):
-            if args.time:
-                start_time = perf_counter()
-            else:
-                print_color(Color.CYAN, "Creating: " + project.file_name + ".vcxproj.user")
-                
-            vcxproject_user = create_vcxproj_user(project, project_passes)
-            write_project(project, out_dir, vcxproject_user, ".vcxproj.user")
+        if not self.has_debug_commands(project_passes):
+            return
+        
+        if args.time:
+            start_time = perf_counter()
+        else:
+            print_color(Color.CYAN, "Creating: " + project.file_name + ".vcxproj.user")
+            
+        vcxproject_user = create_vcxproj_user(project, project_passes)
+        write_project(project, out_dir, vcxproject_user, ".vcxproj.user")
 
-            if args.time:
-                print_color(Color.CYAN, timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj.user")
+        if args.time:
+            print_color(Color.CYAN, timer_diff(start_time) + " - Created: " + project.file_name + ".vcxproj.user")
         
         # return out_dir
         
@@ -113,8 +115,8 @@ class VisualStudioGenerator(BaseProjectGenerator):
 
             self.project_uuid_dict = {}
             self.project_folder_uuid = {}
-            
-            [self.sln_project_def_loop(project_def, info) for project_def in info_win.projects]
+
+            [self.sln_project_def_loop(project_def, info, info_win) for project_def in info_win.projects]
         
             # Write the folders as base_info because vstudio dumb
             # might have to make this a project def, idk
@@ -155,70 +157,68 @@ class VisualStudioGenerator(BaseProjectGenerator):
                 if project_def.name not in self.project_uuid_dict:
                     continue
             
-                # all_projects
-                for folder_index, project_folder in enumerate(project_def.folder_list):
-                    if project_def.folder_list[-(folder_index + 1)] in self.project_folder_uuid:
+                # get each individual folder (and individual sub folders),
+                # and set the project uuid to that folder uuid
+                for folder_index, project_folder in enumerate(info_win.project_folders[project_def.name]):
+                    if info_win.project_folders[project_def.name][-(folder_index + 1)] in self.project_folder_uuid:
                         folder_uuid = self.project_folder_uuid[project_folder]
-                        for project_uuid in self.project_uuid_dict[project_def.name]:
-                            global_folder_uuid_dict[project_uuid] = folder_uuid
+                        global_folder_uuid_dict[self.project_uuid_dict[project_def.name]] = folder_uuid
             
                 # sub folders, i have no clue how this works anymore and im not touching it unless i have to
-                if len(project_def.folder_list) > 1:
+                if len(info_win.project_folders[project_def.name]) > 1:
                     folder_index = -1
-                    while folder_index < len(project_def.folder_list):
-                        project_sub_folder = project_def.folder_list[folder_index]
+                    while folder_index < len(info_win.project_folders[project_def.name]):
+                        project_sub_folder = info_win.project_folders[project_def.name][folder_index]
                         try:
-                            project_folder = project_def.folder_list[folder_index - 1]
+                            project_folder = info_win.project_folders[project_def.name][folder_index - 1]
                         except IndexError:
                             break
                     
+                        # add the folder if it wasn't added here yet
                         if project_sub_folder in self.project_folder_uuid:
                             sub_folder_uuid = self.project_folder_uuid[project_sub_folder]
                             folder_uuid = self.project_folder_uuid[project_folder]
                             if sub_folder_uuid not in global_folder_uuid_dict:
                                 global_folder_uuid_dict[sub_folder_uuid] = folder_uuid
-                            folder_index -= 1
+                                
+                        folder_index -= 1
         
             sln_write_section(self.solution_file, "NestedProjects", global_folder_uuid_dict, False)
             self.solution_file.write("EndGlobal\n")
 
-    def sln_project_def_loop(self, project_def, info):
-        for folder in project_def.folder_list:
-            if folder not in self.project_folder_uuid:
-                self.project_folder_uuid[folder] = make_uuid()
-        
-        for script_path in project_def.script_list:
-            if script_path in self.out_dir_dict:
-                out_dir = self.out_dir_dict[script_path]
-            else:
-                continue
-            if out_dir is None:
-                continue
+    def sln_project_def_loop(self, project_def, info, info_win):
+        for folder_list in info_win.project_folders.values():
+            for folder in folder_list:
+                if folder not in self.project_folder_uuid:
+                    self.project_folder_uuid[folder] = make_uuid()
                 
-            vcxproj_path = out_dir + "/" + os.path.splitext(os.path.basename(script_path))[0] + ".vcxproj"
+        if project_def.path in self.out_dir_dict:
+            out_dir = self.out_dir_dict[project_def.path]
+        else:
+            return
+        if out_dir is None:
+            return
             
-            if not os.path.isfile(vcxproj_path):
-                print("Project does not exist: " + vcxproj_path)
-                continue
-            
-            tree = et.parse(vcxproj_path)
-            vcxproj = tree.getroot()
-            
-            project_name, project_uuid = get_name_and_uuid(vcxproj)
-            
-            if project_def.name not in self.project_uuid_dict:
-                self.project_uuid_dict[project_def.name] = []
-            self.project_uuid_dict[project_def.name].append(project_uuid)
-            
-            sln_write_project_line(self.solution_file, project_name, vcxproj_path, self.cpp_uuid, project_uuid)
-            
-            # TODO: add dependencies to the container class and then use that here
-            #  and have a GetDependencies() function for if the hash check _passes
-            # write any container dependencies
-            uuid_deps = get_project_dependencies(info.project_hashes, info.project_dependencies[script_path])
-            sln_write_section(self.solution_file, "ProjectDependencies", uuid_deps, True, True)
-            
-            self.solution_file.write("EndProject\n")
+        vcxproj_path = out_dir + "/" + os.path.splitext(os.path.basename(project_def.path))[0] + ".vcxproj"
+        
+        if not os.path.isfile(vcxproj_path):
+            print("Project does not exist: " + vcxproj_path)
+            return
+        
+        tree = et.parse(vcxproj_path)
+        vcxproj = tree.getroot()
+        
+        project_name, project_uuid = get_name_and_uuid(vcxproj)
+        self.project_uuid_dict[project_def.name] = project_uuid
+        sln_write_project_line(self.solution_file, project_name, vcxproj_path, self.cpp_uuid, project_uuid)
+        
+        # TODO: add dependencies to the container class and then use that here
+        #  and have a GetDependencies() function for if the hash check _passes
+        # write any container dependencies
+        uuid_deps = get_project_dependencies(info.project_hashes, info.project_dependencies[project_def.path])
+        sln_write_section(self.solution_file, "ProjectDependencies", uuid_deps, True, True)
+        
+        self.solution_file.write("EndProject\n")
 
 
 def convert_arch(arch: Arch) -> str:
@@ -349,8 +349,11 @@ def setup_property_group_configurations(vcxproj, project_passes: list):
         
         toolset = et.SubElement(property_group, "PlatformToolset")
         
-        if config.general.compiler and config.general.compiler in COMPILER_DICT:
-            toolset.text = COMPILER_DICT[config.general.compiler]
+        if config.general.compiler:
+            if config.general.compiler in COMPILER_DICT:
+                toolset.text = COMPILER_DICT[config.general.compiler]
+            else:
+                toolset.text = config.general.compiler
         else:
             toolset.text = COMPILER_DICT["msvc"]
 
@@ -446,8 +449,25 @@ def setup_item_definition_groups(vcxproj: et.Element, project_passes: list):
             link_lib = et.SubElement(item_def_group, "Lib")
         else:
             link_lib = et.SubElement(item_def_group, "Link")
+
+        if cfg.linker.options:
+            # copying here so we don't remove from the project object, would break for the next project type
+            remaining_options = [*cfg.linker.options]
+    
+            index = 0
+            # for index, option in enumerate(compiler.options):
+            while len(remaining_options) > index:
+                option = remaining_options[index]
+                option_key, option_value = command_to_link_option(option)
+                if option_key and option_value:
+                    et.SubElement(link_lib, option_key).text = option_value
+                    remaining_options.remove(option)
+                else:
+                    index += 1
+    
+            # now add any unchanged options
+            et.SubElement(link_lib, "AdditionalOptions").text = ' '.join(remaining_options)
         
-        et.SubElement(link_lib, "AdditionalOptions").text = ' '.join(cfg.linker.options)
         et.SubElement(link_lib, "AdditionalDependencies").text = ';'.join(cfg.linker.libraries) + \
                                                                  ";%(AdditionalDependencies)"
 
@@ -504,15 +524,19 @@ def setup_item_definition_groups(vcxproj: et.Element, project_passes: list):
             et.SubElement(et.SubElement(item_def_group, "PreLinkEvent"), "Command").text = '\n'.join(cfg.pre_link)
             
             
-PRECOMPILED_HEADER_DICT =  {
+PRECOMPILED_HEADER_DICT = {
     PrecompiledHeader.NONE: "NotUsing",
     PrecompiledHeader.USE: "Use",
     PrecompiledHeader.CREATE: "Create"
 }
 
 
-def add_compiler_options(compiler_elem: et.SubElement, compiler, general=None):
+def add_compiler_options(compiler_elem: et.SubElement, compiler: Compile, general=None):
     added_option = False
+    
+    if type(compiler) == SourceFileCompile and not compiler.build:
+        added_option = True
+        et.SubElement(compiler_elem, "ExcludedFromBuild").text = str(not compiler.build).lower()
     
     if compiler.preprocessor_definitions:
         added_option = True
@@ -531,19 +555,20 @@ def add_compiler_options(compiler_elem: et.SubElement, compiler, general=None):
     if compiler.precompiled_header_output_file:
         added_option = True
         et.SubElement(compiler_elem, "PrecompiledHeaderOutputFile").text = compiler.precompiled_header_output_file
-    
-    if general and general.language:
-        added_option = True
-        if general.language == Language.CPP:
-            et.SubElement(compiler_elem, "CompileAs").text = "CompileAsCpp"
-        else:
-            et.SubElement(compiler_elem, "CompileAs").text = "CompileAsC"
-        
+
     # these are needed, because for some reason visual studio use shit stuff for default info
     if general:  # basically if not file
         added_option = True
-        basic_runtime_checks = et.SubElement(compiler_elem, "BasicRuntimeChecks")
-        basic_runtime_checks.text = "Default"
+        
+        if general.language:
+            if general.language == Language.CPP:
+                et.SubElement(compiler_elem, "CompileAs").text = "CompileAsCpp"
+            else:
+                et.SubElement(compiler_elem, "CompileAs").text = "CompileAsC"
+        
+        if general.standard:
+            standard = "stdcpplatest" if general.standard == Standard.CPP20 else f"std{general.standard.lower()}"
+            et.SubElement(compiler_elem, "LanguageStandard").text = standard
     
     if compiler.options:
         added_option = True
@@ -561,11 +586,7 @@ def add_compiler_options(compiler_elem: et.SubElement, compiler, general=None):
             else:
                 option_key, option_value = command_to_compiler_option(option)
                 if option_key and option_value:
-                    
-                    if general and option_key == "BasicRuntimeChecks":
-                        basic_runtime_checks.text = option_value
-                    else:
-                        et.SubElement(compiler_elem, option_key).text = option_value
+                    et.SubElement(compiler_elem, option_key).text = option_value
                     remaining_options.remove(option)
                 else:
                     index += 1
@@ -577,38 +598,92 @@ def add_compiler_options(compiler_elem: et.SubElement, compiler, general=None):
         # now add any unchanged options
         et.SubElement(compiler_elem, "AdditionalOptions").text = ' '.join(remaining_options)
     
-    # TODO: convert options in the compiler.options list to options here
-    #  remove any option name from this list once you convert that option
-    # "InlineFunctionExpansion"
-    # "IntrinsicFunctions"
-    # "StringPooling"
-    # "MinimalRebuild"
-    # "BufferSecurityCheck"
-    # "FunctionLevelLinking"
-    # "EnableEnhancedInstructionSet"
-    # "ForceConformanceInForLoopScope"
-    # "RuntimeTypeInfo"
-    # "OpenMPSupport"
-    # "ExpandAttributedSource"
-    # "AssemblerOutput"
-    # "AssemblerListingLocation"
-    # "ObjectFileName"
-    # "ProgramDataBaseFileName"
-    # "GenerateXMLDocumentationFiles"
-    # "BrowseInformation"
-    # "DebugInformationFormat"
-    # "BrowseInformationFile"
-    # "ErrorReporting"
-    
     return added_option
 
 
-# TODO: maybe finish this? idk, at least add anything that would be preventing compilation (think i already have)
 COMPILER_OPTIONS = {
+    # GENERAL PANEL
+    "DebugInformationFormat": {
+        "/Zi": "ProgramDatabase",
+        "/ZI": "EditAndContinue",
+        "/Z7": "OldStyle",
+    },
+    
+    "SupportJustMyCode":            {"/JMC": "true"},
+    
+    "CompileAsManaged": {
+        "/clr": "true",
+        "/clr:safe": "Safe",
+        "/clr:pure": "Pure",
+    },
+    
+    "CompileAsWinRT":               {"/ZW": "true"},
+    
+    "SuppressStartupBanner": {
+        # we don't have a way to turn this off, actually, because nologo is the default...
+        "/nologo": "true",
+        # ... so let's make a hack with a nonexistant switch.
+        "/logo": "false",
+    },
     "WarningLevel": {
         "/W0": "TurnOffAllWarnings",
         "/W1": "Level1", "/W2": "Level2", "/W3": "Level3", "/W4": "Level4",
         "/Wall": "EnableAllWarnings",
+    },
+    "TreatWarningAsError": {
+        "/WX-": "false",
+        "/WX": "true",
+    },
+    "DiagnosticsFormat": {
+        "/diagnostics:caret": "Caret",
+        "/diagnostics:column": "Column",
+        "/diagnostics:classic": "Classic",
+    },
+    
+    "SDLCheck":                     {"/sdl-": "false", "/sdl": "true"},
+    "MultiProcessorCompilation":    {"/MP": "true"},
+
+    # OPTIMIZATION PANEL
+    "Optimization": {
+        "/Od": "Disabled",
+        "/O1": "MinSpace",
+        "/O2": "MaxSpeed",
+        "/Ox": "Full"
+    },
+    "InlineFunctionExpansion": {
+        "/Ob0": "Disabled",
+        "/Ob1": "OnlyExplicitInline",
+        "/Ob2": "AnySuitable",
+    },
+    "IntrinsicFunctions":           {"/Oi": "true"},
+    "FavorSizeOrSpeed":             {"/Os": "Size", "/Ot": "Speed"},
+    "OmitFramePointers":            {"/Oy-": "false", "/Oy": "true"},
+    "EnableFiberSafeOptimizations": {"/GT": "true"},
+    "WholeProgramOptimization":     {"/GL": "true"},  # also goes in Configuration PropertyGroup? tf
+
+    # PREPROCESSOR PANEL
+    "UndefineAllPreprocessorDefinitions": {"/u": "true"}, # who would. EVER. use this????
+    "IgnoreStandardIncludePath":    {"/X": "true"},
+    "PreprocessToFile":             {"/P": "true"},
+    "PreprocessSuppressLineNumbers": {"/EP": "true"},
+    "PreprocessKeepComments":       {"/C": "true"},
+
+    # CODE GENERATION PANEL
+    "StringPooling":                {"/GF-": "false", "/GF": "true"},
+    "MinimalRebuild":               {"/Gm-": "false", "/Gm": "true"},
+    "ExceptionHandling": {
+        "/EHa": "Async",
+        "/EHsc": "Sync",
+        "/EHs": "SyncCThrow",
+        "": "false"
+    },
+    "SmallerTypeCheck":             {"/RTCc": "true"},
+    "BasicRuntimeChecks": {
+        "/RTCs": "StackFrameRuntimeCheck",
+        "/RTCu": "UninitializedLocalUsageCheck",
+        "/RTC1": "EnableFastChecks", # synonyms
+        "/RTCsu": "EnableFastChecks", # synonyms
+        "": "Default"
     },
     "RuntimeLibrary": {
         "/MT": "MultiThreaded",
@@ -616,30 +691,192 @@ COMPILER_OPTIONS = {
         "/MD": "MultiThreadedDLL",
         "/MDd": "MultiThreadedDebugDLL",
     },
-    "DebugInformationFormat": {
-        "/Zi": "ProgramDatabase",
-        "/ZI": "EditAndContinue",
-        "/Z7": "OldStyle",
-        # "/": "None",
+    "StructMemberAlignment": {
+        "/Zp1": "1Byte",
+        "/Zp2": "2Bytes",
+        "/Zp4": "4Bytes",
+        "/Zp8": "8Bytes",
+        "/Zp16": "16Bytes",
     },
-    "Optimization":                 {"/Od": "Disabled", "/O1": "MinSpace", "/O2": "MaxSpeed", "/Ox": "Full"},
-    "MultiProcessorCompilation":    {"/MP": "true"},
-    "WholeProgramOptimization":     {"/GL": "true"},  # also goes in Configuration PropertyGroup? tf
-    "UseFullPaths":                 {"/FC": "true"},
+    "BufferSecurityCheck":          {"/GS-": "false", "/GS": "true"},
+    "ControlFlowGuard":             {"/guard:cf": "Guard"},
+    "FunctionLevelLinking":         {"/Gy-": "false", "/Gy": "true"},
+    "EnableParallelCodeGeneration": {"/Qpar-": "false", "/Qpar": "true"},
+    "EnableEnhancedInstructionSet": {
+        "/arch:SSE": "StreamingSIMDExtensions",
+        "/arch:SSE2": "StreamingSIMDExtensions2",
+        "/arch:AVX": "AdvancedVectorExtensions",
+        "/arch:AVX2": "StreamingSIMDExtensions2",
+        "/arch:IA32": "NoExtensions"
+    },
+    "FloatingPointModel": {
+        "/fp:precise": "Precise",
+        "/fp:strict": "Strict",
+        "/fp:fast": "Fast"
+    },
+    "FloatingPointExceptions":      {"/fp:except-": "false", "/fp:except": "true"},
+    "CreateHotpatchableImage":      {"/hotpatch": "true"},
+    "SpectreMitigation":            {"/Qspectre": "Spectre"}, # NOTE!!!! this goes in the PROPERTYGROUP section in the project!!!
+
+    # LANGUAGE PANEL
+    "DisableLanguageExtensions":    {"/Za": "true"},
+    "ConformanceMode":              {"/permissive-": "true", "": "false"},
+    "TreatWChar_tAsBuiltInType":    {"/Zc:wchar_t-": "false", "/Zc:wchar_t": "true"},
+    "ForceConformanceInForLoopScope": {"/Zc:forScope-": "false", "/Zc:forScope": "true"},
+    "RemoveUnreferencedCodeData":   {"/Zc:inline-": "false", "/Zc:inline": "true"}, # another hack to disable this, since adding the option is the default and there's no actual inline-
+    "EnforceTypeConversionRules":   {"/Zc:rvalueCast-": "false", "/Zc:rvalueCast": "true"},
+    "RuntimeTypeInfo":              {"/GR-": "false", "/GR": "true"},
+    "OpenMPSupport":                {"/openmp-": "false", "/openmp": "true"},
+        # language standard is handled by QPC
+    "EnableModules":                {"/experimental:module": "true"},
+    
+    
+    
+    # PRECOMPILED HEADERS are handled seperately by QPC builtins
+
+    # OUTPUT FILES PANEL
+        # note: we also need to support file paths for this stuff eventually... right now they just use IntDir
+    "ExpandAttributedSource":       {"/Fx": "true"},
+    "AssemblerOutput": {
+        "/FA": "AssemblyCode",
+        "/FAc": "AssemblyAndMachineCode",
+        "/FAs": "AssemblyAndSourceCode",
+        "/FAcs": "All"
+    },
+    "UseUnicodeForAssemblerListing": {"/FAu": "true"},
+    "GenerateXMLDocumentationFiles": {"/doc": "true"},
+
+    # BROWSE INFORMATION PANEL
+        # note: we also need to support file paths for this stuff eventually... right now they just use IntDir
+    "BrowseInformation":            {"/FR": "true"},
+
+    # ADVANCED PANEL
+    "CallingConvention": {
+        "/Gd": "Cdecl", # the default
+        "/Gr": "FastCall",
+        "/Gz": "StdCall",
+        "/Gv": "VectorCall"
+    },
+        # Compile As is handled by QPC
     "ShowIncludes":                 {"/showincludes": "true"},
-    "FavorSizeOrSpeed":             {"/Os": "Size",             "/Ot": "Speed"},
-    "TreatWarningAsError":          {"/WX-": "false",           "/WX": "true"},
-    "TreatWChar_tAsBuiltInType":    {"/Zc:wchar_t-": "false",   "/Zc:wchar_t": "true"},
-    "FloatingPointModel":           {"/fp:precise": "Precise", "/fp:strict": "Strict", "/fp:fast": "Fast"},
-    "ExceptionHandling":            {"/EHa": "Async", "/EHsc": "Sync", "/EHs": "SyncCThrow", "": "false"},
+    "UseFullPaths":                 {"/FC-": "false", "/FC": "true"}, # /FC- is another nonexistant hack
+    "OmitDefaultLibName":           {"/ZI": "true"},
+    "ErrorReporting": {
+        "/errorReport:none": "None",
+        "/errorReport:prompt": "Prompt",
+        "/errorReport:queue": "Queue",
+        "/errorReport:send": "Send"
+    }
 }
 
 
-def command_to_compiler_option(value: str) -> tuple:
-    for compiler_key, value_commands in COMPILER_OPTIONS.items():
+LINK_OPTIONS = {
+    "TargetMachine": {
+        "/MACHINE:ARM":         "MachineARM",
+        "/MACHINE:EBC":         "MachineEBC",
+        "/MACHINE:IA64":        "MachineIA64",
+        "/MACHINE:MIPS":        "MachineIA64",
+        "/MACHINE:MIPS16":      "MachineMIPS16",
+        "/MACHINE:MIPSFPU":     "MachineMIPSFPU",
+        "/MACHINE:MIPSFPU16":   "MachineMIPSFPU16",
+        "/MACHINE:SH4":         "MachineSH4",
+        "/MACHINE:THUMB":       "MachineTHUMB",
+        "/MACHINE:X64":         "MachineX64",
+        "/MACHINE:X86":         "MachineX86",
+    },
+    "ShowProgress": {
+        "/VERBOSE":         "LinkVerbose",
+        "/VERBOSE:Lib":     "LinkVerboseLib",
+        "/VERBOSE:ICF":     "LinkVerboseICF",
+        "/VERBOSE:REF":     "LinkVerboseREF",
+        "/VERBOSE:SAFESEH": "LinkVerboseSAFESEH",
+        "/VERBOSE:CLR":     "LinkVerboseCLR",
+    },
+    "ForceFileOutput": {
+        "/FORCE":               "Enabled",
+        "/FORCE:MULTIPLE":      "MultiplyDefinedSymbolOnly",
+        "/FORCE:UNRESOLVED":    "UndefinedSymbolOnly",
+    },
+    "CreateHotPatchableImage": {
+        "/FUNCTIONPADMIN":      "Enabled",
+        "/FUNCTIONPADMIN:5":    "X86Image",
+        "/FUNCTIONPADMIN:6":    "X64Image",
+        "/FUNCTIONPADMIN:16":   "ItaniumImage",
+    },
+    "SubSystem": {
+        "/SUBSYSTEM:CONSOLE":                   "Console",
+        "/SUBSYSTEM:WINDOWS":                   "Windows",
+        "/SUBSYSTEM:NATIVE":                    "Native",
+        "/SUBSYSTEM:EFI_APPLICATION":           "EFI Application",
+        "/SUBSYSTEM:EFI_BOOT_SERVICE_DRIVER":   "EFI Boot Service Driver",
+        "/SUBSYSTEM:EFI_ROM":                   "EFI ROM",
+        "/SUBSYSTEM:EFI_RUNTIME_DRIVER":        "EFI Runtime",
+        "/SUBSYSTEM:WINDOWSCE":                 "WindowsCE",
+        "/SUBSYSTEM:POSIX":                     "POSIX",
+    },
+    "LinkTimeCodeGeneration": {
+        "/ltcg":                "UseLinkTimeCodeGeneration",
+        "/ltcg:pginstrument":   "PGInstrument",
+        "/ltcg:pgoptimize":     "PGOptimization",
+        "/ltcg:pgupdate":       "PGUpdate",
+    },
+    "CLRThreadAttribute": {
+        "/CLRTHREADATTRIBUTE:NONE": "DefaultThreadingAttribute",
+        "/CLRTHREADATTRIBUTE:MTA":  "MTAThreadingAttribute",
+        "/CLRTHREADATTRIBUTE:STA":  "STAThreadingAttribute",
+    },
+    "CLRImageType": {
+        "/CLRIMAGETYPE:IJW":    "ForceIJWImage",
+        "/CLRIMAGETYPE:PURE":   "ForcePureILImage",
+        "/CLRIMAGETYPE:SAFE":   "ForceSafeILImage",
+    },
+    "LinkErrorReporting": {
+        "/ERRORREPORT:PROMPT":  "PromptImmediately",
+        "/ERRORREPORT:QUEUE":   "QueueForNextLogin",
+        "/ERRORREPORT:SEND":    "SendErrorReport",
+        "/ERRORREPORT:NONE":    "NoErrorReport",
+    },
+    "CLRSupportLastError": {
+        "/CLRSupportLastError":             "Enabled",
+        "/CLRSupportLastError:NO":          "Disabled",
+        "/CLRSupportLastError:SYSTEMDLL":   "SystemDlls",
+    },
+    "AssemblyDebug": {
+        "/ASSEMBLYDEBUG:DISABLE":   "false",
+        "/ASSEMBLYDEBUG":           "true",
+    },
+    "LargeAddressAware": {
+        "/LARGEADDRESSAWARE:NO":    "false",
+        "/LARGEADDRESSAWARE":       "true",
+    },
+    "FixedBaseAddress": {
+        "/FIXED:NO":    "false",
+        "/FIXED":       "true",
+    },
+    "OptimizeReferences": {
+        "/OPT:NOREF":   "false",
+        "/OPT:REF":     "true",
+    },
+    "EnableCOMDATFolding": {
+        "/OPT:NOICF":   "false",
+        "/OPT:ICF":     "true",
+    },
+}
+
+
+def command_to_option(option_dict: dict, value: str) -> tuple:
+    for compiler_key, value_commands in option_dict.items():
         if value in value_commands:
             return compiler_key, value_commands[value]
     return None, None
+
+
+def command_to_compiler_option(value: str) -> tuple:
+    return command_to_option(COMPILER_OPTIONS, value)
+
+
+def command_to_link_option(value: str) -> tuple:
+    return command_to_option(LINK_OPTIONS, value)
 
 
 def create_source_file_item_group(file_list, parent_elem, condition):

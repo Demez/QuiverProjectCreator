@@ -111,54 +111,55 @@ def main():
     os.chdir(args.root_dir)
     
     parser = Parser()
-    if args.time:
-        start_time = perf_counter()
     
     info = parser.parse_base_info(args.base_file)
     generator_list = get_generators_all()
     
+    if args.time:
+        start_time = perf_counter()
+    
     for project_def in info.projects:
-        for project_script in project_def.script_list:
-                
-            valid_generators = get_generators(project_def.platforms, generator_list)
+        project_script = project_def.path
+        
+        valid_generators = get_generators(project_def.platforms, generator_list)
 
-            if not valid_generators:
+        if not valid_generators:
+            continue
+        
+        if not args.skip_projects:
+            print()
+
+        generators_rebuild = get_generator_need_rebuild(project_script, valid_generators)
+        if generators_rebuild or should_build_project(project_script, valid_generators):
+            rebuild_info = qpc_hash.get_rebuild_info(project_script, generators_rebuild)
+
+            project_dir, project_filename = os.path.split(project_script)
+
+            if project_dir and project_dir != args.root_dir:
+                os.chdir(project_dir)
+
+            project = parser.parse_project(project_def, project_script, info, valid_generators)
+            if not project:
                 continue
-            
-            if not args.skip_projects:
-                print()
 
-            generators_rebuild = get_generator_need_rebuild(project_script, valid_generators)
-            if generators_rebuild or should_build_project(project_script, valid_generators):
-                rebuild_info = qpc_hash.get_rebuild_info(project_script, generators_rebuild)
-
-                project_dir, project_filename = os.path.split(project_script)
-
-                if project_dir and project_dir != args.root_dir:
-                    os.chdir(project_dir)
-
-                project = parser.parse_project(project_def, project_script, info, valid_generators)
-                if not project:
-                    continue
-
-                if args.force or rebuild_info["rebuild_all"]:
-                    [generator.create_project(project) for generator in valid_generators]
-                else:
-                    # does any generator need to rebuild?
-                    for generator in valid_generators:
-                        if generator_needs_rebuild(project_filename, generator, rebuild_info):
-                            generator.create_project(project)
-
-                if project_dir and project_dir != args.root_dir:
-                    os.chdir(args.root_dir)
-
-                info.add_project_dependencies(project_script, project.dependencies)
-                qpc_hash.write_project_hash(project_script, project, valid_generators)
-                    
+            if args.force or rebuild_info["rebuild_all"]:
+                [generator.create_project(project) for generator in valid_generators]
             else:
-                info.add_project_dependencies(project_script, qpc_hash.get_project_dependencies(project_script))
-                
-            info.project_hashes[project_script] = qpc_hash.get_hash_file_path(project_script)
+                # does any generator need to rebuild?
+                for generator in valid_generators:
+                    if generator_needs_rebuild(project_filename, generator, rebuild_info):
+                        generator.create_project(project)
+
+            if project_dir and project_dir != args.root_dir:
+                os.chdir(args.root_dir)
+
+            info.add_project_dependencies(project_script, project.dependencies)
+            qpc_hash.write_project_hash(project_script, project, valid_generators)
+            
+        else:
+            info.add_project_dependencies(project_script, qpc_hash.get_project_dependencies(project_script))
+            
+        info.project_hashes[project_script] = qpc_hash.get_hash_file_path(project_script)
 
     if args.time:
         print("\nFinished Parsing Projects"
@@ -196,7 +197,4 @@ if __name__ == "__main__":
     qpc_hash.post_args_init()
     main()
     
-    if not args.hide_warnings:
-        print(f"{PRINT_LINE}\nFinished - {qpc_logging.WARNING_COUNT} Warnings\n{PRINT_LINE}")
-    else:
-        print(f"{PRINT_LINE}\nFinished {PRINT_LINE}")
+    print(f"{PRINT_LINE}\nFinished - {qpc_logging.WARNING_COUNT} Warnings\n{PRINT_LINE}")

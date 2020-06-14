@@ -2,7 +2,7 @@
 
 import os
 from re import compile
-from qpc_logging import warning, error, verbose, verbose_color, print_color, Color
+from qpc_logging import warning, error, warning_no_line, verbose, verbose_color, print_color, Color
 
 
 def posix_path(string: str) -> str:
@@ -60,11 +60,11 @@ class QPCBlockBase:
                 return item
         return None
     
-    def get_item_values(self, item_key):
+    def get_item_values(self, item_key) -> list:
         for item in self.items:
             if item.key == item_key:
                 return item.values
-        return None
+        return []
     
     def get_items(self, item_key):
         items = []
@@ -74,7 +74,7 @@ class QPCBlockBase:
         return items
     
     # TODO: shorten these 4 function names?
-    def get_items_condition(self, macros: dict):
+    def get_items_cond(self, macros: dict):
         items = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):
@@ -88,11 +88,12 @@ class QPCBlockBase:
                 items.append(item.key)
         return items
     
-    def get_item_values_condition(self, macros: dict):
+    def get_item_values_condition(self, macros: dict, key: str = ""):
         items = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):
-                items.extend(item.values)
+                if not key or key == item.key:
+                    items.extend(item.values)
         return items
     
     def get_item_list_condition(self, macros: dict):
@@ -333,7 +334,7 @@ def add_spacing_to_condition(cond):
     return cond
 
 
-def read_file(path: str, keep_quotes: bool = False, allow_escapes: bool = True, multiline_quotes: bool = True) -> QPCBlockBase:
+def read_file(path: str, keep_quotes: bool = False, allow_escapes: bool = True, multiline_quotes: bool = False) -> QPCBlockBase:
     path = posix_path(path)
     lexer = QPCLexer(path, keep_quotes, allow_escapes, multiline_quotes)
     qpc_file = QPCBlockBase(path)
@@ -370,9 +371,10 @@ def parse_recursive(lexer, block, path):
 
 
 class QPCLexer:
-    def __init__(self, path: str, keep_quotes: bool = False, allow_escapes: bool = True, multiline_quotes: bool = True):
+    def __init__(self, path: str, keep_quotes: bool = False, allow_escapes: bool = True, multiline_quotes: bool = False):
         self.char_num = 0
         self.line_num = 1
+        self.line_char = 0
         self.path = path
         self.keep_quotes = keep_quotes
         self.allow_escapes = allow_escapes
@@ -386,6 +388,7 @@ class QPCLexer:
                 self.file = file.read()
             
         self.file_len = len(self.file) - 1
+        self.split_file = self.file.splitlines()
         
         self.chars_escape = {'\'', '"', '\\'}
         self.chars_comment = {'/', '*'}
@@ -393,8 +396,36 @@ class QPCLexer:
         self.chars_cond = {'[', ']'}
         self.chars_space = {' ', '\t'}
         self.chars_quote = {'"', '\''}
+
+    def formatted_info(self) -> str:
+        return f"File \"{self.path}\" : Line {str(self.line_num)} : Char {self.char_num}"
+    
+    def get_current_line(self) -> str:
+        if -1 < self.line_num <= self.file_len:
+            return self.split_file[self.line_num - 1]
+        return ""
+    
+    @staticmethod
+    def _make_arrow(index: int, length: int) -> str:
+        arrow = "{0}^{1}".format(" " * (index - 1), "~" * length if length else "")
+        return arrow
+
+    def warning_range(self, index: int, length: int, *text):
+        file_error = self._make_arrow(index, length)
+        warning_no_line(self.formatted_info(), *text)
+        print(self.get_current_line().replace("\t", " "))
+        print_color(Color.GREEN, file_error)
+        
+    def next_line(self):
+        self.line_num += 1
+        self.line_char = 0
+        
+    def next_char(self, amount: int = 1):
+        self.char_num += amount
+        self.line_char += amount
     
     def next_value_list(self):
+        start = self.line_char
         values = []
         current_value = ''
         while self.char_num < self.file_len:
@@ -408,33 +439,36 @@ class QPCLexer:
                     if current_value != '\\':
                         values.append(current_value)
                         current_value = ''
-                self.char_num += 1
+                self.next_char()
+                start = self.line_char
                 continue
             
             if char in {'"', '\''}:
+                if current_value and current_value != "\\":
+                    self.warning_range(start, self.line_char - start,
+                                       "Opening a quote inside a string, using quote only")
                 values.append(self.read_quote(char))
                 current_value = ""
+                start = self.line_char
                 continue
             
             # skip escape
-            if char == '\\' and self.next_char() in self.chars_escape:
-                self.char_num += 2
+            if char == '\\' and self.peek_char() in self.chars_escape:
+                self.next_char(2)
                 current_value += self.file[self.char_num]
                 # char = self.file[self.char_num]
             
             elif char == '\n':
-                # self.line_num += 1
                 if not current_value.endswith("\\"):
                     if current_value and not current_value.startswith('[') and not current_value.endswith(']'):
                         values.append(current_value)
-                    # self.char_num += 1
                     break
                 else:
-                    self.line_num += 1
+                    self.next_line()
+                    start = 0
             
-            elif char == '/' and self.next_char() in self.chars_comment:
+            elif char == '/' and self.peek_char() in self.chars_comment:
                 self.skip_comment()
-                self.char_num -= 1  # shut
             
             else:
                 if self.file[self.char_num] in self.chars_cond:
@@ -443,11 +477,11 @@ class QPCLexer:
                     current_value = ''
                 current_value += self.file[self.char_num]
             
-            self.char_num += 1
+            self.next_char()
         
         return values
     
-    def next_char(self):
+    def peek_char(self):
         if self.char_num + 1 >= self.file_len:
             return None
         return self.file[self.char_num + 1]
@@ -476,53 +510,50 @@ class QPCLexer:
                 break
             
             # skip escape
-            elif char == '\\' and self.next_char() in self.chars_escape:
-                self.char_num += 2
+            elif char == '\\' and self.peek_char() in self.chars_escape:
+                self.next_char(2)
                 string += self.file[self.char_num]
                 # char = self.file[self.char_num]
             
             elif char in skip_list:
                 if string:
-                    # self.char_num += 1
                     line_num = self.line_num
-                    # if char == '\n':
-                    #     self.line_num += 1
                     break
                 if char == '\n':
-                    self.line_num += 1
+                    self.next_line()
             
-            elif char == '/' and self.next_char() in self.chars_comment:
+            elif char == '/' and self.peek_char() in self.chars_comment:
                 self.skip_comment()
             
             else:
                 string += self.file[self.char_num]
             
-            self.char_num += 1
+            self.next_char()
         
         return string, line_num
     
     def next_symbol(self):
-        while self.char_num < self.file_len:
+        while self.char_num <= self.file_len:
             char = self.file[self.char_num]
             
             if char in self.chars_item:
-                self.char_num += 1
+                self.next_char()
                 return char
             
             # skip escape
-            elif char == '\\' and self.next_char() in self.chars_escape:
-                self.char_num += 2
+            elif char == '\\' and self.peek_char() in self.chars_escape:
+                self.next_char(2)
             
-            elif char == '/' and self.next_char() in self.chars_comment:
+            elif char == '/' and self.peek_char() in self.chars_comment:
                 self.skip_comment()
             
             elif char == '\n':
-                self.line_num += 1
+                self.next_line()
             
             elif char not in self.chars_space:
                 break
             
-            self.char_num += 1
+            self.next_char()
         
         return None
     
@@ -535,77 +566,80 @@ class QPCLexer:
                 break
             
             elif char == '[':
-                self.char_num += 1
+                self.next_char()
                 continue
             
             elif char == ']':
-                self.char_num += 1
+                self.next_char()
                 break
             
             elif char in self.chars_space:
-                self.char_num += 1
+                self.next_char()
                 continue
             
             elif char == '\n':
-                self.line_num += 1
-                self.char_num += 1
+                self.next_line()
+                self.next_char()
                 break
             
-            elif char == '/' and self.next_char() in self.chars_comment:
+            elif char == '/' and self.peek_char() in self.chars_comment:
                 self.skip_comment()
             
             else:
                 condition += self.file[self.char_num]
             
-            self.char_num += 1
+            self.next_char()
         
         return condition
     
     def skip_comment(self):
-        self.char_num += 1
+        self.next_char()
         char = self.file[self.char_num]
         if char == '/':
             # keep going until \n
             while self.char_num < self.file_len:
-                self.char_num += 1
+                self.next_char()
                 if self.file[self.char_num] == "\n":
-                    self.line_num += 1
+                    self.next_line()
                     break
         
         elif char == '*':
             while self.char_num < self.file_len:
                 char = self.file[self.char_num]
                 
-                if char == '*' and self.next_char() == '/':
-                    self.char_num += 1
+                if char == '*' and self.peek_char() == '/':
+                    self.next_char()
                     break
                 
                 if char == "\n":
-                    self.line_num += 1
+                    self.next_line()
                 
-                self.char_num += 1
+                self.next_char()
     
     def read_quote(self, quote_char):
+        start = self.line_char
+        
         if self.keep_quotes:
             quote = quote_char
         else:
             quote = ''
         
         while self.char_num < self.file_len:
-            self.char_num += 1
+            self.next_char()
             char = self.file[self.char_num]
             
-            if char == '\\' and self.next_char() in self.chars_escape and self.allow_escapes:
-                quote += self.next_char()
-                self.char_num += 1
+            if char == '\\' and self.peek_char() in self.chars_escape and self.allow_escapes:
+                quote += self.peek_char()
+                self.next_char()
             elif char == quote_char:
                 if self.keep_quotes:
                     quote += char
                 break
             elif char == "\n" and not self.multiline_quotes:
+                self.warning_range(start, self.line_char - start, "Quote does not end on line")
                 break
             else:
                 quote += char
         
-        self.char_num += 1
+        self.next_char()
         return quote
