@@ -1,16 +1,13 @@
 import sys
 import os
-import json
-from enum import Enum
 
-# from qpc_args import args
-import qpc_hash
 from qpc_base import BaseProjectGenerator, Platform, create_directory
-from qpc_project import ConfigType, Language, ProjectContainer, ProjectPass, Configuration
-from project_generators.shared.cmd_line_gen import get_compiler
+from qpc_project import ConfigType, Language, ProjectContainer, ProjectPass, Configuration, General, SourceFileCompile
 from qpc_parser import BaseInfo
-from qpc_logging import warning, error, verbose, print_color, Color
+from qpc_logging import warning, error, verbose, print_color, Color, verbose_color
+from ..shared.cmd_line_gen import get_compiler, Mode
 from ..shared import cmd_line_gen
+from ..shared import msvc_tools
 
 
 class NinjaGenerator(BaseProjectGenerator):
@@ -21,6 +18,8 @@ class NinjaGenerator(BaseProjectGenerator):
         self.cmd_gen = cmd_line_gen.CommandLineGen()
         self.commands_list = {}
         self.all_files = {}
+        self.output_files = {}
+        self.dependencies = {}
     
     def post_args_init(self):
         pass
@@ -36,88 +35,186 @@ class NinjaGenerator(BaseProjectGenerator):
         for label, commands_list in self.commands_list.items():
             print_color(Color.CYAN, "Writing: " + f"build_ninja/{label}.ninja")
             script = self.gen_rules()
+            
+            for item, deps in self.dependencies.items():
+                if item in self.output_files[label]:
+                    out_file, command = self.output_files[label][item]
+                    if command in commands_list:
+                        new_command = command.split("\n")
+                        dep_list = self.get_dependencies(label, deps)
+                        new_command[0] += " || " + " ".join(dep_list)
+                        commands_list[commands_list.index(command)] = "\n".join(new_command)
+            
             script += '\n\n'.join(commands_list)
             with open(f"build_ninja/{label}.ninja", "w") as file_io:
                 file_io.write(script)
+    
+    def get_dependencies(self, label: str, dep_list: list) -> list:
+        output_list = []
+        for dep in dep_list:
+            if dep in self.output_files[label]:
+                output_list.append(self.output_files[label][dep][0])
+        return output_list
     
     def create_project(self, project: ProjectContainer) -> None:
         project_passes = self._get_passes(project)
         if not project_passes:
             return
-
+        
         proj_name = project.file_name.replace('.', '_').replace(':', '$')
-
+        
         print_color(Color.CYAN, "Adding to Ninja: " + project.file_name)
-
+            
+        if project.dependencies:
+            self.dependencies[project.project_path] = project.dependencies.copy()
         
         for proj_pass in project_passes:
             conf = proj_pass.config
             self.cmd_gen.set_mode(proj_pass.config.general.compiler)
             label = f"{proj_pass.config_name.lower()}_{proj_pass.platform.name.lower()}_{proj_pass.arch.name.lower()}"
+            
             if label not in self.all_files:
                 self.all_files[label] = set()
             if label not in self.commands_list:
                 self.commands_list[label] = []
-
+            if label not in self.output_files:
+                self.output_files[label] = {}
+            
             compiler = get_compiler(proj_pass.config.general.compiler,
                                     proj_pass.config.general.language)
-
+            
             self.commands_list[label].append(self.gen_header(conf, project, compiler, proj_name))
-                   
-            for file in proj_pass.source_files:
-                if file not in self.all_files[label]:
-                    self.all_files[label].add(file)
-                    self.commands_list[label].append(self.handle_file(file, proj_pass, proj_name))
-
-            self.commands_list[label].append(self.handle_target(conf, proj_pass.source_files))
-
-    def gen_rules(self) -> str:
+            
+            for file, file_compile in proj_pass.source_files.items():
+                self.commands_list[label].append(self.handle_file(file, file_compile.compiler, proj_pass, proj_name))
+            
+            output_file = self.handle_target(proj_pass, proj_name, proj_pass.source_files)
+            self.commands_list[label].append(output_file)
+            self.output_files[label][project.project_path] = (self.get_output_file(proj_pass), output_file)
+            
+    @staticmethod
+    def gen_rules_gcc_clang(compiler: str):
         return f"""
 
-# rules
-rule cc
+rule cc_{compiler}
     command = $compiler -c -o $out $in $cflags
 
-rule exe
+rule exe_{compiler}
     command = $compiler -o $out $in $cflags
 
-rule ar
+rule ar_{compiler}
     command = ar rcs $out $in
 
-rule so
+rule so_{compiler}
     command = $compiler -o $out $in -fPIC -shared $cflags
 """
 
-    def gen_header(self, conf, project, compiler, proj_name: str):
-        outname = conf.general.out_name if conf.general.out_name else project.container.file_name
+    def gen_rules(self) -> str:
+        rules = f"""
+rule cc_msvc
+    command = $compiler /nologo /Fd"$out.pdb" /Fo"$out" /c $in $cflags
+
+rule exe_msvc
+    command = link.exe /OUT:$out @$out.rsp $cflags
+    rspfile = $out.rsp
+    rspfile_content = $in
+
+rule ar_msvc
+    command = lib.exe /OUT:$out @$out.rsp $cflags
+    rspfile = $out.rsp
+    rspfile_content = $in
+
+rule so_msvc
+    command = link.exe /DLL /OUT:$out @$out.rsp $cflags
+    rspfile = $out.rsp
+    rspfile_content = $in
+"""
+        # command = link.exe /DLL /OUT:$out $in $cflags
+        
+        rules += self.gen_rules_gcc_clang("gcc")
+        rules += self.gen_rules_gcc_clang("clang")
+        
+        return f"\n# rules" + rules + "\n\n" \
+               "rule mkdir\n    command = mkdir \"$out\"\n\n"
+
+    def gen_header(self, conf: Configuration, project: ProjectContainer, compiler: str, proj_name: str):
+        outname = conf.general.out_name if conf.general.out_name else project.file_name
+        # {proj_name}_build_dir = {abs_path(conf.general.build_dir)}
         return f"""#!/usr/bin/env ninja -f
 # variables
-{proj_name}_srcdir = {os.getcwd()}
+{proj_name}_src_dir = {os.getcwd()}
 out_file = {outname}
 {proj_name}_compiler = {compiler}
+{proj_name}_build_dir = {os.path.abspath(conf.general.build_dir)}
+
+build ${proj_name}_build_dir: mkdir ${proj_name}_build_dir
 """
+    
+    def get_file_build_path(self, proj_name: str, general: General, file: str):
+        return os.path.abspath(self.cmd_gen.get_file_build_path(general, file)).replace(':', '$:')
+        # return f"${proj_name}_src_dir/{self.cmd_gen.get_file_build_path(general, file)}"
+    
+    def gen_link_build_file(self, project: ProjectPass, proj_name: str, source_files) -> list:
+        obj_list = [self.get_file_build_path(proj_name, project.config.general, a) for a in source_files]
+        
+        build_file_path = f"{project.config.general.build_dir}/{proj_name}_objs.txt"
+        
+        if os.path.isdir(project.config.general.build_dir):
+            if os.path.isfile(build_file_path):
+                os.remove(build_file_path)
+        else:
+            os.makedirs(project.config.general.build_dir)
+        
+        with open(build_file_path, "w") as build_file_stream:
+            verbose_color(Color.CYAN, f"Ninja: Writing build file \"{build_file_path}\"")
+            build_file_stream.write('\n'.join(obj_list))
+            
+        return obj_list
+    
+    @staticmethod
+    def get_target_type_ext(project: ProjectPass) -> tuple:
+        target_type, ext = {
+            ConfigType.APPLICATION: ('exe', project.macros["$_APP_EXT"]),
+            ConfigType.DYNAMIC_LIBRARY: ('so', project.macros["$_BIN_EXT"]),
+            ConfigType.STATIC_LIBRARY: ('ar', project.macros["$_STATICLIB_EXT"])
+        }[project.config.general.configuration_type]
+        return (target_type, ext)
+    
+    def get_output_file(self, project: ProjectPass):
+        target_name = project.config.linker.output_file if project.config.linker.output_file else project.config.general.out_name
+        return f"{abs_path(target_name)}{self.get_target_type_ext(project)[1]}"
 
-    def handle_target(self, conf, source_files) -> str:
-        target_name = conf.linker.output_file if conf.linker.output_file else "$out_file"
-        objs = ' '.join([ os.path.abspath(a).replace(':', '$:') + '.o'  for a in source_files ])
-        type, ext = {
-            ConfigType.APPLICATION: ('exe', ''),
-            ConfigType.DYNAMIC_LIBRARY: ('so', '.so'),
-            ConfigType.STATIC_LIBRARY: ('ar', '.a')
-        }[conf.general.configuration_type]
+    # TODO: handle dependencies
+    def handle_target(self, project: ProjectPass, proj_name: str, source_files) -> str:
+        obj_files = " ".join([self.get_file_build_path(proj_name, project.config.general, a) for a in source_files])
 
-        return f"build {os.path.abspath(target_name).replace(':', '$:')}{ext}: {type} {objs}\n"
+        target_name = self.get_output_file(project)
+        target_type, ext = self.get_target_type_ext(project)
+
+        build = f"build {target_name}: {target_type}_{self.cmd_gen.mode.name.lower()} {obj_files}"
+        
+        link_flags = add_escapes(self.cmd_gen.link_flags(project.config, libs=False))
+        
+        # slightly hacky, oh well
+        libs = [f"${proj_name}_src_dir/{lib}" if "/" in lib else lib for lib in project.config.linker.libraries]
+        libs = " ".join(self.cmd_gen.libs(libs))
+
+        return f"{build}\n    cflags = {link_flags} {libs}\n"
 
     # Build definition for file
-    # TODO: only supports objects rn, add so and exe support
-    def handle_file(self, file: str, project: ProjectPass, proj_name: str) -> str:
-        print(os.getcwd(), project)
-        cmd = f"build {os.path.abspath(file)}.o: cc {os.path.abspath(file).replace(':', '$:')}\n"
-        
-        defs = " ".join(self.cmd_gen.convert_defines(project.config.compiler.preprocessor_definitions))
-        includes = " ".join(self.cmd_gen.convert_includes(project.config.general.include_directories))
-        cflags = " ".join(project.config.compiler.options)
-        cmd += f"    cflags = {cflags} {includes} {defs}\n"
-        cmd += f"    compiler = {proj_name}_compiler\n"
-
+    def handle_file(self, file: str, file_compile: SourceFileCompile, proj: ProjectPass, proj_name: str) -> str:
+        # print(os.getcwd(), project)
+        build_path = self.get_file_build_path(proj_name, proj.config.general, file)
+        cmd = f"build {build_path}: cc_{self.cmd_gen.mode.name.lower()} {abs_path(file)}\n"
+        cmd += f"    cflags = {add_escapes(self.cmd_gen.file_compile_flags(proj.config, file_compile))}\n"
+        cmd += f"    compiler = ${proj_name}_compiler\n"
         return cmd
+    
+    
+def add_escapes(string: str) -> str:
+    return string.replace('$', '$$').replace(':', '$:')
+
+
+def abs_path(path: str) -> str:
+    return add_escapes(os.path.abspath(path))
+
