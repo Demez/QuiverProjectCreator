@@ -194,6 +194,7 @@ build ${proj_name}_build_dir: mkdir ${proj_name}_build_dir
         build = f"build {target_name}: {target_type}_{self.cmd_gen.mode.name.lower()} {obj_files}"
         
         link_flags = add_escapes(self.cmd_gen.link_flags(project.config, libs=False))
+        link_flags += " " + " ".join(self.cmd_gen.lib_dirs([""]))
         
         # slightly hacky, oh well
         libs = [f"${proj_name}_src_dir/{lib}" if "/" in lib else lib for lib in project.config.linker.libraries]
