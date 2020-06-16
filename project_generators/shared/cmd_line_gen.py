@@ -134,7 +134,7 @@ class CommandLineGen:
         return self.convert_char_abs("/LIBPATH:" if self.mode == Mode.MSVC else "-L ", dirs)
         
     def libs(self, libs: list) -> list:
-        return self.convert_char_basename("" if self.mode == Mode.MSVC else "-l ", libs)
+        return self.convert_char("" if self.mode == Mode.MSVC else "-l ", libs)
     
     def ignore_libs(self, libs: list) -> str:
         if not libs:
