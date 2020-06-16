@@ -169,15 +169,14 @@ class BaseInfoPlatform:
             return project.path_real
         return key
 
-    def _use_project(self, project_name: str, unwanted_projects: dict, folders: tuple = None):
-        project = self.get_project(project_name)
+    def _use_project(self, project: ProjectDefinition, unwanted_projects: dict, folders: tuple = None):
         if self.platform in project.platforms and project.name not in unwanted_projects:
             for added_project in self.projects:
                 if added_project.name == project.name:
                     break
             else:
                 self.projects.append(project)
-                self.project_folders[project_name] = folders if folders else ()
+                self.project_folders[project.name] = folders if folders else ()
         
     # get all the _passes the user wants (this is probably the worst part in this whole project)
     def setup_wanted_projects(self, add_list: list, remove_list: list, unwanted_projects: dict) -> None:
@@ -206,7 +205,7 @@ class BaseInfoPlatform:
             for added_item in add_list:
                 if added_item in self.shared.groups:
                     for project, folders in self.shared.groups[added_item].projects.items():
-                        self._use_project(project, unwanted_projects, folders)
+                        self._use_project(self.get_project(project), unwanted_projects, folders)
                         
                 elif added_item in self.shared.projects_all:
                     if self.shared.projects_all[added_item] in self._projects_all:
