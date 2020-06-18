@@ -88,7 +88,8 @@ class CommandLineGen:
         cmd.extend(self.lib_dirs(cfg.general.library_directories))
     
         if cfg.general.default_library_directories:
-            cmd.extend(self.lib_dirs(msvc_tools.get_lib_dirs("")))
+            if self.mode == Mode.MSVC:
+                cmd.extend(self.lib_dirs(msvc_tools.get_lib_dirs("")))
             
         if libs and cfg.linker.libraries:
             cmd.extend(self.libs(cfg.linker.libraries))
