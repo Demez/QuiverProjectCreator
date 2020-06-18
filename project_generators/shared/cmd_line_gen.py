@@ -99,6 +99,8 @@ class CommandLineGen:
             
         if cfg.linker.import_library:
             cmd.append(self.import_lib(cfg.linker.import_library))
+
+        cmd.extend(cfg.linker.options)
     
         return " ".join(cmd)
     
