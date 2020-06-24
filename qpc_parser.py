@@ -140,7 +140,9 @@ class BaseInfoPlatform:
             self.configurations.append("Default")
 
     def add_macro(self, project_block: QPCBlock):
-        self.macros["$" + project_block.values[0]] = replace_macros(project_block.values[1], self.macros)
+        value = replace_macros(project_block.values[1], self.macros)
+        verbose_color(Color.DGREEN, f"Set Macro: {project_block.values[0]} = \"{value}\"")
+        self.macros["$" + project_block.values[0]] = value
 
     def is_project_script_added(self, project_path: str) -> bool:
         return bool(self.get_project_by_script(project_path))
@@ -289,9 +291,12 @@ class BaseInfo:
                     return base_info
 
     def get_configs(self) -> list:
-        configurations = set()
-        [configurations.update(info.configurations) for info in self.info_list]
-        return list(configurations)
+        configurations = []
+        for info in self.info_list:
+            for cfg in info.configurations:
+                if cfg not in configurations:
+                    configurations.append(cfg)
+        return configurations
     
     def get_projects(self, *platforms) -> tuple:
         project_list = {}  # dict keeps order, set doesn't as of 3.8, both faster than lists
