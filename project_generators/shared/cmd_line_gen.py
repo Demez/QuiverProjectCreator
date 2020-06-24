@@ -36,11 +36,11 @@ class CommandLineGen:
                 self._char_inc_dir = "/I"
                 self._char_define = "/D"
         
-            elif mode.startswith("gcc") or mode.startswith("clang"):
+            elif mode.startswith("gcc") or mode.startswith("g++") or mode.startswith("clang"):
                 self.switch = "-"
                 self._char_inc_dir = "-I"
                 self._char_define = "-D"
-                self.mode = Mode.GCC if mode.startswith("gcc") else Mode.CLANG
+                self.mode = Mode.GCC if mode.startswith("gcc") or mode.startswith("g++") else Mode.CLANG
     
     def get_file_build_path(self, general: General, file: str) -> str:
         path = f"{general.build_dir}/{os.path.splitext(os.path.basename(file))[0]}"
