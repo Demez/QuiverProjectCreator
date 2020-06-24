@@ -201,12 +201,6 @@ class QPCBlock(QPCBlockBase):
         print(self.get_file_info() + " this should not be called anymore")
 
 
-# maybe make a comment object so when you re-write the file, you don't lose comments
-class Comment:
-    def __init__(self):
-        pass
-
-
 def replace_macros_condition(split_string, macros):
     # for macro, macro_value in macros.items():
     for index, item in enumerate(split_string):
