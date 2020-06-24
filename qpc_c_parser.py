@@ -106,7 +106,6 @@ def _get_includes(file_path: str, include_dirs: list) -> list:
                     break
             else:
                 header_paths = [include_dir + "/" + found_header for include_dir in include_dirs_abs]
-                # header_paths = [os.path.abspath(include_dir + "/" + found_header) for include_dir in include_dirs]
                 header_paths.insert(0, os.path.abspath(found_header))
 
                 # first check if its in INVALID_PATHS or in HEADER_PATHS, much faster

@@ -1,13 +1,8 @@
-import sys
 import os
 import json
-from enum import Enum
 
-# from qpc_args import args
-import qpc_hash
 from qpc_base import BaseProjectGenerator, Platform, create_directory
 from qpc_project import ConfigType, Language, ProjectContainer, ProjectPass, Configuration
-from qpc_parser import BaseInfo
 from qpc_logging import warning, error, verbose, print_color, Color
 from ..shared import cmd_line_gen
 

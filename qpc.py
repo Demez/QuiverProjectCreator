@@ -78,8 +78,6 @@ def get_generators(platforms: set, generator_list: list) -> list:
 
 
 def generator_needs_rebuild(project_script: str, generator: BaseProjectGenerator, rebuild_info: dict) -> bool:
-    if not generator.does_project_exist(project_script):
-        return True
     if generator.filename in rebuild_info["generators"]:
         return True
     return False
@@ -146,7 +144,7 @@ def main():
                 [generator.create_project(project) for generator in valid_generators]
             else:
                 # does any generator need to rebuild?
-                for generator in valid_generators:
+                for generator in generators_rebuild:
                     if generator_needs_rebuild(project_filename, generator, rebuild_info):
                         generator.create_project(project)
 

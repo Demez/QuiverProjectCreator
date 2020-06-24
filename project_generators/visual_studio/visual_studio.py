@@ -79,7 +79,8 @@ class VisualStudioGenerator(BaseProjectGenerator):
         
         # return out_dir
         
-    def has_debug_commands(self, project_passes: list) -> bool:
+    @staticmethod
+    def has_debug_commands(project_passes: list) -> bool:
         for project in project_passes:
             if bool(project.config.debug):
                 return True
@@ -88,7 +89,12 @@ class VisualStudioGenerator(BaseProjectGenerator):
     def does_project_exist(self, project_out_dir: str) -> bool:
         # base_path = self._get_base_path(project_out_dir)
         split_ext_path = os.path.splitext(project_out_dir)[0]
-        return os.path.isfile(split_ext_path + ".vcxproj") and os.path.isfile(split_ext_path + ".vcxproj.filters")
+        if os.path.isfile(split_ext_path + ".vcxproj"):
+            verbose(f"File Exists: {split_ext_path}.vcxproj")
+            if os.path.isfile(split_ext_path + ".vcxproj.filters"):
+                verbose(f"File Exists: {split_ext_path}.vcxproj.filters")
+                return True
+        return False
     
     def does_master_file_exist(self, master_file_path: str) -> bool:
         base_path, project_name = os.path.split(master_file_path)

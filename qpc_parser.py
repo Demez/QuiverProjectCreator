@@ -140,7 +140,9 @@ class BaseInfoPlatform:
             self.configurations.append("Default")
 
     def add_macro(self, project_block: QPCBlock):
-        self.macros["$" + project_block.values[0]] = replace_macros(project_block.values[1], self.macros)
+        value = replace_macros(project_block.values[1], self.macros)
+        verbose_color(Color.DGREEN, f"Set Macro: {project_block.values[0]} = \"{value}\"")
+        self.macros["$" + project_block.values[0]] = value
 
     def is_project_script_added(self, project_path: str) -> bool:
         return bool(self.get_project_by_script(project_path))
@@ -169,15 +171,14 @@ class BaseInfoPlatform:
             return project.path_real
         return key
 
-    def _use_project(self, project_name: str, unwanted_projects: dict, folders: tuple = None):
-        project = self.get_project(project_name)
+    def _use_project(self, project: ProjectDefinition, unwanted_projects: dict, folders: tuple = None):
         if self.platform in project.platforms and project.name not in unwanted_projects:
             for added_project in self.projects:
                 if added_project.name == project.name:
                     break
             else:
                 self.projects.append(project)
-                self.project_folders[project_name] = folders if folders else ()
+                self.project_folders[project.name] = folders if folders else ()
         
     # get all the _passes the user wants (this is probably the worst part in this whole project)
     def setup_wanted_projects(self, add_list: list, remove_list: list, unwanted_projects: dict) -> None:
@@ -206,7 +207,7 @@ class BaseInfoPlatform:
             for added_item in add_list:
                 if added_item in self.shared.groups:
                     for project, folders in self.shared.groups[added_item].projects.items():
-                        self._use_project(project, unwanted_projects, folders)
+                        self._use_project(self.get_project(project), unwanted_projects, folders)
                         
                 elif added_item in self.shared.projects_all:
                     if self.shared.projects_all[added_item] in self._projects_all:
@@ -290,9 +291,12 @@ class BaseInfo:
                     return base_info
 
     def get_configs(self) -> list:
-        configurations = set()
-        [configurations.update(info.configurations) for info in self.info_list]
-        return list(configurations)
+        configurations = []
+        for info in self.info_list:
+            for cfg in info.configurations:
+                if cfg not in configurations:
+                    configurations.append(cfg)
+        return configurations
     
     def get_projects(self, *platforms) -> tuple:
         project_list = {}  # dict keeps order, set doesn't as of 3.8, both faster than lists

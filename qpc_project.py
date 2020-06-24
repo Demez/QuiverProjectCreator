@@ -441,14 +441,14 @@ class ProjectContainer:
 
 class Configuration:
     def __init__(self, project: ProjectPass):
-        self._proj = project
-        self.debug = Debug()
-        self.general = General(project.container.file_name, project.platform)
-        self.compiler = Compile()
-        self.linker = Linker()
-        self.pre_build = []
-        self.pre_link = []
-        self.post_build = []
+        self._proj: ProjectPass = project
+        self.debug: Debug = Debug()
+        self.general: General = General(project.container.file_name, project.platform)
+        self.compiler: Compile = Compile()
+        self.linker: Linker = Linker()
+        self.pre_build: list = []
+        self.pre_link: list = []
+        self.post_build: list = []
         
     def add_build_event_options(self, group_block: QPCBlock, option_block: QPCBlock):
         value = replace_macros(option_block.key, self._proj.macros)
@@ -519,24 +519,24 @@ def clean_path(string: str, macros: dict) -> str:
 
 class General:
     def __init__(self, file_name: str, platform: Platform):
-        self.out_dir = "build"
-        self.build_dir = "build"
-        self.out_name = file_name
+        self.out_dir: str = "build"
+        self.build_dir: str = "build"
+        self.out_name: str = file_name
 
         # i want to make these configuration options unaffected by config and platform macros,
         # and have it run before it goes through each config/platform
         # except what if someone sets a macro with a config conditional and uses it in one of these?
         # won't work, so im just leaving it as it is for now, hopefully i can get something better later on
-        self.configuration_type = None
-        self.language = None
-        self.standard = None
-        self.compiler = "msvc" if platform == Platform.WINDOWS else "gcc"
+        self.configuration_type: ConfigType = None
+        self.language: Language = None
+        self.standard: Standard = None
+        self.compiler: str = "msvc" if platform == Platform.WINDOWS else "gcc"
         
-        self.default_include_directories = True
-        self.default_library_directories = True
-        self.include_directories = []
-        self.library_directories = []
-        self.options = []
+        self.default_include_directories: bool = True
+        self.default_library_directories: bool = True
+        self.include_directories: list = []
+        self.library_directories: list = []
+        self.options: list = []
 
     def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
         # multiple path options
@@ -605,11 +605,11 @@ class General:
 
 class Compile:
     def __init__(self):
-        self.preprocessor_definitions = []
-        self.precompiled_header = None  # PrecompiledHeader.NONE
-        self.precompiled_header_file = None
-        self.precompiled_header_output_file = None
-        self.options = []
+        self.preprocessor_definitions: list = []
+        self.precompiled_header: PrecompiledHeader = None  # PrecompiledHeader.NONE
+        self.precompiled_header_file: str = ""
+        self.precompiled_header_output_file: str = ""
+        self.options: list = []
 
     def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
         if option_block.key in ("preprocessor_definitions", "options"):
@@ -641,14 +641,14 @@ class SourceFileCompile(Compile):
 
 class Linker:
     def __init__(self):
-        self.output_file = None
-        self.debug_file = None
-        self.import_library = None
-        self.ignore_import_library = False  # idk what the default should be
-        self.entry_point = None
-        self.libraries = []
-        self.ignore_libraries = []  # maybe change to ignored_libraries?
-        self.options = []
+        self.output_file: str = ""
+        self.debug_file: str = ""
+        self.import_library: str = ""
+        self.ignore_import_library: bool = False  # idk what the default should be
+        self.entry_point: str = ""
+        self.libraries: list = []
+        self.ignore_libraries: list = []  # maybe change to ignored_libraries?
+        self.options: list = []
 
     def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
         if option_block.key in {"options", "libraries", "ignore_libraries"}:

@@ -43,7 +43,7 @@ def parse_args(generators: list) -> None:
                             help="Select platforms to generate for instead of the default")
     cmd_parser.add_argument("--archs", "-ar", nargs="+", default=get_default_archs(), choices=archs,
                             help="Select architectures to generate for instead of the default")
-    cmd_parser.add_argument("--generators", "-g", nargs="+", default=(), choices=generators, help="Project types to generate")
+    cmd_parser.add_argument("--generators", "-g", nargs="+", default=generators, choices=generators, help="Project types to generate")
     cmd_parser.add_argument("--add", "-a", nargs="+", default=(), help="Add projects or groups to generate")
     cmd_parser.add_argument("--remove", "-r", default=(), nargs="+", help="Remove projects or groups from generating")
     cmd_parser.add_argument("--macros", "-m", nargs="+", default=(), help="Macros to define and set to '1' in projects")

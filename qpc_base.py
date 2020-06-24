@@ -164,6 +164,12 @@ def get_default_archs() -> tuple:
     # very rare
     elif machine() == "i386":
         return (Arch.I386,)
+
+    elif machine().startswith("arm"):
+        if machine() == "arm7l":
+            return (Arch.ARM, Arch.ARM64)
+        else:
+            return (Arch.ARM,)
     
     
 def is_arch_64bit(arch: Arch) -> bool:
