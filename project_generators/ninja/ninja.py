@@ -154,23 +154,6 @@ build ${proj_name}_build_dir: mkdir ${proj_name}_build_dir
         return os.path.abspath(self.cmd_gen.get_file_build_path(general, file)).replace(':', '$:')
         # return f"${proj_name}_src_dir/{self.cmd_gen.get_file_build_path(general, file)}"
     
-    def gen_link_build_file(self, project: ProjectPass, proj_name: str, source_files) -> list:
-        obj_list = [self.get_file_build_path(proj_name, project.config.general, a) for a in source_files]
-        
-        build_file_path = f"{project.config.general.build_dir}/{proj_name}_objs.txt"
-        
-        if os.path.isdir(project.config.general.build_dir):
-            if os.path.isfile(build_file_path):
-                os.remove(build_file_path)
-        else:
-            os.makedirs(project.config.general.build_dir)
-        
-        with open(build_file_path, "w") as build_file_stream:
-            verbose_color(Color.CYAN, f"Ninja: Writing build file \"{build_file_path}\"")
-            build_file_stream.write('\n'.join(obj_list))
-            
-        return obj_list
-    
     @staticmethod
     def get_target_type_ext(project: ProjectPass) -> tuple:
         target_type, ext = {
