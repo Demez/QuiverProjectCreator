@@ -148,12 +148,11 @@ class VisualStudioGenerator(BaseProjectGenerator):
         
             # ProjectConfigurationPlatforms
             proj_config_plat = {}
-            for project_uuid_list in self.project_uuid_dict.values():
-                for project_uuid in project_uuid_list:
-                    for config_plat in config_plat_list:
-                        proj_config_plat[project_uuid + "." + config_plat + ".ActiveCfg"] = config_plat
-                        # TODO: maybe get some setting for a default project somehow, i think the default is set here
-                        proj_config_plat[project_uuid + "." + config_plat + ".Build.0"] = config_plat
+            for project_uuid in self.project_uuid_dict.values():
+                for config_plat in config_plat_list:
+                    proj_config_plat[project_uuid + "." + config_plat + ".ActiveCfg"] = config_plat
+                    # TODO: maybe get some setting for a default project somehow, i think the default is set here
+                    proj_config_plat[project_uuid + "." + config_plat + ".Build.0"] = config_plat
         
             sln_write_section(self.solution_file, "ProjectConfigurationPlatforms", proj_config_plat, True)
         
