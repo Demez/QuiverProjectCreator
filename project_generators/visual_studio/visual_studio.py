@@ -6,10 +6,12 @@ import lxml.etree as et
 from time import perf_counter
 from qpc_args import args
 from qpc_base import BaseProjectGenerator, Platform, Arch
-from qpc_project import PrecompiledHeader, ConfigType, Language, Standard, ProjectContainer, Compile, SourceFileCompile
+from qpc_project import (PrecompiledHeader, ConfigType, Language, Standard,
+                         ProjectContainer, ProjectPass, Compile, SourceFileCompile)
 from qpc_parser import BaseInfo
 from qpc_logging import warning, error, verbose, print_color, Color
 from enum import Enum
+from typing import List, Dict
 
 
 def timer_diff(start_time: float) -> str:
@@ -46,7 +48,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         else:
             print_color(Color.CYAN, "Creating: " + project.file_name + ".vcxproj")
 
-        vcx_project, include_list, res_list, none_list = create_vcxproj(project, project_passes)
+        vcx_project, source_files, include_list, res_list, none_list = create_vcxproj(project, project_passes)
         write_project(project, out_dir, vcx_project, ".vcxproj")
         
         if args.time:
@@ -57,7 +59,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         else:
             print_color(Color.CYAN, "Creating: " + project.file_name + ".vcxproj.filters")
             
-        vcxproject_filters = create_vcxproj_filters(project, project_passes, include_list, res_list, none_list)
+        vcxproject_filters = create_vcxproj_filters(project, source_files, include_list, res_list, none_list)
         write_project(project, out_dir, vcxproject_filters, ".vcxproj.filters")
 
         if args.time:
@@ -269,37 +271,39 @@ def create_vcxproj(project_list: ProjectContainer, project_passes: list):
     # --------------------------------------------------------------------
     # Now, add the files
     
-    full_include_list = {}
-    full_res_list = {}
-    full_none_list = {}
+    all_sources = {}
+    all_includes = {}
+    all_resources = {}
+    all_none_files = {}
     
     header_exts = {".h", ".hxx", ".hpp"}
     none_exts = {".rc", ".h", ".hxx", ".hpp"}
     
-    # TODO: merge everything together, for now, just add a condition on each one lmao
+    # gather all files
     for project in project_passes:
-        condition = make_conf_plat_cond(project.config_name, project.arch)
-
-        # maybe do the same below for this?
-        create_source_file_item_group(project.source_files, vcxproj, condition)
+        source_files = get_project_files(project.source_files)[0]
+        all_sources = {**all_sources, **source_files}
         
         include_list, remaining_files = get_project_files(project.files, header_exts)
-        full_include_list = {**full_include_list, **include_list}
-        create_file_item_groups("ClInclude", include_list, vcxproj, condition)
+        all_includes = {**all_includes, **include_list}
         
         res_list, remaining_files = get_project_files(remaining_files, {".rc"})
-        full_res_list = {**full_res_list, **res_list}
-        create_file_item_groups("ResourceCompile", res_list, vcxproj, condition)
+        all_resources = {**all_resources, **res_list}
         
         none_list = get_project_files(remaining_files, invalid_exts=none_exts)[0]
-        full_none_list = {**full_none_list, **none_list}
-        create_file_item_groups("None", none_list, vcxproj, condition)
+        all_none_files = {**all_none_files, **none_list}
+        
+    # now add files
+    create_file_item_groups(project_passes, vcxproj, all_sources, "ClCompile")
+    create_file_item_groups(project_passes, vcxproj, all_includes, "ClInclude")
+    create_file_item_groups(project_passes, vcxproj, all_resources, "ResourceCompile")
+    create_file_item_groups(project_passes, vcxproj, all_none_files, "None")
     
     # other vstudio stuff idk
     et.SubElement(vcxproj, "Import").set("Project", "$(VCTargetsPath)\\Microsoft.Cpp.targets")
     et.SubElement(vcxproj, "ImportGroup").set("Label", "ExtensionTargets")
     
-    return vcxproj, full_include_list, full_res_list, full_none_list
+    return vcxproj, all_sources, all_includes, all_resources, all_none_files
 
 
 def setup_project_configurations(vcxproj, project_passes: list):
@@ -884,23 +888,60 @@ def command_to_link_option(value: str) -> tuple:
     return command_to_option(LINK_OPTIONS, value)
 
 
-def create_source_file_item_group(file_list, parent_elem, condition):
-    if file_list:
-        item_group = et.SubElement(parent_elem, "ItemGroup")
-        item_group.set("Condition", condition)
-        for file_path, values in file_list.items():
-            elem_file = et.SubElement(item_group, "ClCompile")
-            elem_file.set("Include", file_path)
-            add_compiler_options(elem_file, values.compiler)
+# blech
+def create_file_item_groups(passes: List[ProjectPass], parent_elem: et.Element, file_dict: dict, file_type: str):
+    if not file_dict:
+        return
+    
+    item_group = et.SubElement(parent_elem, "ItemGroup")
+    for file_path in file_dict:
+        elem_file = et.SubElement(item_group, file_type)
+        elem_file.set("Include", file_path)
 
-
-def create_file_item_groups(file_type, file_dict, parent_elem, condition):
-    if file_dict:
-        item_group = et.SubElement(parent_elem, "ItemGroup")
-        item_group.set("Condition", condition)
-        for file_path in file_dict:
-            elem_file = et.SubElement(item_group, file_type)
-            elem_file.set("Include", file_path)
+        for project in passes:
+            project_files = project.source_files if file_type == "ClCompile" else project.files
+            condition = make_conf_plat_cond(project.config_name, project.arch)
+            if file_path not in project_files:
+                exclude_elem = et.SubElement(elem_file, "ExcludedFromBuild")
+                exclude_elem.text = "true"
+                exclude_elem.set("Condition", condition)
+                    
+            elif file_type == "ClCompile":
+                item_group_compiler_options(elem_file, project, file_path)
+                
+        # clean the option conditions in the worst possible way
+        # create a dictionary where the the values is a list of all elements with that tag
+        option_elem_dict: Dict[str, List[et.Element]] = {}
+        for elem in elem_file:
+            if elem.tag not in option_elem_dict:
+                option_elem_dict[elem.tag]: List[et.Element] = []
+            option_elem_dict[elem.tag].append(elem)
+            
+        for option, elem_list in option_elem_dict.items():
+            # check to see if we have an option for every possible config
+            if len(elem_list) == len(passes):
+                value = elem_list[0].text
+                for elem in elem_list[1:]:
+                    # if the value is different across configs, skip to the next option
+                    if elem.text != value:
+                        break
+                else:
+                    # all values of each option are the same
+                    # so remove all elements after the first one
+                    for elem in elem_list[1:]:
+                        elem.getparent().remove(elem)
+                    # then remove the condition attribute that was added earlier
+                    del elem_list[0].attrib["Condition"]
+                
+                
+def item_group_compiler_options(elem_file: et.Element, project: ProjectPass, file_path: str):
+    prev_elements = [element for element in elem_file]
+    add_compiler_options(elem_file, project.source_files[file_path].compiler)
+    condition = make_conf_plat_cond(project.config_name, project.arch)
+    for element in elem_file:
+        if element in prev_elements:
+            continue
+        element.set("Condition", condition)
 
 
 # TODO: maybe move this to the project class and rename to get_files_by_ext?
@@ -925,7 +966,7 @@ def get_project_files(project_files, valid_exts=None, invalid_exts=None):
     return wanted_files, unwanted_files
 
 
-def create_vcxproj_filters(project_list: ProjectContainer, project_passes: list,
+def create_vcxproj_filters(project_list: ProjectContainer, source_files: Dict[str, SourceFileCompile],
                            include_list: dict, res_list: dict, none_list: dict) -> et.Element:
     proj_filters = et.Element("Project")
     proj_filters.set("ToolsVersion", "4.0")
@@ -933,10 +974,7 @@ def create_vcxproj_filters(project_list: ProjectContainer, project_passes: list,
     
     create_folder_filters(proj_filters, project_list)
     
-    for project in project_passes:
-        # these functions here are slow, oof
-        create_source_file_item_group_filters(proj_filters, project.source_files, "ClCompile")
-    
+    create_source_file_item_group_filters(proj_filters, source_files, "ClCompile")
     create_item_group_filters(proj_filters, include_list, "ClInclude")
     create_item_group_filters(proj_filters, res_list,     "ResourceCompile")
     create_item_group_filters(proj_filters, none_list,    "None")
