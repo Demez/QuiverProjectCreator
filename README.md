@@ -1,4 +1,4 @@
-# REQUIRES PYTHON 3.6+ AND LXML INSTALLED
+# REQUIRES PYTHON 3.7+ AND LXML INSTALLED
 For Windows, install lxml with `py -m pip install lxml`
 For Linux, install lxml with `python3 -m pip install lxml`
 

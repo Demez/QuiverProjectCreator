@@ -13,6 +13,7 @@ from qpc_base import posix_path, norm_path, Platform, Arch, PLATFORM_ARCHS, chec
 from qpc_logging import warning, error, verbose, verbose_color, print_color, Color
 from enum import EnumMeta, Enum, auto
 from time import perf_counter
+from typing import List, Dict
 
 
 # IDEA: be able to reference values from the configuration, like a macro
@@ -69,8 +70,8 @@ class BaseInfoProject:
 class ProjectDefinition(BaseInfoProject):
     def __init__(self, info, project_name: str):
         super().__init__(info, project_name)
-        self.path = ""  # original path in the base file
-        self.path_real = ""  # path relative to the actual root directory
+        self.path = ""  # path relative to the actual root directory
+        self.path_real = ""  # original path in the base file
         self.platforms = set()
 
 
@@ -81,11 +82,11 @@ class ProjectGroup(BaseInfoProject):
         self.projects = dict()
         self._contains = dict()
 
-    def add_project(self, project_name: str, folder_list: list) -> None:
+    def add_project(self, project_name: str, folder_list: List[str]) -> None:
         self.projects[project_name] = tuple(folder_list)
 
     # group: ProjectGroup
-    def contains_group(self, group, folder_list: list):
+    def contains_group(self, group, folder_list: List[str]):
         self._contains[group] = folder_list.copy()
             
     def finished(self):
@@ -104,20 +105,20 @@ class SourceFile:
 class ProjectPass:
     # container is ProjectContainer, below this class
     def __init__(self, container, config: str, platform: Platform, arch: Arch, gen_macro: str, gen_id: int):
-        self.config_name = config
-        self.platform = platform
-        self.arch = arch
+        self.config_name: str = config
+        self.platform: Platform = platform
+        self.arch: Arch = arch
         self.base_info = container.base_info.get_base_info(platform)
         
-        self.container = container
-        self.config = Configuration(self)
-        self.source_files = {}
-        self.files = {}
-        self.hash_list = {}
-        self._glob_files = set()
-        self.build_events = {}
+        self.container: ProjectContainer = container
+        self.config: Configuration = Configuration(self)
+        self.source_files: Dict[str, SourceFile] = {}
+        self.files: Dict[str, str] = {}
+        self.hash_list: Dict[str, str] = {}
+        self._glob_files: set = set()
+        self.build_events: Dict[str, BuildEvent] = {}
 
-        self.macros = {
+        self.macros: Dict[str, str] = {
             **container.macros,
             **self.base_info.macros,
             
@@ -244,9 +245,56 @@ class ProjectPass:
     
     def remove_dependencies(self, *qpc_paths) -> None:
         [self.remove_dependency(qpc_path) for qpc_path in qpc_paths]
+
+    # used in parsing
+    def _parse_files(self, files_block: QPCBlock, folder_list: list) -> None:
+        if files_block.solve_condition(self.macros):
+            for block in files_block.items:
+                if not block.solve_condition(self.macros):
+                    continue
+            
+                if block.key == "folder":
+                    folder_list.append(block.values[0])
+                    self._parse_files(block, folder_list)
+                    folder_list.remove(block.values[0])
+                elif block.key == "-":
+                    self.remove_file(folder_list, block)
+                else:
+                    self.add_file(folder_list, block)
+                
+                    if block.items:
+                        for file_path in block.get_list():
+                            if check_file_path_glob(file_path):
+                                [self.parse_source_file(block, found_file) for found_file in glob.glob(file_path)]
+                            else:
+                                self.parse_source_file(block, file_path)
+
+    def parse_source_file(self, files_block: QPCBlock, file_path: str):
+        source_file = self.get_source_file(file_path)
+        if not source_file:
+            return
+    
+        for config_block in files_block.items:
+            if config_block.solve_condition(self.macros):
+            
+                if config_block.key == "configuration":
+                    for group_block in config_block.items:
+                        if group_block.key != "compiler":
+                            group_block.error("Invalid Group, can only use compiler")
+                            continue
+                    
+                        if group_block.solve_condition(self.macros):
+                            for option_block in group_block.items:
+                                if option_block.solve_condition(self.macros):
+                                    source_file.compiler.parse_option(self.macros, option_block)
+                else:
+                    # new, cleaner way, just assume it's compiler
+                    source_file.compiler.parse_option(self.macros, config_block)
         
     def is_build_event_defined(self, name: str):
         return name in self.build_events
+    
+    # below is stuff for generators to use
     
     # Gets every single folder in the project, splitting each one as well
     # this function is awful
@@ -310,7 +358,7 @@ class ProjectContainer:
         self.file_name = name  # the actual file name
         self.project_path = project_path  # should use the macro instead tbh, might remove
         self.out_dir = os.path.split(project_path)[0]
-        self.hash_dict = {}
+        self.hash_dict: Dict[str, str] = {}
         self.base_info = base_info
         
         # self.dependency_convert = dependency_dict
@@ -327,7 +375,7 @@ class ProjectContainer:
             **get_arg_macros()
         }
         
-        self._passes = []
+        self._passes: List[ProjectPass] = []
         generator_macros = {}
         for generator in generator_list:
             macro = generator.get_macro()
@@ -646,9 +694,9 @@ class Linker:
         self.import_library: str = ""
         self.ignore_import_library: bool = False  # idk what the default should be
         self.entry_point: str = ""
-        self.libraries: list = []
-        self.ignore_libraries: list = []  # maybe change to ignored_libraries?
-        self.options: list = []
+        self.libraries: List[str] = []
+        self.ignore_libraries: List[str] = []  # maybe change to ignored_libraries?
+        self.options: List[str] = []
 
     def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
         if option_block.key in {"options", "libraries", "ignore_libraries"}:
@@ -727,9 +775,9 @@ class BuildEvent:
     def __init__(self, name: str, *event_macros):
         self.name = name
         self.macros = ["$" + event_macro for event_macro in event_macros]
-        self.build = []
+        self.commands = []
         
-    def call_event(self, warning_func: classmethod, step: list, *event_macros):
+    def call_event(self, warning_func: classmethod, step: List[str], *event_macros):
         macro_dict = {}
         for index, macro_value in enumerate(event_macros):
             if index < len(self.macros):
@@ -741,7 +789,7 @@ class BuildEvent:
         if len(macro_dict) < len(self.macros):
             warning_func(f"Calling build event \"{self.name}\" with too few arguments")
 
-        event_list = [replace_macros_list(macro_dict, *line) for line in self.build]
+        event_list = [replace_macros_list(macro_dict, *line) for line in self.commands]
         
         for line in event_list:
             if line[0] == "-":
