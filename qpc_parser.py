@@ -27,12 +27,9 @@ def get_platform_macros(platform: Enum) -> dict:
         return {
             "$WINDOWS": "1",
             "$_BIN_EXT": ".dll",
-            # "$_DYNAMIC_LIB_EXT": ".dll",
             "$_STATICLIB_EXT": ".lib",
             "$_IMPLIB_EXT": ".lib",
             "$_APP_EXT": ".exe",
-            # "$_EXE_EXT": ".exe",
-            # "$_DBG_EXT": ".pdb",
         }
     
     elif platform == Platform.LINUX:
@@ -43,7 +40,6 @@ def get_platform_macros(platform: Enum) -> dict:
             "$_STATICLIB_EXT": ".a",
             "$_IMPLIB_EXT": ".so",
             "$_APP_EXT": "",
-            # "$_DBG_EXT": ".dbg",
         }
     
     # TODO: finish setting up MacOS stuff here
@@ -55,7 +51,6 @@ def get_platform_macros(platform: Enum) -> dict:
             "$_STATICLIB_EXT": ".a",
             "$_IMPLIB_EXT": ".so",
             "$_APP_EXT": "",
-            # "$_DBG_EXT": ".dbg",
         }
 
 
@@ -96,9 +91,9 @@ class BaseInfoPlatform:
         if not project_path:
             return
         
-        if os.path.isfile(include_dir + project_path):
-            project_def.path_real = include_dir + project_path
-            project_def.path = project_path
+        if os.path.isfile(project_path):
+            project_def.path_real = project_path
+            project_def.path = include_dir + project_path
         else:
             warning("Script does not exist: " + project_path)
 
@@ -384,13 +379,6 @@ class Parser:
                 project_block.warning("dependency_paths is obsolete, now uses project paths directly")
                 continue
                 
-                temp_dir = include_dir + "/" if include_dir else ""
-                for dependency in project_block.items:
-                    if dependency.values and dependency.solve_condition(info.macros):
-                        info.dependency_dict[dependency.key] = temp_dir + dependency.values[0]
-                        if temp_dir:
-                            info.dependency_dict_original[dependency.values[0]] = dependency.key
-
             elif not project_block.values:
                 continue
 
