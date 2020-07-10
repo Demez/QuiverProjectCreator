@@ -562,7 +562,7 @@ class Debug:
 
 
 def clean_path(string: str, macros: dict) -> str:
-    return posix_path(os.path.normpath(replace_macros(string, macros)))
+    return posix_path(replace_macros(string, macros))
 
 
 class General:
