@@ -369,9 +369,14 @@ class ProjectContainer:
         self.macros = {
             "$PROJECT_NAME": name,
             "$PROJECT_DIR": self.out_dir,
-            "$SCRIPT_NAME": name,
+            "$PROJECT_SCRIPT_NAME": name,
             "$ROOT_DIR_ABS": args.root_dir,
             "$ROOT_DIR": root_dir,
+            
+            # changed whenever a script is included
+            "$SCRIPT_NAME": name,
+            "$SCRIPT_DIR": self.out_dir,
+            
             **get_arg_macros()
         }
         
@@ -490,13 +495,18 @@ class ProjectContainer:
 class Configuration:
     def __init__(self, project: ProjectPass):
         self._proj: ProjectPass = project
+        self._name: str = project.config_name
+        
         self.debug: Debug = Debug()
-        self.general: General = General(project.container.file_name, project.platform)
+        self.general: General = General(self, project.container.file_name, project.platform)
         self.compiler: Compile = Compile()
         self.linker: Linker = Linker()
         self.pre_build: list = []
         self.pre_link: list = []
         self.post_build: list = []
+        
+    def get_name(self) -> str:
+        return self._name
         
     def add_build_event_options(self, group_block: QPCBlock, option_block: QPCBlock):
         value = replace_macros(option_block.key, self._proj.macros)
@@ -566,9 +576,14 @@ def clean_path(string: str, macros: dict) -> str:
 
 
 class General:
-    def __init__(self, file_name: str, platform: Platform):
-        self.out_dir: str = "build"
-        self.build_dir: str = "build"
+    def __init__(self, config: Configuration, file_name: str, platform: Platform):
+        self._config: Configuration = config
+        # add the arch here
+        default_dir = f"{self._config.get_name()}/f{platform.name.lower()}"
+        
+        self.out_dir: str = f"out/{default_dir}"
+        self.build_dir: str = f"build/{default_dir}"
+        
         self.out_name: str = file_name
 
         # i want to make these configuration options unaffected by config and platform macros,
@@ -576,8 +591,8 @@ class General:
         # except what if someone sets a macro with a config conditional and uses it in one of these?
         # won't work, so im just leaving it as it is for now, hopefully i can get something better later on
         self.configuration_type: ConfigType = None
-        self.language: Language = None
-        self.standard: Standard = None
+        self.language: Language = Language.CPP
+        self.standard: Standard = Standard.CPP17
         self.compiler: str = "msvc" if platform == Platform.WINDOWS else "gcc"
         
         self.default_include_directories: bool = True
@@ -728,7 +743,7 @@ class Linker:
 
     def add_lib(self, macros: dict, lib_block: QPCBlock) -> None:
         for lib_path in (lib_block.key, *lib_block.values):
-            lib_path = self._fix_lib_path_and_ext(macros, lib_path)
+            lib_path = self._fix_lib_path(macros, lib_path)
             if lib_path not in self.libraries:
                 self.libraries.append(lib_path)
             elif not args.hide_warnings:
@@ -736,17 +751,16 @@ class Linker:
 
     def remove_lib(self, macros: dict, lib_block: QPCBlock) -> None:
         for lib_path in lib_block.values:
-            lib_path = self._fix_lib_path_and_ext(macros, lib_path)
+            lib_path = self._fix_lib_path(macros, lib_path)
             if lib_path in self.libraries:
                 self.libraries.remove(lib_path)
             elif not args.hide_warnings:
                 lib_block.warning("Trying to remove a library that hasn't been added yet")
 
-    # actually do you even need the extension?
     @staticmethod
-    def _fix_lib_path_and_ext(macros: dict, lib_path: str) -> str:
-        lib_path = clean_path(lib_path, macros)
-        return os.path.splitext(lib_path)[0] + macros["$_STATICLIB_EXT"]
+    def _fix_lib_path(macros: dict, lib_path: str) -> str:
+        # macros["$_STATICLIB_EXT"]
+        return os.path.splitext(clean_path(lib_path, macros))[0]
     
     
 def convert_bool_option(old_value: bool, option_block: QPCBlock) -> bool:
@@ -838,12 +852,12 @@ def replace_macros_list(macros, *value_list):
     return value_list
 
 
-def replace_macros(string, macros):
+def replace_macros(string: str, macros: Dict[str, str]):
     if "$" in string:
         potential_macros = [macro for macro in macros if macro in string]
         while potential_macros:
             # use the longest length macros to shortest
-            best_macro = max(potential_macros)
+            best_macro = max(potential_macros, key=len)
             if best_macro in string:
                 string = string.replace(best_macro, macros[best_macro])
             potential_macros.remove(best_macro)

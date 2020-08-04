@@ -148,20 +148,20 @@ def gen_cflags(conf: Configuration, libs: bool = True, defs: bool = True, includ
     if conf.general.library_directories and libs:
         mk += ' -L' + ' -L'.join(conf.general.library_directories)
     if conf.linker.libraries and libs:
-        mk += ' -l:' + ' -l:'.join([os.path.splitext(i)[0] + ".a" for i in conf.linker.libraries])
+        mk += ' -l' + ' -l'.join([i for i in conf.linker.libraries])
     if conf.general.include_directories and includes:
         mk += ' -I' + ' -I'.join(conf.general.include_directories)
     return mk
 
 
 # TODO: add a non-gnu flag option (/ instead of --, etc)
-def gen_compile_exe(compiler: str, conf: Configuration) -> str:
+def gen_compile_exe(conf: Configuration) -> str:
     entry = f"-Wl,--entry={conf.linker.entry_point}" if conf.linker.entry_point != "" else ""
-    return f"@{compiler} -o $@ $(SOURCES) {entry} {gen_cflags(conf)}"
+    return f"@$(COMPILER) $(SOURCES) {entry} {gen_cflags(conf)} -o $@"
 
 
-def gen_compile_dyn(compiler: str, conf: Configuration) -> str:
-    return f"@{compiler} -shared -fPIC -o $@ $(SOURCES) {gen_cflags(conf)}"
+def gen_compile_dyn(conf: Configuration) -> str:
+    return f"@$(COMPILER) -shared -fPIC $(SOURCES) {gen_cflags(conf)} -o $@"
 
 
 def gen_compile_stat() -> str:
@@ -172,9 +172,6 @@ def gen_project_targets(conf) -> str:
     makefile = "\n\n# TARGETS\n\n"
     # might be a bad idea to forcibly remove the extension in the generator, not sure
     target_name = os.path.splitext(conf.linker.output_file)[0] if conf.linker.output_file else "$(OUTNAME)"
-    
-    # compiler = "g++" if conf.general.language == Language.CPP else "gcc"
-    compiler = get_compiler(conf.general.compiler, conf.general.language)
 
     # ADD IMPORT LIBRARY OPTION, MAKES A STATIC LIBRARY
     if conf.linker.import_library and conf.general.configuration_type != ConfigType.STATIC_LIBRARY:
@@ -185,12 +182,12 @@ def gen_project_targets(conf) -> str:
     if conf.general.configuration_type == ConfigType.APPLICATION:
         makefile += f"{target_name}: __PREBUILD $(OBJECTS) __PRELINK {import_library}\n"
         makefile += f"\t@echo '$(GREEN)Compiling executable {target_name}$(NC)'\n"
-        makefile += '\t' + '\n\t'.join(gen_compile_exe(compiler, conf).split('\n'))
+        makefile += '\t' + '\n\t'.join(gen_compile_exe(conf).split('\n'))
     
     elif conf.general.configuration_type == ConfigType.DYNAMIC_LIBRARY:
         makefile += f"$(addsuffix .so,{target_name}): __PREBUILD $(OBJECTS) __PRELINK {import_library}\n"
         makefile += f"\t@echo '$(CYAN)Compiling dynamic library {target_name}.so$(NC)'\n"
-        makefile += '\t' + '\n\t'.join(gen_compile_dyn(compiler, conf).split('\n'))
+        makefile += '\t' + '\n\t'.join(gen_compile_dyn(conf).split('\n'))
     
     elif conf.general.configuration_type == ConfigType.STATIC_LIBRARY:
         makefile += f"$(addsuffix .a,{target_name}): __PREBUILD $(OBJECTS) __PRELINK\n"
@@ -211,18 +208,11 @@ def gen_project_targets(conf) -> str:
 def gen_dependency_tree(objects, headers, conf: Configuration) -> str:
     makefile = "\n#DEPENDENCY TREE:\n\n"
     pic = "-fPIC"
-    # if conf.general.configuration_type == ConfigType.DYNAMIC_LIBRARY:  # shared library is a thing?
-    #     pic = "-fPIC"
         
     for obj, path in objects.items():
-        # makefile += f"\n{obj}: {path} {' '.join(cp.get_includes(path, conf.general.include_directories, headers))}\n"
         makefile += f"\n{obj}: {path}\n"
         makefile += f"\t@echo '$(CYAN)Building Object {path}$(NC)'\n"
-        makefile += f"\t@$(COMPILER) -c {pic} -o $@ {path} {gen_cflags(conf, libs=False)}\n"
-
-    # for h in headers:
-    #     makefile += f"\n{h}: {h}\n"
-        # makefile += f"\n{h}: {' '.join(cp.get_includes(h, conf.general.include_directories, headers))}\n"
+        makefile += f"\t@$(COMPILER) -c {pic} {gen_cflags(conf)} {path} -o $@\n"
 
     return makefile
 
@@ -258,7 +248,6 @@ def gen_project_config_definitions(project: ProjectPass) -> str:
         objects[project.config.general.build_dir + "/" + os.path.splitext(os.path.basename(i))[0] + ".o"] = i
     
     headers = [i for i in project.files if os.path.splitext(i)[1] in header_extensions]
-    # nonheader_files = [i for i in project.files if i not in headers]
 
     create_dirs = []
     if project.config.linker.output_file:
@@ -279,9 +268,6 @@ def gen_project_config_definitions(project: ProjectPass) -> str:
     makefile += "\n#OBJECTS:\n\n"
     makefile += "OBJECTS = " + '\t\\\n\t'.join(objects.keys()) + "\n"
     
-    # makefile += "\n# AUX FILES:\n\n"
-    # makefile += "FILES = " + '\t\\\n\t'.join(nonheader_files) + "\n"
-    
     makefile += "\n# MACROS:\n\n"
 
     makefile += "OUTNAME = "
@@ -292,7 +278,6 @@ def gen_project_config_definitions(project: ProjectPass) -> str:
     makefile += gen_clean_target()
     
     makefile += gen_dependency_tree(objects, headers, project.config)
-    # print(container.config)
     
     makefile += gen_script_targets(project.config)
     

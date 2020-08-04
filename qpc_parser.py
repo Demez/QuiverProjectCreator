@@ -163,7 +163,7 @@ class BaseInfoPlatform:
     def get_dependency_path(self, key: str):
         project = self.get_project(key)
         if project:
-            return project.path_real
+            return project.path
         return key
 
     def _use_project(self, project: ProjectDefinition, unwanted_projects: dict, folders: tuple = None):
@@ -485,7 +485,7 @@ class Parser:
 
             verbose("Parsing: " + project_script)
             project_pass.hash_list[project_filename] = qpc_hash.make_hash(project_filename)
-            self._parse_project(project_block, project_pass)
+            self._parse_project(project_block, project_pass, project_script)
             self.counter += 1
     
         verbose("Parsed: " + project_container.get_display_name())
@@ -495,7 +495,15 @@ class Parser:
             
         return project_container
     
-    def _parse_project(self, project_file: QPCBlockBase, project: ProjectPass, indent: str = "") -> None:
+    def _parse_project(self, project_file: QPCBlockBase, project: ProjectPass, file_path: str, indent: str = "") -> None:
+        file_dir, file_name = os.path.split(file_path)
+        
+        def set_script_macros():
+            project.add_macro(indent, "SCRIPT_NAME", file_name)
+            project.add_macro(indent, "SCRIPT_DIR", file_dir)
+
+        set_script_macros()
+        
         for project_block in project_file:
             if project_block.solve_condition(project.macros):
             
@@ -524,7 +532,9 @@ class Parser:
                     include_file = self._include_file(include_path, project, indent + "    ")
                     if include_file:
                         try:
-                            self._parse_project(include_file, project, indent + "    ")
+                            self._parse_project(include_file, project, include_path, indent + "    ")
+                            # reset the script macros back to the values for this script
+                            set_script_macros()
                         except RecursionError:
                             raise RecursionError("Recursive Includes found:\n" + project_block.get_formatted_info())
                         verbose(indent + "    " + "Finished Parsing")
