@@ -576,7 +576,7 @@ def add_compiler_options(compiler_elem: et.SubElement, compiler: Compile, genera
                 et.SubElement(compiler_elem, "CompileAs").text = "CompileAsC"
         
         if general.standard:
-            standard = "stdcpplatest" if general.standard == Standard.CPP20 else f"std{general.standard.lower()}"
+            standard = "stdcpplatest" if general.standard == Standard.CPP20 else f"std{general.standard.name.lower()}"
             et.SubElement(compiler_elem, "LanguageStandard").text = standard
     
     if compiler.options:
