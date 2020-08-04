@@ -4,7 +4,7 @@ import qpc_hash
 from qpc_reader import read_file, QPCBlock, QPCBlockBase
 from qpc_args import args, get_arg_macros
 from qpc_base import Platform, Arch, check_file_path_glob
-from qpc_project import ProjectContainer, ProjectPass, ProjectDefinition, ProjectGroup, BuildEvent, \
+from qpc_project import ProjectContainer, ProjectPass, ProjectDefinition, ProjectGroup, BuildEvent, ConfigType, \
                         replace_macros, replace_macros_list
 from qpc_logging import warning, error, verbose, verbose_color, print_color, Color
 from enum import Enum
@@ -487,6 +487,11 @@ class Parser:
             project_pass.hash_list[project_filename] = qpc_hash.make_hash(project_filename)
             self._parse_project(project_block, project_pass, project_script)
             self.counter += 1
+            
+            if project_pass.config.general.configuration_type is None:
+                error("No configuration_type Specified in Script!",
+                      "Pick one of these and add it to the \"general\" group:",
+                      " ".join([f"\"{enum.name.lower()}\"" for enum in ConfigType]))
     
         verbose("Parsed: " + project_container.get_display_name())
 
