@@ -477,8 +477,8 @@ def setup_item_definition_groups(vcxproj: et.Element, project_passes: list):
             # now add any unchanged options
             et.SubElement(link_lib, "AdditionalOptions").text = ' '.join(remaining_options)
         
-        et.SubElement(link_lib, "AdditionalDependencies").text = ';'.join(cfg.linker.libraries) + \
-                                                                 ";%(AdditionalDependencies)"
+        libs = [lib if "." in os.path.basename(lib) else lib + ".lib" for lib in cfg.linker.libraries]
+        et.SubElement(link_lib, "AdditionalDependencies").text = ';'.join(libs) + ";%(AdditionalDependencies)"
 
         if cfg.linker.output_file:
             output_file = os.path.splitext(cfg.linker.output_file)[0]
