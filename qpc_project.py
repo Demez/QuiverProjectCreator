@@ -765,7 +765,7 @@ class Linker:
             if lib_path not in self.libraries:
                 self.libraries.append(lib_path)
             elif not args.hide_warnings:
-                lib_block.warning("Library already added")
+                lib_block.warning(f"Library already added: \"{lib_path}\"")
 
     def remove_lib(self, macros: dict, lib_block: QPCBlock) -> None:
         for lib_path in lib_block.values:
@@ -773,7 +773,7 @@ class Linker:
             if lib_path in self.libraries:
                 self.libraries.remove(lib_path)
             elif not args.hide_warnings:
-                lib_block.warning("Trying to remove a library that hasn't been added yet")
+                lib_block.warning(f"Trying to remove a library that hasn't been added yet: \"{lib_path}\"")
 
     @staticmethod
     def _fix_lib_path(macros: dict, lib_path: str) -> str:
