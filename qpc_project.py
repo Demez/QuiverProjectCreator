@@ -529,26 +529,44 @@ class Configuration:
     def check_build_step(group: QPCBlock):
         return group.key in {"pre_build", "pre_link", "post_build"}
 
-    def _parse_build_step_glob(self, warning_func: classmethod, step: list, event_name: str, *arg_list):
+    def _parse_build_step_glob(self, step: list, event: QPCBlock, item: QPCBlock, *arg_list):
         event_args = replace_macros_list(self._proj.macros, *arg_list)
         for index, event_macro in enumerate(event_args):
             if check_file_path_glob(event_macro):
                 files = glob.glob(event_macro, recursive=True)
-                [self._proj.build_events[event_name].call_event(warning_func, step, file) for file in files]
+                [self._parse_build_step_call(step, event, file) for file in files]
             else:
-                self._proj.build_events[event_name].call_event(warning_func, step, event_macro)
+                self._parse_build_step_call(step, event, event_macro)
             
+    def _validate_build_step(self, event_name: str, warning_func: classmethod) -> bool:
+        if event_name not in self._proj.build_events:
+            warning_func("Undefined build event: " + event_name)
+            return False
+        return True
+        
     def parse_build_step(self, step: list, event: QPCBlock):
-        if event.key not in self._proj.build_events:
-            event.warning("Undefined build event: " + event.key)
-            return
-    
+        # this kind of sucks
+        if event.key == "-":
+            if not event.values:
+                event.warning("Empty build event name!")
+            elif not self._validate_build_step(event.values[0], event.warning):
+                return
+        else:
+            if not self._validate_build_step(event.key, event.warning):
+                return
+            
         if event.items:
             for value in event.get_items_cond(self._proj.macros):
-                self._parse_build_step_glob(value, step, event.key, *value.get_list())
+                self._parse_build_step_glob(step, event, value, *value.get_list())
         else:
             event_args = replace_macros_list(self._proj.macros, *event.values)
-            self._proj.build_events[event.key].call_event(event.warning, step, *event_args)
+            self._parse_build_step_call(step, event, *event_args)
+            
+    def _parse_build_step_call(self, step: list, event: QPCBlock, *event_macros):
+        if event.key != "-":
+            self._proj.build_events[event.key].call_event(event.warning, step, *event_macros)
+        else:  # this is checked before, don't worry about an exception
+            self._proj.build_events[event.values[0]].remove_event(event.warning, step, *event_macros[1:])
 
 
 # idea, for debug options in the editor used (if it can debug)
@@ -791,32 +809,46 @@ class BuildEvent:
         self.macros = ["$" + event_macro for event_macro in event_macros]
         self.commands = []
         
-    def call_event(self, warning_func: classmethod, step: List[str], *event_macros):
+    def _get_event_list(self, warning_func: classmethod, warning_start: str, *event_macros) -> list:
         macro_dict = {}
         for index, macro_value in enumerate(event_macros):
             if index < len(self.macros):
                 macro_dict[self.macros[index]] = macro_value
             else:
-                warning_func(f"Calling build event \"{self.name}\" with extra arguments")
+                warning_func(f"{warning_start} build event \"{self.name}\" with extra arguments")
                 break
-                
+    
         if len(macro_dict) < len(self.macros):
-            warning_func(f"Calling build event \"{self.name}\" with too few arguments")
-
-        event_list = [replace_macros_list(macro_dict, *line) for line in self.commands]
+            warning_func(f"{warning_start} build event \"{self.name}\" with too few arguments")
+    
+        return [replace_macros_list(macro_dict, *line) for line in self.commands]
+        
+    def _remove_command(self, warning_func: classmethod, step: List[str], line: list):
+        for event in line:
+            if event in step:
+                step.remove(event)
+            else:
+                warning_func(f"Attempting to remove command that doesn't exist in \"{self.name}\": {event}")
+        
+    def remove_event(self, warning_func: classmethod, step: List[str], *event_macros):
+        event_list = self._get_event_list(warning_func, "Removing", *event_macros)
+    
+        for line in event_list:
+            # no reason to remove this since it just removes a command already
+            if line[0] != "-":
+                self._remove_command(warning_func, step, line)
+        
+    def call_event(self, warning_func: classmethod, step: List[str], *event_macros):
+        event_list = self._get_event_list(warning_func, "Calling", *event_macros)
         
         for line in event_list:
             if line[0] == "-":
                 if len(line) > 1:
-                    for event in line:
-                        if event in step:
-                            step.remove(event)
-                        else:
-                            warning_func("Attempting to remove command that doesn't exist: " + event)
+                    self._remove_command(warning_func, step, line)
                 else:
                     warning_func(f"Attempting to remove nothing in \"{self.name}\": ")
-                
-            step.extend(line)
+            else:
+                step.extend(line)
         
         
 def check_if_file_exists(file_path: str, option_warning: classmethod) -> bool:
