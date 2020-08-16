@@ -6,10 +6,12 @@ import lxml.etree as et
 from time import perf_counter
 from qpc_args import args
 from qpc_base import BaseProjectGenerator, Platform, Arch
-from qpc_project import PrecompiledHeader, ConfigType, Language, Standard, ProjectContainer, Compile, SourceFileCompile
+from qpc_project import (PrecompiledHeader, ConfigType, Language, Standard,
+                         ProjectContainer, ProjectPass, Compile, SourceFileCompile)
 from qpc_parser import BaseInfo
 from qpc_logging import warning, error, verbose, print_color, Color
 from enum import Enum
+from typing import List, Dict
 
 
 def timer_diff(start_time: float) -> str:
@@ -23,7 +25,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         self._add_architectures(Arch.I386, Arch.AMD64)
         self._set_project_folders(True)
         self._set_generate_master_file(True)
-        self._set_macro("VISUAL_STUDIO")
+        self._set_macro("VSTUDIO")
         
         self.cpp_uuid = "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}"
         self.filter_uuid = "{2150E333-8FDC-42A3-9474-1A3956D46DE8}"
@@ -46,7 +48,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         else:
             print_color(Color.CYAN, "Creating: " + project.file_name + ".vcxproj")
 
-        vcx_project, include_list, res_list, none_list = create_vcxproj(project, project_passes)
+        vcx_project, source_files, include_list, res_list, none_list = create_vcxproj(project, project_passes)
         write_project(project, out_dir, vcx_project, ".vcxproj")
         
         if args.time:
@@ -57,7 +59,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         else:
             print_color(Color.CYAN, "Creating: " + project.file_name + ".vcxproj.filters")
             
-        vcxproject_filters = create_vcxproj_filters(project, project_passes, include_list, res_list, none_list)
+        vcxproject_filters = create_vcxproj_filters(project, source_files, include_list, res_list, none_list)
         write_project(project, out_dir, vcxproject_filters, ".vcxproj.filters")
 
         if args.time:
@@ -79,7 +81,8 @@ class VisualStudioGenerator(BaseProjectGenerator):
         
         # return out_dir
         
-    def has_debug_commands(self, project_passes: list) -> bool:
+    @staticmethod
+    def has_debug_commands(project_passes: list) -> bool:
         for project in project_passes:
             if bool(project.cfg.debug):
                 return True
@@ -88,7 +91,12 @@ class VisualStudioGenerator(BaseProjectGenerator):
     def does_project_exist(self, project_out_dir: str) -> bool:
         # base_path = self._get_base_path(project_out_dir)
         split_ext_path = os.path.splitext(project_out_dir)[0]
-        return os.path.isfile(split_ext_path + ".vcxproj") and os.path.isfile(split_ext_path + ".vcxproj.filters")
+        if os.path.isfile(split_ext_path + ".vcxproj"):
+            verbose(f"File Exists: {split_ext_path}.vcxproj")
+            if os.path.isfile(split_ext_path + ".vcxproj.filters"):
+                verbose(f"File Exists: {split_ext_path}.vcxproj.filters")
+                return True
+        return False
     
     def does_master_file_exist(self, master_file_path: str) -> bool:
         base_path, project_name = os.path.split(master_file_path)
@@ -142,12 +150,11 @@ class VisualStudioGenerator(BaseProjectGenerator):
         
             # ProjectConfigurationPlatforms
             proj_config_plat = {}
-            for project_uuid_list in self.project_uuid_dict.values():
-                for project_uuid in project_uuid_list:
-                    for config_plat in config_plat_list:
-                        proj_config_plat[project_uuid + "." + config_plat + ".ActiveCfg"] = config_plat
-                        # TODO: maybe get some setting for a default project somehow, i think the default is set here
-                        proj_config_plat[project_uuid + "." + config_plat + ".Build.0"] = config_plat
+            for project_uuid in self.project_uuid_dict.values():
+                for config_plat in config_plat_list:
+                    proj_config_plat[project_uuid + "." + config_plat + ".ActiveCfg"] = config_plat
+                    # TODO: maybe get some setting for a default project somehow, i think the default is set here
+                    proj_config_plat[project_uuid + "." + config_plat + ".Build.0"] = config_plat
         
             sln_write_section(self.solution_file, "ProjectConfigurationPlatforms", proj_config_plat, True)
         
@@ -232,7 +239,7 @@ def make_uuid():
     return f"{{{uuid.uuid4()}}}".upper()
 
 
-def make_conf_plat_cond(config: str, arch: Arch) -> str:
+def make_cfg_plat_cond(config: str, arch: Arch) -> str:
     return f"'$(Configuration)|$(Platform)'=='{config}|{convert_arch(arch)}'"
 
 
@@ -264,48 +271,50 @@ def create_vcxproj(project_list: ProjectContainer, project_passes: list):
     # --------------------------------------------------------------------
     # Now, add the files
     
-    full_include_list = {}
-    full_res_list = {}
-    full_none_list = {}
+    all_sources = {}
+    all_includes = {}
+    all_resources = {}
+    all_none_files = {}
     
     header_exts = {".h", ".hxx", ".hpp"}
     none_exts = {".rc", ".h", ".hxx", ".hpp"}
     
-    # TODO: merge everything together, for now, just add a condition on each one lmao
+    # gather all files
     for project in project_passes:
-        condition = make_conf_plat_cond(project.config_name, project.arch)
-
-        # maybe do the same below for this?
-        create_source_file_item_group(project.source_files, vcxproj, condition)
+        source_files = get_project_files(project.source_files)[0]
+        all_sources = {**all_sources, **source_files}
         
         include_list, remaining_files = get_project_files(project.files, header_exts)
-        full_include_list = {**full_include_list, **include_list}
-        create_file_item_groups("ClInclude", include_list, vcxproj, condition)
+        all_includes = {**all_includes, **include_list}
         
         res_list, remaining_files = get_project_files(remaining_files, {".rc"})
-        full_res_list = {**full_res_list, **res_list}
-        create_file_item_groups("ResourceCompile", res_list, vcxproj, condition)
+        all_resources = {**all_resources, **res_list}
         
         none_list = get_project_files(remaining_files, invalid_exts=none_exts)[0]
-        full_none_list = {**full_none_list, **none_list}
-        create_file_item_groups("None", none_list, vcxproj, condition)
+        all_none_files = {**all_none_files, **none_list}
+        
+    # now add files
+    create_file_item_groups(project_passes, vcxproj, all_sources, "ClCompile")
+    create_file_item_groups(project_passes, vcxproj, all_includes, "ClInclude")
+    create_file_item_groups(project_passes, vcxproj, all_resources, "ResourceCompile")
+    create_file_item_groups(project_passes, vcxproj, all_none_files, "None")
     
     # other vstudio stuff idk
     et.SubElement(vcxproj, "Import").set("Project", "$(VCTargetsPath)\\Microsoft.Cpp.targets")
     et.SubElement(vcxproj, "ImportGroup").set("Label", "ExtensionTargets")
     
-    return vcxproj, full_include_list, full_res_list, full_none_list
+    return vcxproj, all_sources, all_includes, all_resources, all_none_files
 
 
-def setup_project_configurations(vcxproj, project_passes: list):
+def setup_project_configurations(vcxproj, project_passes: List[ProjectPass]):
     item_group = et.SubElement(vcxproj, "ItemGroup")
     item_group.set("Label", "ProjectConfigurations")
     
     for project in project_passes:
         project_configuration = et.SubElement(item_group, "ProjectConfiguration")
-        project_configuration.set("Include", project.config_name + "|" + convert_arch(project.arch))
+        project_configuration.set("Include", project.cfg_name + "|" + convert_arch(project.arch))
         
-        et.SubElement(project_configuration, "Configuration").text = project.config_name
+        et.SubElement(project_configuration, "Configuration").text = project.cfg_name
         et.SubElement(project_configuration, "Platform").text = convert_arch(project.arch)
 
 
@@ -330,10 +339,10 @@ COMPILER_DICT = {
 }
 
 
-def setup_property_group_configurations(vcxproj, project_passes: list):
+def setup_property_group_configurations(vcxproj, project_passes: List[ProjectPass]):
     for project in project_passes:
         property_group = et.SubElement(vcxproj, "PropertyGroup")
-        property_group.set("Condition", make_conf_plat_cond(project.config_name, project.arch))
+        property_group.set("Condition", make_cfg_plat_cond(project.cfg_name, project.arch))
         property_group.set("Label", "Configuration")
         
         cfg = project.cfg
@@ -342,9 +351,9 @@ def setup_property_group_configurations(vcxproj, project_passes: list):
         
         if cfg.general.config_type == ConfigType.APPLICATION:
             configuration_type.text = "Application"
-        elif cfg.general.config_type == ConfigType.STATIC_LIBRARY:
+        elif cfg.general.config_type == ConfigType.STATIC_LIB:
             configuration_type.text = "StaticLibrary"
-        elif cfg.general.config_type == ConfigType.DYNAMIC_LIBRARY:
+        elif cfg.general.config_type == ConfigType.DYNAMIC_LIB:
             configuration_type.text = "DynamicLibrary"
         
         toolset = et.SubElement(property_group, "PlatformToolset")
@@ -365,7 +374,7 @@ def setup_property_group_configurations(vcxproj, project_passes: list):
         # "WholeProgramOptimization",
         
         
-def check_char_set(defs: list) -> str:
+def check_char_set(defs: List[str]) -> str:
     if "MBCS" in defs or "_MBCS" in defs:
         if "MBCS" in defs:
             defs.remove("MBCS")
@@ -391,12 +400,12 @@ def setup_property_sheets(vcxproj):
     elem_import.set("Label", "LocalAppDataPlatform")
 
 
-def setup_general_properties(vcxproj, project_passes: list):
+def setup_general_properties(vcxproj, project_passes: List[ProjectPass]):
     property_group = et.SubElement(vcxproj, "PropertyGroup")
     et.SubElement(property_group, "_ProjectFileVersion").text = "10.0.30319.1"
     
     for project in project_passes:
-        condition = make_conf_plat_cond(project.config_name, project.arch)
+        condition = make_cfg_plat_cond(project.cfg_name, project.arch)
         cfg = project.cfg
         
         property_group = et.SubElement(vcxproj, "PropertyGroup")
@@ -409,39 +418,25 @@ def setup_general_properties(vcxproj, project_passes: list):
         int_dir.text = cfg.general.build_dir + os.sep
         
         et.SubElement(property_group, "TargetName").text = cfg.general.out_name
-
-        # TODO: this probably isn't needed and might be able to be nuked, idk
-        '''
-        target_ext = et.SubElement(property_group, "TargetExt")
-        
-        if cfg.general.config_type == ConfigType.APPLICATION:
-            target_ext.text = project.macros["$_APP_EXT"]
-        
-        elif cfg.general.config_type == ConfigType.STATIC_LIBRARY:
-            target_ext.text = project.macros["$_STATICLIB_EXT"]
-        
-        elif cfg.general.config_type == ConfigType.DYNAMIC_LIBRARY:
-            target_ext.text = project.macros["$_BIN_EXT"]
-        '''
         
         include_paths = et.SubElement(property_group, "IncludePath")
-        include_paths.text = ';'.join(cfg.general.inc_dirs)
+        include_paths.text = ';'.join(cfg.compile.inc_dirs)
         
-        if cfg.general.default_inc_dirs:
+        if cfg.compile.default_inc_dirs:
             include_paths.text += ";$(IncludePath)"
         
         library_paths = et.SubElement(property_group, "LibraryPath")
-        library_paths.text = ';'.join(cfg.general.lib_dirs)
+        library_paths.text = ';'.join(cfg.link.lib_dirs)
         
-        if cfg.general.default_lib_dirs:
+        if cfg.link.default_lib_dirs:
             library_paths.text += ";$(LibraryPath)"
 
         # also why does WholeProgramOptimization go here and in ClCompile
 
 
-def setup_item_definition_groups(vcxproj: et.Element, project_passes: list):
+def setup_item_definition_groups(vcxproj: et.Element, project_passes: List[ProjectPass]):
     for project in project_passes:
-        condition = make_conf_plat_cond(project.config_name, project.arch)
+        condition = make_cfg_plat_cond(project.cfg_name, project.arch)
         cfg = project.cfg
         
         item_def_group = et.SubElement(vcxproj, "ItemDefinitionGroup")
@@ -453,7 +448,7 @@ def setup_item_definition_groups(vcxproj: et.Element, project_passes: list):
         
         # ------------------------------------------------------------------
         # linker - Link or Lib
-        if cfg.general.config_type == ConfigType.STATIC_LIBRARY:
+        if cfg.general.config_type == ConfigType.STATIC_LIB:
             link_lib = et.SubElement(item_def_group, "Lib")
         else:
             link_lib = et.SubElement(item_def_group, "Link")
@@ -476,7 +471,8 @@ def setup_item_definition_groups(vcxproj: et.Element, project_passes: list):
             # now add any unchanged options
             et.SubElement(link_lib, "AdditionalOptions").text = ' '.join(remaining_options)
         
-        et.SubElement(link_lib, "AdditionalDependencies").text = ';'.join(cfg.link.libs) + ";%(AdditionalDependencies)"
+        libs = [lib if "." in os.path.basename(lib) else lib + ".lib" for lib in cfg.link.libs]
+        et.SubElement(link_lib, "AdditionalDependencies").text = ';'.join(libs) + ";%(AdditionalDependencies)"
 
         if cfg.link.output_file:
             et.SubElement(link_lib, "OutputFile").text = cfg.link.output_file
@@ -566,7 +562,7 @@ def add_compiler_options(compiler_elem: et.SubElement, compile: Compile, general
                 et.SubElement(compiler_elem, "CompileAs").text = "CompileAsC"
         
         if general.standard:
-            standard = "stdcpplatest" if general.standard == Standard.CPP20 else f"std{general.standard.lower()}"
+            standard = "stdcpplatest" if general.standard == Standard.CPP20 else f"std{general.standard.name.lower()}"
             et.SubElement(compiler_elem, "LanguageStandard").text = standard
     
     if compile.options:
@@ -878,23 +874,60 @@ def command_to_link_option(value: str) -> tuple:
     return command_to_option(LINK_OPTIONS, value)
 
 
-def create_source_file_item_group(file_list, parent_elem, condition):
-    if file_list:
-        item_group = et.SubElement(parent_elem, "ItemGroup")
-        item_group.set("Condition", condition)
-        for file_path, values in file_list.items():
-            elem_file = et.SubElement(item_group, "ClCompile")
-            elem_file.set("Include", file_path)
-            add_compiler_options(elem_file, values.compiler)
+# blech
+def create_file_item_groups(passes: List[ProjectPass], parent_elem: et.Element, file_dict: dict, file_type: str):
+    if not file_dict:
+        return
+    
+    item_group = et.SubElement(parent_elem, "ItemGroup")
+    for file_path in file_dict:
+        elem_file = et.SubElement(item_group, file_type)
+        elem_file.set("Include", file_path)
 
-
-def create_file_item_groups(file_type, file_dict, parent_elem, condition):
-    if file_dict:
-        item_group = et.SubElement(parent_elem, "ItemGroup")
-        item_group.set("Condition", condition)
-        for file_path in file_dict:
-            elem_file = et.SubElement(item_group, file_type)
-            elem_file.set("Include", file_path)
+        for project in passes:
+            project_files = project.source_files if file_type == "ClCompile" else project.files
+            condition = make_cfg_plat_cond(project.cfg_name, project.arch)
+            if file_path not in project_files:
+                exclude_elem = et.SubElement(elem_file, "ExcludedFromBuild")
+                exclude_elem.text = "true"
+                exclude_elem.set("Condition", condition)
+                    
+            elif file_type == "ClCompile":
+                item_group_compiler_options(elem_file, project, file_path)
+                
+        # clean the option conditions in the worst possible way
+        # create a dictionary where the the values is a list of all elements with that tag
+        option_elem_dict: Dict[str, List[et.Element]] = {}
+        for elem in elem_file:
+            if elem.tag not in option_elem_dict:
+                option_elem_dict[elem.tag]: List[et.Element] = []
+            option_elem_dict[elem.tag].append(elem)
+            
+        for option, elem_list in option_elem_dict.items():
+            # check to see if we have an option for every possible config
+            if len(elem_list) == len(passes):
+                value = elem_list[0].text
+                for elem in elem_list[1:]:
+                    # if the value is different across configs, skip to the next option
+                    if elem.text != value:
+                        break
+                else:
+                    # all values of each option are the same
+                    # so remove all elements after the first one
+                    for elem in elem_list[1:]:
+                        elem.getparent().remove(elem)
+                    # then remove the condition attribute that was added earlier
+                    del elem_list[0].attrib["Condition"]
+                
+                
+def item_group_compiler_options(elem_file: et.Element, project: ProjectPass, file_path: str):
+    prev_elements = [element for element in elem_file]
+    add_compiler_options(elem_file, project.source_files[file_path].compiler)
+    condition = make_cfg_plat_cond(project.cfg_name, project.arch)
+    for element in elem_file:
+        if element in prev_elements:
+            continue
+        element.set("Condition", condition)
 
 
 # TODO: maybe move this to the project class and rename to get_files_by_ext?
@@ -919,7 +952,7 @@ def get_project_files(project_files, valid_exts=None, invalid_exts=None):
     return wanted_files, unwanted_files
 
 
-def create_vcxproj_filters(project_list: ProjectContainer, project_passes: list,
+def create_vcxproj_filters(project_list: ProjectContainer, source_files: Dict[str, SourceFileCompile],
                            include_list: dict, res_list: dict, none_list: dict) -> et.Element:
     proj_filters = et.Element("Project")
     proj_filters.set("ToolsVersion", "4.0")
@@ -927,10 +960,7 @@ def create_vcxproj_filters(project_list: ProjectContainer, project_passes: list,
     
     create_folder_filters(proj_filters, project_list)
     
-    for project in project_passes:
-        # these functions here are slow, oof
-        create_source_file_item_group_filters(proj_filters, project.source_files, "ClCompile")
-    
+    create_source_file_item_group_filters(proj_filters, source_files, "ClCompile")
     create_item_group_filters(proj_filters, include_list, "ClInclude")
     create_item_group_filters(proj_filters, res_list,     "ResourceCompile")
     create_item_group_filters(proj_filters, none_list,    "None")
@@ -989,6 +1019,7 @@ def write_project(project: ProjectContainer, out_dir: str, xml_file: et.Element,
     create_directory(out_dir)
     
     with open(file_path, "w", encoding="utf-8") as project_file:
+        project_file.write("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n")
         project_file.write(xml_to_string(xml_file))
 
 
@@ -999,7 +1030,7 @@ def xml_to_string(elem) -> str:
 # --------------------------------------------------------------------------------------------------
 
 
-def create_vcxproj_user(project: ProjectContainer, project_passes: list) -> et.Element:
+def create_vcxproj_user(project: ProjectContainer, project_passes: List[ProjectPass]) -> et.Element:
     file_path = os.path.splitext(project.file_name)[0] + ".vcxproj.user"
     if os.path.isfile(file_path):
         vcxproj = et.parse(file_path).getroot()
@@ -1009,7 +1040,7 @@ def create_vcxproj_user(project: ProjectContainer, project_passes: list) -> et.E
         vcxproj.set("xmlns", "http://schemas.microsoft.com/developer/msbuild/2003")
     
     for project_pass in project_passes:
-        condition = make_conf_plat_cond(project_pass.config_name, project_pass.arch)
+        condition = make_cfg_plat_cond(project_pass.config_name, project_pass.arch)
         create_debug_group(vcxproj, project_pass.config.debug, condition)
     
     return vcxproj

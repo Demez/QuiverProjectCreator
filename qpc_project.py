@@ -13,6 +13,8 @@ from qpc_base import posix_path, norm_path, Platform, Arch, PLATFORM_ARCHS, chec
 from qpc_logging import warning, error, verbose, verbose_color, print_color, Color
 from enum import EnumMeta, Enum, auto
 from time import perf_counter
+from typing import List, Dict
+import re
 
 
 # IDEA: be able to reference values from the configuration, like a macro
@@ -24,12 +26,13 @@ from time import perf_counter
 
 
 EXTS_C = {".cpp", ".cxx", ".c", ".cc"}
+REMOVE_MACROS = re.compile(r"\$\w+\$")
 
 
 # maybe move to qpc_base with the other Enums?
 class ConfigType(Enum):
-    STATIC_LIBRARY = auto()
-    DYNAMIC_LIBRARY = auto()  # could be SHARED_LIBRARY
+    STATIC_LIB = auto()
+    DYNAMIC_LIB = auto()  # could be SHARED_LIBRARY
     APPLICATION = auto()  # IDEA: rename all application stuff to executable?
 
 
@@ -69,8 +72,8 @@ class BaseInfoProject:
 class ProjectDefinition(BaseInfoProject):
     def __init__(self, info, project_name: str):
         super().__init__(info, project_name)
-        self.path = ""  # original path in the base file
-        self.path_real = ""  # path relative to the actual root directory
+        self.path = ""  # path relative to the actual root directory
+        self.path_real = ""  # original path in the base file
         self.platforms = set()
 
 
@@ -81,11 +84,11 @@ class ProjectGroup(BaseInfoProject):
         self.projects = dict()
         self._contains = dict()
 
-    def add_project(self, project_name: str, folder_list: list) -> None:
+    def add_project(self, project_name: str, folder_list: List[str]) -> None:
         self.projects[project_name] = tuple(folder_list)
 
     # group: ProjectGroup
-    def contains_group(self, group, folder_list: list):
+    def contains_group(self, group, folder_list: List[str]):
         self._contains[group] = folder_list.copy()
             
     def finished(self):
@@ -104,30 +107,30 @@ class SourceFile:
 class ProjectPass:
     # container is ProjectContainer, below this class
     def __init__(self, container, config: str, platform: Platform, arch: Arch, gen_macro: str, gen_id: int):
-        self.config_name = config
-        self.platform = platform
-        self.arch = arch
+        self.cfg_name: str = config
+        self.platform: Platform = platform
+        self.arch: Arch = arch
         self.base_info = container.base_info.get_base_info(platform)
         
-        self.container = container
-        self.cfg = Configuration(self)
-        self.source_files = {}
-        self.files = {}
-        self.hash_list = {}
-        self._glob_files = set()
-        self.build_events = {}
+        self.container: ProjectContainer = container
+        self.cfg: Configuration = Configuration(self)
+        self.source_files: Dict[str, SourceFile] = {}
+        self.files: Dict[str, str] = {}
+        self.hash_list: Dict[str, str] = {}
+        self._glob_files: set = set()
+        self.build_events: Dict[str, BuildEvent] = {}
 
-        self.macros = {
+        self.macros: Dict[str, str] = {
             **container.macros,
             **self.base_info.macros,
             
-            "$" + config.upper():   "1",  # this doesn't have to be uppercase, but it's mainly for consistency
-            "$" + platform.name:    "1",
-            "$" + arch.name:        "1",
+            config.upper():   "1",  # this doesn't have to be uppercase, but it's mainly for consistency
+            platform.name:    "1",
+            arch.name:        "1",
             
-            "$CONFIG":              config,
-            "$PLATFORM":            platform.name,
-            "$ARCH":                arch.name,
+            "CONFIG":              config,
+            "PLATFORM":            platform.name,
+            "ARCH":                arch.name,
         }
         
         self.generators = set()
@@ -135,7 +138,7 @@ class ProjectPass:
         
     def check_pass(self, config: str, platform: Platform, arch: Arch, generator_macro: str, gen_id: int) -> bool:
         # is this even setup right?
-        if self.config_name == config and self.platform == platform and self.arch == arch and gen_id in self.generators:
+        if self.cfg_name == config and self.platform == platform and self.arch == arch and gen_id in self.generators:
             self.add_generator(generator_macro, gen_id)
             return True
         return False
@@ -149,11 +152,10 @@ class ProjectPass:
         return self.base_info.get_dependency_path(key)
     
     def add_macro(self, indent: str, macro_name: str, macro_value: str = "") -> None:
-        key_name = "$" + macro_name
         if macro_value:
-            self._set_macro(indent, key_name, macro_value)
-        elif key_name not in self.macros:
-            self._set_macro(indent, key_name)
+            self._set_macro(indent, macro_name, macro_value)
+        elif macro_name not in self.macros:
+            self._set_macro(indent, macro_name)
             
     def _set_macro(self, indent: str, macro_name: str, macro_value: str = ""):
         self.macros[macro_name] = macro_value
@@ -244,9 +246,56 @@ class ProjectPass:
     
     def remove_dependencies(self, *qpc_paths) -> None:
         [self.remove_dependency(qpc_path) for qpc_path in qpc_paths]
+
+    # used in parsing
+    def _parse_files(self, files_block: QPCBlock, folder_list: list) -> None:
+        if files_block.solve_condition(self.macros):
+            for block in files_block.items:
+                if not block.solve_condition(self.macros):
+                    continue
+            
+                if block.key == "folder":
+                    folder_list.append(block.values[0])
+                    self._parse_files(block, folder_list)
+                    folder_list.remove(block.values[0])
+                elif block.key == "-":
+                    self.remove_file(folder_list, block)
+                else:
+                    self.add_file(folder_list, block)
+                
+                    if block.items:
+                        for file_path in block.get_list():
+                            if check_file_path_glob(file_path):
+                                [self.parse_source_file(block, found_file) for found_file in glob.glob(file_path)]
+                            else:
+                                self.parse_source_file(block, file_path)
+
+    def parse_source_file(self, files_block: QPCBlock, file_path: str):
+        source_file = self.get_source_file(file_path)
+        if not source_file:
+            return
+    
+        for config_block in files_block.items:
+            if config_block.solve_condition(self.macros):
+            
+                if config_block.key == "configuration":
+                    for group_block in config_block.items:
+                        if group_block.key != "compile":
+                            group_block.error("Invalid Group, can only use compile")
+                            continue
+                    
+                        if group_block.solve_condition(self.macros):
+                            for option_block in group_block.items:
+                                if option_block.solve_condition(self.macros):
+                                    source_file.compiler.parse_option(self.macros, option_block)
+                else:
+                    # new, cleaner way, just assume it's compiler
+                    source_file.compiler.parse_option(self.macros, config_block)
         
     def is_build_event_defined(self, name: str):
         return name in self.build_events
+    
+    # below is stuff for generators to use
     
     # Gets every single folder in the project, splitting each one as well
     # this function is awful
@@ -310,7 +359,7 @@ class ProjectContainer:
         self.file_name = name  # the actual file name
         self.project_path = project_path  # should use the macro instead tbh, might remove
         self.out_dir = os.path.split(project_path)[0]
-        self.hash_dict = {}
+        self.hash_dict: Dict[str, str] = {}
         self.base_info = base_info
         
         # self.dependency_convert = dependency_dict
@@ -319,20 +368,23 @@ class ProjectContainer:
         root_dir = "/".join([".."] * len(self.out_dir.split("/")))
         
         self.macros = {
-            "$PROJECT_NAME": name,
-            "$PROJECT_DIR": self.out_dir,
-            "$SCRIPT_NAME": name,
-            "$ROOT_DIR_ABS": args.root_dir,
-            "$ROOT_DIR": root_dir,
+            "PROJECT_NAME": name,
+            "PROJECT_DIR": self.out_dir,
+            "PROJECT_SCRIPT_NAME": name,
+            "ROOT_DIR_ABS": args.root_dir,
+            "ROOT_DIR": root_dir,
+            
+            # changed whenever a script is included
+            "SCRIPT_NAME": name,
+            "SCRIPT_DIR": self.out_dir,
+            
             **get_arg_macros()
         }
         
-        self._passes = []
+        self._passes: List[ProjectPass] = []
         generator_macros = {}
         for generator in generator_list:
-            macro = generator.get_macro()
-            macro = "$" + macro if macro else macro
-            generator_macros[generator] = macro
+            generator_macros[generator] = generator.get_macro()
 
         for generator, macro in generator_macros.items():
             generator_platforms = generator.get_supported_platforms()
@@ -412,7 +464,7 @@ class ProjectContainer:
         return folder_paths
 
     def get_display_name(self) -> str:
-        return self._passes[0].macros["$PROJECT_NAME"]
+        return self._passes[0].macros["PROJECT_NAME"]
 
     def get_out_dir(self) -> str:
         out_dir = ""  # os.path.split(project.project_path)[0]
@@ -420,7 +472,7 @@ class ProjectContainer:
         '''
         if args.project_dir:
             try:
-                out_dir = posix_path(self.projects[0].macros["$PROJECT_DIR"])
+                out_dir = posix_path(self.projects[0].macros["PROJECT_DIR"])
                 # if not out_dir.endswith("/"):
                 #    out_dir += "/"
             except KeyError:
@@ -441,14 +493,19 @@ class ProjectContainer:
 
 class Configuration:
     def __init__(self, project: ProjectPass):
-        self._proj = project
-        self.debug = Debug()
-        self.general = General(project.container.file_name, project.platform)
-        self.compile = Compile()
-        self.link = Link(self)
-        self.pre_build = []
-        self.pre_link = []
-        self.post_build = []
+        self._proj: ProjectPass = project
+        self._name: str = project.cfg_name
+        
+        self.debug: Debug = Debug()
+        self.general: General = General(self, project.container.file_name, project.platform)
+        self.compile: Compile = Compile()
+        self.link: Link = Link(self)
+        self.pre_build: List[str] = []
+        self.pre_link: List[str] = []
+        self.post_build: List[str] = []
+        
+    def get_name(self) -> str:
+        return self._name
         
     def add_build_event_options(self, group_block: QPCBlock, option_block: QPCBlock):
         value = replace_macros(option_block.key, self._proj.macros)
@@ -471,51 +528,57 @@ class Configuration:
     def check_build_step(group: QPCBlock):
         return group.key in {"pre_build", "pre_link", "post_build"}
 
-    def _parse_build_step_glob(self, warning_func: classmethod, step: list, event_name: str, *arg_list):
+    def _parse_build_step_glob(self, step: list, event: QPCBlock, item: QPCBlock, *arg_list):
         event_args = replace_macros_list(self._proj.macros, *arg_list)
         for index, event_macro in enumerate(event_args):
             if check_file_path_glob(event_macro):
                 files = glob.glob(event_macro, recursive=True)
-                [self._proj.build_events[event_name].call_event(warning_func, step, file) for file in files]
+                [self._parse_build_step_call(step, event, file) for file in files]
             else:
-                self._proj.build_events[event_name].call_event(warning_func, step, event_macro)
+                self._parse_build_step_call(step, event, event_macro)
             
+    def _validate_build_step(self, event_name: str, warning_func: classmethod) -> bool:
+        if event_name not in self._proj.build_events:
+            warning_func("Undefined build event: " + event_name)
+            return False
+        return True
+        
     def parse_build_step(self, step: list, event: QPCBlock):
-        if event.key not in self._proj.build_events:
-            event.warning("Undefined build event: " + event.key)
-            return
-    
+        # this kind of sucks
+        if event.key == "-":
+            if not event.values:
+                event.warning("Empty build event name!")
+            elif not self._validate_build_step(event.values[0], event.warning):
+                return
+        else:
+            if not self._validate_build_step(event.key, event.warning):
+                return
+            
         if event.items:
             for value in event.get_items_cond(self._proj.macros):
-                self._parse_build_step_glob(value, step, event.key, *value.get_list())
+                self._parse_build_step_glob(step, event, value, *value.get_list())
         else:
             event_args = replace_macros_list(self._proj.macros, *event.values)
-            self._proj.build_events[event.key].call_event(event.warning, step, *event_args)
+            self._parse_build_step_call(step, event, *event_args)
+            
+    def _parse_build_step_call(self, step: list, event: QPCBlock, *event_macros):
+        if event.key != "-":
+            self._proj.build_events[event.key].call_event(event.warning, step, *event_macros)
+        else:  # this is checked before, don't worry about an exception
+            self._proj.build_events[event.values[0]].remove_event(event.warning, step, *event_macros[1:])
             
             
 class BaseConfigGroup:
-    def __init__(self):
-        self.__slots__ = ("_name_dict",)
-        self._name_dict = {}
-    
-    def _add_option(self, main_name: str, option_type, *other_names):
-        self.__slots__ = (*self.__slots__, main_name)
-        
-        self.__dict__[main_name] = option_type() if option_type is type else option_type
-        self._name_dict[main_name] = self.__dict__[main_name]
-        for name in other_names:
-            self._name_dict[name] = self.__dict__[main_name]
-            
-    def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
-        pass
+    def remove_item(self, macros: dict, option_block: QPCBlock, item: QPCBlock, name: str):
+        for item_to_rm in replace_macros_list(macros, *item.values):
+            if item_to_rm in self.__dict__[option_block.key]:
+                self.__dict__[option_block.key].remove(item_to_rm)
+            else:
+                item.warning(f"Trying to remove {name} that was never added: \"{item_to_rm}\"")
 
 
-def clean_path(string: str, macros: dict) -> str:
-    return posix_path(os.path.normpath(replace_macros(string, macros)))
-
-
-# idea, for debug options in the editor used (if it can debug)
-class Debug:
+# for debug options in the editor used (if it can debug)
+class Debug(BaseConfigGroup):
     def __init__(self):
         self.command = ""
         self.arguments = ""
@@ -534,43 +597,51 @@ class Debug:
                 option_block.warning("Invalid Debug Option: ")
 
 
-class General:
-    def __init__(self, file_name: str, platform: Platform):
-        self.out_dir = "build"
-        self.build_dir = "build"
-        self.out_name = file_name
+def clean_path(string: str, macros: dict) -> str:
+    return posix_path(replace_macros(string, macros))
+
+
+class General(BaseConfigGroup):
+    def __init__(self, config: Configuration, file_name: str, platform: Platform):
+        self._config: Configuration = config
+        # add the arch here
+        default_dir = f"{self._config.get_name()}/f{platform.name.lower()}"
+        
+        self.out_dir: str = f"out/{default_dir}"
+        self.build_dir: str = f"build/{default_dir}"
+        
+        self.out_name: str = file_name
 
         # i want to make these configuration options unaffected by cfg and platform macros,
         # and have it run before it goes through each cfg/platform
         # except what if someone sets a macro with a cfg conditional and uses it in one of these?
         # won't work, so im just leaving it as it is for now, hopefully i can get something better later on
-        self.config_type = None
-        
-        self.language = None
-        self.standard = None
-        self.compiler = "msvc" if platform == Platform.WINDOWS else "gcc"
-        
-        self.default_inc_dirs = True
-        self.default_lib_dirs = True
-        self.inc_dirs = []
-        self.lib_dirs = []
-        self.options = []
+        self.config_type: ConfigType = None
+        self.language: Language = Language.CPP
+        self.standard: Standard = Standard.CPP17
+        self.compiler: str = "msvc" if platform == Platform.WINDOWS else "gcc"
+
+        self.options: List[str] = []
 
     def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
-        # multiple path options
-        if option_block.key in {"inc_dirs", "lib_dirs", "options", "include_directories", "library_directories"}:
-            if option_block.key == "include_directories":
+        # notify of moved options
+        if option_block.key in {"inc_dirs", "lib_dirs", "include_directories", "library_directories"}:
+            if option_block.key in {"inc_dirs", "include_directories"}:
                 key = "inc_dirs"
-            elif option_block.key == "library_directories":
-                key = "lib_dirs"
+                group = "compile"
             else:
-                key = option_block.key
+                key = "lib_dirs"
+                group = "link"
             
             if option_block.key in {"include_directories", "library_directories"}:
-                option_block.warning(f"Legacy Option: \"{option_block.key}\", use \"{key}\" instead")
+                option_block.warning(f"Option \"{option_block.key}\" has been shortened to \"{key}\" instead")
             
+            option_block.warning(f"Option \"{key}\" Moved to \"{group}\" group")
+            return
+            
+        if option_block.key == "options":
             for item in option_block.get_items_cond(macros):
-                self.__dict__[key].extend(replace_macros_list(macros, *item.get_list()))
+                self.options.extend(replace_macros_list(macros, *item.get_list()))
 
         if not option_block.values:
             return
@@ -580,15 +651,12 @@ class General:
             
         elif option_block.key == "out_name":
             self.out_name = replace_macros(option_block.values[0], macros)
-        
-        elif option_block.key in {"default_inc_dirs", "default_lib_dirs"}:
-            self.__dict__[option_block.key] = convert_bool_option(self.__dict__[option_block.key], option_block)
             
         elif option_block.key == "config_type":
             self.set_type(option_block)
         elif option_block.key == "language":
             self.set_language(option_block)
-        elif option_block.key == "compile":
+        elif option_block.key == "compiler":
             self.compiler = replace_macros(option_block.values[0], macros)
             
         else:
@@ -620,18 +688,29 @@ class General:
                 break
 
 
-class Compile:
+class Compile(BaseConfigGroup):
     def __init__(self):
-        self.defines = []
-        self.pch = None  # PrecompiledHeader.NONE
-        self.pch_file = None
-        self.pch_out = None
-        self.options = []
+        self.default_inc_dirs: bool = True
+        
+        self.pch: PrecompiledHeader = None  # PrecompiledHeader.NONE
+        self.pch_file: str = ""
+        self.pch_out: str = ""
+
+        self.defines: List[str] = []
+        self.inc_dirs: List[str] = []
+        self.options: List[str] = []
 
     def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
-        if option_block.key in {"defines", "options"}:
+        # TODO: allow removing values, surprised it doesn't already allow that
+        if option_block.key in {"defines", "options", "inc_dirs"}:
             for item in option_block.get_items_cond(macros):
-                self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
+                if item.key == "-":
+                    self.remove_item(macros, option_block, item, option_block.key[:-1])
+                else:
+                    self.__dict__[option_block.key].extend(replace_macros_list(macros, *item.get_list()))
+        
+        elif option_block.key == "default_inc_dirs":
+            self.default_inc_dirs = convert_bool_option(self.default_inc_dirs, option_block)
     
         elif option_block.key == "pch":
             if option_block.values:
@@ -656,23 +735,27 @@ class SourceFileCompile(Compile):
             super().parse_option(macros, option_block)
 
 
-class Link:
+class Link(BaseConfigGroup):
     def __init__(self, config: Configuration):
         self._parent = config
-        self.output_file = None
-        self.debug_file = None
-        self.import_lib = None
-        self.ignore_import_lib = False
-        self.entry_point = None
-        self.libs = []
-        self.ignore_libs = []  # maybe change to ignored_libraries?
-        self.options = []
+        self.output_file: str = ""
+        self.debug_file: str = ""
+        self.import_lib: str = ""
+        self.entry_point: str = ""
+        
+        self.ignore_import_lib: bool = False  # idk what the default should be
+        self.default_lib_dirs: bool = True
+        
+        self.lib_dirs: List[str] = []
+        self.libs: List[str] = []
+        self.ignore_libs: List[str] = []  # maybe change to ignored_libraries?
+        self.options: List[str] = []
 
     def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
-        if option_block.key in {"options", "libs", "ignore_libs"}:
+        if option_block.key in {"options", "libs", "lib_dirs", "ignore_libs"}:
             for item in option_block.get_items_cond(macros):
                 if item.key == "-":
-                    self._remove_item(macros, option_block, item)
+                    self.remove_item(macros, option_block, item, option_block.key[:-1])
                 else:
                     if option_block.key == "libs":
                         self.add_lib(macros, item)
@@ -681,63 +764,45 @@ class Link:
                     
         elif not option_block.values:
             return
-            
+        
         elif option_block.key in {"output_file", "debug_file"}:
-            # TODO: maybe split the extension for output_file, debug_file, or import_library?
-            file_path = clean_path(option_block.values[0], macros)
-            file_name, file_ext = os.path.splitext(file_path)
-            if not file_ext:
-                config_type = self._parent.general.config_type
-                if config_type == ConfigType.DYNAMIC_LIBRARY:
-                    file_ext = macros["$EXT_DLL"]
-                elif config_type == ConfigType.DYNAMIC_LIBRARY:
-                    file_ext = macros["$EXT_LIB"]
-                elif config_type == ConfigType.DYNAMIC_LIBRARY:
-                    file_ext = macros["$EXT_APP"]
-            self.__dict__[option_block.key] = file_name + file_ext
+            self.__dict__[option_block.key] = clean_path(option_block.values[0], macros)
             
         elif option_block.key in {"import_lib", "entry_point"}:
             # TODO: maybe split the extension for output_file, debug_file, or import_library?
             self.__dict__[option_block.key] = replace_macros(option_block.values[0], macros)
             
-        elif option_block.key == "ignore_import_lib":
-            self.ignore_import_lib = convert_bool_option(self.ignore_import_lib, option_block)
+        elif option_block.key in {"ignore_import_lib", "default_lib_dirs"}:
+            self.__dict__[option_block.key] = convert_bool_option(self.__dict__[option_block.key], option_block)
     
         else:
             option_block.error("Unknown Linker Option: ")
-
-    def add_lib(self, macros: dict, lib_block: QPCBlock) -> None:
-        for lib_path in (lib_block.key, *lib_block.values):
-            lib_path = self._fix_lib_path_and_ext(macros, lib_path)
-            if lib_path not in self.libs:
-                self.libs.append(lib_path)
-            elif not args.hide_warnings:
-                lib_block.warning("Library already added")
-                
-    def _remove_item(self, macros: dict, option_block: QPCBlock, item: QPCBlock):
+            
+    def remove_item(self, macros: dict, option_block: QPCBlock, item: QPCBlock, name: str):
         if option_block.key == "libs":
             self.remove_lib(macros, item)
         else:
-            for item_to_rm in item.values:
-                item_to_rm = replace_macros(item_to_rm, macros)
-                if item_to_rm in self.__dict__[option_block.key]:
-                    self.__dict__[option_block.key].remove(item_to_rm)
-                else:
-                    item.warning(f"Trying to remove {option_block.key[:1]} that was never added: \"{item_to_rm}\"")
+            super().remove_item(macros, option_block, item, name)
+
+    def add_lib(self, macros: dict, lib_block: QPCBlock) -> None:
+        for lib_path in (lib_block.key, *lib_block.values):
+            lib_path = self._fix_lib_path(macros, lib_path)
+            if lib_path not in self.libs:
+                self.libs.append(lib_path)
+            elif not args.hide_warnings:
+                lib_block.warning(f"Library already added: \"{lib_path}\"")
 
     def remove_lib(self, macros: dict, lib_block: QPCBlock) -> None:
         for lib_path in lib_block.values:
-            lib_path = self._fix_lib_path_and_ext(macros, lib_path)
+            lib_path = self._fix_lib_path(macros, lib_path)
             if lib_path in self.libs:
                 self.libs.remove(lib_path)
-            else:
-                lib_block.warning("Trying to remove a library that hasn't been added yet")
+            elif not args.hide_warnings:
+                lib_block.warning(f"Trying to remove a library that hasn't been added yet: \"{lib_path}\"")
 
     @staticmethod
-    def _fix_lib_path_and_ext(macros: dict, lib_path: str) -> str:
-        lib_path = clean_path(lib_path, macros)
-        lib_name, lib_ext = os.path.splitext(lib_path)
-        return lib_name + lib_ext if lib_ext else macros["$BIN_SLIB"]
+    def _fix_lib_path(macros: dict, lib_path: str) -> str:
+        return os.path.splitext(clean_path(lib_path, macros))[0]
     
     
 def convert_bool_option(old_value: bool, option_block: QPCBlock) -> bool:
@@ -764,35 +829,49 @@ def convert_enum_option(old_value: Enum, option_block: QPCBlock, enum_list: Enum
 class BuildEvent:
     def __init__(self, name: str, *event_macros):
         self.name = name
-        self.macros = ["$" + event_macro for event_macro in event_macros]
-        self.build = []
+        self.macros = event_macros
+        self.commands = []
         
-    def call_event(self, warning_func: classmethod, step: list, *event_macros):
+    def _get_event_list(self, warning_func: classmethod, warning_start: str, *event_macros) -> list:
         macro_dict = {}
         for index, macro_value in enumerate(event_macros):
             if index < len(self.macros):
                 macro_dict[self.macros[index]] = macro_value
             else:
-                warning_func(f"Calling build event \"{self.name}\" with extra arguments")
+                warning_func(f"{warning_start} build event \"{self.name}\" with extra arguments")
                 break
-                
+    
         if len(macro_dict) < len(self.macros):
-            warning_func(f"Calling build event \"{self.name}\" with too few arguments")
-
-        event_list = [replace_macros_list(macro_dict, *line) for line in self.build]
+            warning_func(f"{warning_start} build event \"{self.name}\" with too few arguments")
+    
+        return [replace_macros_list(macro_dict, *line) for line in self.commands]
+        
+    def _remove_command(self, warning_func: classmethod, step: List[str], line: list):
+        for event in line:
+            if event in step:
+                step.remove(event)
+            else:
+                warning_func(f"Attempting to remove command that doesn't exist in \"{self.name}\": {event}")
+        
+    def remove_event(self, warning_func: classmethod, step: List[str], *event_macros):
+        event_list = self._get_event_list(warning_func, "Removing", *event_macros)
+    
+        for line in event_list:
+            # no reason to remove this since it just removes a command already
+            if line[0] != "-":
+                self._remove_command(warning_func, step, line)
+        
+    def call_event(self, warning_func: classmethod, step: List[str], *event_macros):
+        event_list = self._get_event_list(warning_func, "Calling", *event_macros)
         
         for line in event_list:
             if line[0] == "-":
                 if len(line) > 1:
-                    for event in line:
-                        if event in step:
-                            step.remove(event)
-                        else:
-                            warning_func("Attempting to remove command that doesn't exist: " + event)
+                    self._remove_command(warning_func, step, line)
                 else:
                     warning_func(f"Attempting to remove nothing in \"{self.name}\": ")
-                
-            step.extend(line)
+            else:
+                step.extend(line)
         
         
 def check_if_file_exists(file_path: str, option_warning: classmethod) -> bool:
@@ -828,13 +907,19 @@ def replace_macros_list(macros, *value_list):
     return value_list
 
 
-def replace_macros(string, macros):
-    if "$" in string:
+def replace_macros(string: str, macros: Dict[str, str]):
+    count = string.count("$")
+    if count > 0 and count % 2 == 0:
         potential_macros = [macro for macro in macros if macro in string]
         while potential_macros:
             # use the longest length macros to shortest
-            best_macro = max(potential_macros)
-            if best_macro in string:
-                string = string.replace(best_macro, macros[best_macro])
+            best_macro = max(potential_macros, key=len)
+            best_macro_token = f"${best_macro}{'$' if not args.legacy_macros else ''}"
+            if best_macro_token in string:
+                string = string.replace(best_macro_token, macros[best_macro])
             potential_macros.remove(best_macro)
+            
+    elif "$" in string:
+        # great, now i need to pass in the qpc block just for a good warning message here, there has to be a better way
+        warning(f"Macro in string \"{string}\" does not close!! (sorry for shitty warning, just use -v for now)")
     return string

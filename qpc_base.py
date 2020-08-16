@@ -80,7 +80,7 @@ class BaseProjectGenerator:
             print(timer_diff(self._start_time) + " - Created: " + self._current_build)
         self._current_build = None
         
-    # ProjectContainer from qpc_project.py
+    # ProjectContainer from qpc_project.py, and returns List[ProjectPass], also from qpc_project.py
     def _get_passes(self, project) -> list:
         return project.get_passes(self.id)
     
@@ -164,6 +164,12 @@ def get_default_archs() -> tuple:
     # very rare
     elif machine() == "i386":
         return (Arch.I386,)
+
+    elif machine().startswith("arm"):
+        if machine() == "arm7l":
+            return (Arch.ARM, Arch.ARM64)
+        else:
+            return (Arch.ARM,)
     
     
 def is_arch_64bit(arch: Arch) -> bool:

@@ -19,40 +19,33 @@ def parse_args(generators: list) -> None:
     cmd_parser = argparse.ArgumentParser()
 
     # maybe change to path? meh
-    cmd_parser.add_argument("--rootdir", "-d", default=os.getcwd(), dest="root_dir",
-                            help="Set the root directory of the script")
-    cmd_parser.add_argument("--basefile", "-b", dest="base_file",  # nargs="+",
-                            help="Set the root directory of the script")
-    cmd_parser.add_argument("--outdir", "-o", default="", dest="out_dir",
-                            help="Output directory of qpc scripts with edited folder paths")
-    
-    # TODO: test this
-    # cmd_parser.add_argument("--projectdir", action="store_true",
-    #                         help="Output container files based on PROJECT_DIR macro, relative to root dir probably")
+    cmd_parser.add_argument("--root_dir", "-d", default=os.getcwd(), help="Set the root directory of the script")
+    cmd_parser.add_argument("--base_file", "-b", help="Optional file with project, group, and config definitions")
 
     cmd_parser.add_argument("--time", "-t", action="store_true", help="Print the time taken to parse")
     cmd_parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose console output")
     cmd_parser.add_argument("--force", "-f", action="store_true", help="Force recreate all projects")
     cmd_parser.add_argument("--force_master", "-fm", action="store_true", help="Force recreate master file")
-    cmd_parser.add_argument("--hidewarnings", "-w", dest="hide_warnings", action="store_true", help="Suppress all warnings")
-    cmd_parser.add_argument("--checkfiles", "-cf", dest="check_files", action="store_true", help="Check if any added file exists")
-    cmd_parser.add_argument("--skipprojects", "-sp", dest="skip_projects", action="store_true", help="Don't generate projects")
+    cmd_parser.add_argument("--hide_warnings", "-w", action="store_true", help="Suppress all warnings")
+    cmd_parser.add_argument("--check_files", "-cf", action="store_true", help="Check if any added file exists")
+    cmd_parser.add_argument("--skip_projects", "-sp", action="store_true", help="Don't generate projects")
+    cmd_parser.add_argument("--legacy_macros", "-lm", action="store_true", help="Legacy Macros (only start with $)")
 
     cmd_parser.add_argument("--configs", "-c", nargs="+", default=(), help="Select configs, added to configs set in base files")
     cmd_parser.add_argument("--platforms", "-p", nargs="+", default=(get_default_platform(),), choices=platforms,
                             help="Select platforms to generate for instead of the default")
     cmd_parser.add_argument("--archs", "-ar", nargs="+", default=get_default_archs(), choices=archs,
                             help="Select architectures to generate for instead of the default")
-    cmd_parser.add_argument("--generators", "-g", nargs="+", default=(), choices=generators, help="Project types to generate")
+    cmd_parser.add_argument("--generators", "-g", nargs="+", default=generators, choices=generators, help="Project types to generate")
     cmd_parser.add_argument("--add", "-a", nargs="+", default=(), help="Add projects or groups to generate")
     cmd_parser.add_argument("--remove", "-r", default=(), nargs="+", help="Remove projects or groups from generating")
     cmd_parser.add_argument("--macros", "-m", nargs="+", default=(), help="Macros to define and set to '1' in projects")
 
-    # TODO: figure out how vpc handles these and recreate it here
-    #  might come waaay later since it"s very low priority
+    # TODO: rework parts of qpc to allow adding or removing projects after parsing a project, then add these
     # cmd_parser.add_argument("-at", "--add_tree", nargs="+", help="Add a project and all projects that depend on it")
     # cmd_parser.add_argument("-ad", "--add_depend", nargs="+", help="Add a project and all projects that it depends on")
-    # Use /h spew final target build set only (no .vcproj created). - what?
+    # cmd_parser.add_argument("-rt", "--remove_tree", nargs="+", help="Remove a project and all projects that depend on it")
+    # cmd_parser.add_argument("-rd", "--remove_depend", nargs="+", help="Remove a project and all projects that it depends on")
 
     cmd_parser.add_argument("--masterfile", "-mf", dest="master_file",
                             help='Create a master file for building all projects with')
@@ -66,8 +59,8 @@ def parse_args(generators: list) -> None:
     # args.base_file = os.path.normpath(args.base_file) if os.path.isabs(args.base_file) else \
     #     os.path.normpath(args.root_dir + os.sep + args.base_file)
 
-    args.out_dir = os.path.normpath(args.out_dir) if os.path.isabs(args.out_dir) else \
-        os.path.normpath(args.root_dir + os.sep + args.out_dir)
+    # args.out_dir = os.path.normpath(args.out_dir) if os.path.isabs(args.out_dir) else \
+    #     os.path.normpath(args.root_dir + os.sep + args.out_dir)
 
     args.platforms = _convert_to_enum(args.platforms, Platform)
     args.archs = _convert_to_enum(args.archs, Arch)
@@ -100,5 +93,5 @@ def get_arg_macros() -> dict:
             if not value:
                 warning(f"Macro \"{macro}\" has trailing equals sign, setting to 1")
                 value = "1"
-        arg_macros["$" + name] = value
+        arg_macros[name] = value
     return arg_macros

@@ -78,8 +78,6 @@ def get_generators(platforms: set, generator_list: list) -> list:
 
 
 def generator_needs_rebuild(project_script: str, generator: BaseProjectGenerator, rebuild_info: dict) -> bool:
-    if not generator.does_project_exist(project_script):
-        return True
     if generator.filename in rebuild_info["generators"]:
         return True
     return False
@@ -111,11 +109,12 @@ def main():
     os.chdir(args.root_dir)
     
     parser = Parser()
-    if args.time:
-        start_time = perf_counter()
     
     info = parser.parse_base_info(args.base_file)
     generator_list = get_generators_all()
+    
+    if args.time:
+        start_time = perf_counter()
     
     for project_def in info.projects:
         project_script = project_def.path
@@ -145,7 +144,7 @@ def main():
                 [generator.create_project(project) for generator in valid_generators]
             else:
                 # does any generator need to rebuild?
-                for generator in valid_generators:
+                for generator in generators_rebuild:
                     if generator_needs_rebuild(project_filename, generator, rebuild_info):
                         generator.create_project(project)
 

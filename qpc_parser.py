@@ -4,7 +4,7 @@ import qpc_hash
 from qpc_reader import read_file, QPCBlock, QPCBlockBase
 from qpc_args import args, get_arg_macros
 from qpc_base import Platform, Arch, check_file_path_glob
-from qpc_project import ProjectContainer, ProjectPass, ProjectDefinition, ProjectGroup, BuildEvent, \
+from qpc_project import ProjectContainer, ProjectPass, ProjectDefinition, ProjectGroup, BuildEvent, ConfigType, \
                         replace_macros, replace_macros_list
 from qpc_logging import warning, error, verbose, verbose_color, print_color, Color
 from enum import Enum
@@ -23,31 +23,36 @@ def replace_exact_macros(split_string, macros):
 
 def get_platform_macros(platform: Enum) -> dict:
     # OS Specific Defines
+    base_platforms = {
+        "WINDOWS": str(int(platform == Platform.WINDOWS)),
+        "POSIX":   str(int(platform in {Platform.LINUX, Platform.MACOS})),
+        "LINUX":   str(int(platform == Platform.LINUX)),
+        "MACOS":   str(int(platform == Platform.MACOS))
+    }
+    
     if platform == Platform.WINDOWS:
         return {
-            "$WINDOWS": "1",
-            "$EXT_DLIB": ".dll",
-            "$EXT_SLIB": ".lib",
-            "$EXT_APP": ".exe",
+            **base_platforms,
+            "EXT_DLL": ".dll",
+            "EXT_LIB": ".lib",
+            "EXT_APP": ".exe",
         }
     
     elif platform == Platform.LINUX:
         return {
-            "$POSIX": "1",
-            "$LINUX": "1",
-            "$EXT_DLIB": ".so",
-            "$EXT_SLIB": ".a",
-            "$EXT_APP": "",
+            **base_platforms,
+            "EXT_DLL": ".so",
+            "EXT_LIB": ".a",
+            "EXT_APP": "",
         }
     
     # TODO: finish setting up MacOS stuff here
     elif platform == Platform.MACOS:
         return {
-            "$POSIX": "1",
-            "$MACOS": "1",
-            "$EXT_DLIB": ".dylib",
-            "$EXT_SLIB": ".a",
-            "$EXT_APP": ".app",  # or is this .DMG?
+            **base_platforms,
+            "EXT_DLL": ".dylib",
+            "EXT_LIB": ".a",
+            "EXT_APP": ".app",  # or is this .DMG?
         }
 
 
@@ -88,9 +93,9 @@ class BaseInfoPlatform:
         if not project_path:
             return
         
-        if os.path.isfile(include_dir + project_path):
-            project_def.path_real = include_dir + project_path
-            project_def.path = project_path
+        if os.path.isfile(project_path):
+            project_def.path_real = project_path
+            project_def.path = include_dir + project_path
         else:
             warning("Script does not exist: " + project_path)
 
@@ -132,7 +137,9 @@ class BaseInfoPlatform:
             self.configs.extend(["Debug", "Release"])
 
     def add_macro(self, project_block: QPCBlock):
-        self.macros["$" + project_block.values[0]] = replace_macros(project_block.values[1], self.macros)
+        value = replace_macros(project_block.values[1], self.macros)
+        verbose_color(Color.DGREEN, f"Set Macro: {project_block.values[0]} = \"{value}\"")
+        self.macros[project_block.values[0]] = value
 
     def is_project_script_added(self, project_path: str) -> bool:
         return bool(self.get_project_by_script(project_path))
@@ -158,18 +165,17 @@ class BaseInfoPlatform:
     def get_dependency_path(self, key: str):
         project = self.get_project(key)
         if project:
-            return project.path_real
+            return project.path
         return key
 
-    def _use_project(self, project_name: str, unwanted_projects: dict, folders: tuple = None):
-        project = self.get_project(project_name)
+    def _use_project(self, project: ProjectDefinition, unwanted_projects: dict, folders: tuple = None):
         if self.platform in project.platforms and project.name not in unwanted_projects:
             for added_project in self.projects:
                 if added_project.name == project.name:
                     break
             else:
                 self.projects.append(project)
-                self.project_folders[project_name] = folders if folders else ()
+                self.project_folders[project.name] = folders if folders else ()
         
     # get all the _passes the user wants (this is probably the worst part in this whole project)
     def setup_wanted_projects(self, add_list: list, remove_list: list, unwanted_projects: dict) -> None:
@@ -198,7 +204,7 @@ class BaseInfoPlatform:
             for added_item in add_list:
                 if added_item in self.shared.groups:
                     for project, folders in self.shared.groups[added_item].projects.items():
-                        self._use_project(project, unwanted_projects, folders)
+                        self._use_project(self.get_project(project), unwanted_projects, folders)
                         
                 elif added_item in self.shared.projects_all:
                     if self.shared.projects_all[added_item] in self._projects_all:
@@ -282,9 +288,12 @@ class BaseInfo:
                     return base_info
 
     def get_configs(self) -> list:
-        configurations = set()
-        [configurations.update(info.configs) for info in self.info_list]
-        return list(configurations)
+        configs = []
+        for info in self.info_list:
+            for cfg in info.configs:
+                if cfg not in configs:
+                    configs.append(cfg)
+        return configs
     
     def get_projects(self, *platforms) -> tuple:
         project_list = {}  # dict keeps order, set doesn't as of 3.8, both faster than lists
@@ -366,10 +375,6 @@ class Parser:
             elif project_block.key == "configs":
                 configs = project_block.get_item_list_condition(info.macros)
                 [info.configs.append(config) for config in configs if config not in info.configs]
-        
-            # obsolete
-            elif project_block.key == "dependency_paths":
-                project_block.warning("dependency_paths is obsolete, now uses project paths directly")
                 
             elif not project_block.values:
                 continue
@@ -451,7 +456,6 @@ class Parser:
                         
             else:
                 info.add_project_to_group(item.key, project_group, folder_list)
-                # project_group.add_project(item.key, folder_list, info.shared.unsorted_projects)
     
     def parse_project(self, project_def: ProjectDefinition, project_script: str, info: BaseInfo, generator_list: list) -> ProjectContainer:
         if args.time:
@@ -471,14 +475,19 @@ class Parser:
         
         for project_pass in project_container._passes:
             verbose(f"\n ---- Parsing Project - "
-                    f"Config: \"{project_pass.config_name}\" "
+                    f"Config: \"{project_pass.cfg_name}\" "
                     f"Platform: \"{project_pass.platform.name}\" "
                     f"Arch: \"{project_pass.arch.name}\" ---- \n")
 
             verbose("Parsing: " + project_script)
             project_pass.hash_list[project_filename] = qpc_hash.make_hash(project_filename)
-            self._parse_project(project_block, project_pass)
+            self._parse_project(project_block, project_pass, project_script)
             self.counter += 1
+            
+            if project_pass.cfg.general.config_type is None:
+                error("No config_type Specified in Script!",
+                      "Pick one of these and add it to the \"general\" group:",
+                      " ".join([f"\"{enum.name.lower()}\"" for enum in ConfigType]))
     
         verbose("Parsed: " + project_container.get_display_name())
 
@@ -487,14 +496,22 @@ class Parser:
             
         return project_container
     
-    def _parse_project(self, project_file: QPCBlockBase, project: ProjectPass, indent: str = "") -> None:
+    def _parse_project(self, project_file: QPCBlockBase, project: ProjectPass, file_path: str, indent: str = "") -> None:
+        file_dir, file_name = os.path.split(file_path)
+        
+        def set_script_macros():
+            project.add_macro(indent, "SCRIPT_NAME", file_name)
+            project.add_macro(indent, "SCRIPT_DIR", file_dir)
+
+        set_script_macros()
+        
         for project_block in project_file:
             if project_block.solve_condition(project.macros):
             
                 if project_block.key == "macro":
                     project.add_macro(indent, *project.replace_macros_list(*project_block.values))
             
-                elif project_block.key == "cfg":
+                elif project_block.key == "config":
                     self._parse_config(project_block, project)
             
                 elif project_block.key == "files":
@@ -516,7 +533,9 @@ class Parser:
                     include_file = self._include_file(include_path, project, indent + "    ")
                     if include_file:
                         try:
-                            self._parse_project(include_file, project, indent + "    ")
+                            self._parse_project(include_file, project, include_path, indent + "    ")
+                            # reset the script macros back to the values for this script
+                            set_script_macros()
                         except RecursionError:
                             raise RecursionError("Recursive Includes found:\n" + project_block.get_formatted_info())
                         verbose(indent + "    " + "Finished Parsing")
@@ -552,7 +571,7 @@ class Parser:
             build_event = BuildEvent(*replace_macros_list(project.macros, *project_block.values))
             
             command_list = replace_macros_list(project.macros, *project_block.get_item_list_condition(project.macros))
-            build_event.build.append(command_list)
+            build_event.commands.append(command_list)
                     
             project.build_events[project_block.values[0]] = build_event
     
@@ -587,7 +606,7 @@ class Parser:
         for config_block in files_block.items:
             if config_block.solve_condition(project.macros):
             
-                if config_block.key == "configuration":
+                if config_block.key == "config":
                     for group_block in config_block.items:
                         if group_block.key != "compile":
                             group_block.warning("Invalid Group, can only use compile")

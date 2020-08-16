@@ -1,6 +1,10 @@
 # Reads QPC files and returns a list of QPCBlocks
 
+# python 4 is chad
+from __future__ import annotations
+
 import os
+from typing import List
 from re import compile
 from qpc_logging import warning, error, warning_no_line, verbose, verbose_color, print_color, Color
 
@@ -66,29 +70,28 @@ class QPCBlockBase:
                 return item.values
         return []
     
-    def get_items(self, item_key):
+    def get_items(self, item_key) -> List[QPCBlock]:
         items = []
         for item in self.items:
             if item.key == item_key:
                 items.append(item)
         return items
     
-    # TODO: shorten these 4 function names?
-    def get_items_cond(self, macros: dict):
-        items = []
+    def get_items_cond(self, macros: dict) -> List[QPCBlock]:
+        items: list = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):
                 items.append(item)
         return items
     
-    def get_item_keys_condition(self, macros: dict):
+    def get_item_keys_condition(self, macros: dict) -> List[QPCBlock]:
         items = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):
                 items.append(item.key)
         return items
     
-    def get_item_values_condition(self, macros: dict, key: str = ""):
+    def get_item_values_condition(self, macros: dict, key: str = "") -> List[QPCBlock]:
         items = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):
@@ -96,7 +99,7 @@ class QPCBlockBase:
                     items.extend(item.values)
         return items
     
-    def get_item_list_condition(self, macros: dict):
+    def get_item_list_condition(self, macros: dict) -> List[QPCBlock]:
         items = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):
@@ -106,7 +109,7 @@ class QPCBlockBase:
     def get_keys_in_items(self):
         return [value.key for value in self.items]
     
-    def get_item_index(self, qpc_item):
+    def get_item_index(self, qpc_item: QPCBlock):
         try:
             return self.items.index(qpc_item)
         except IndexError:
@@ -201,26 +204,25 @@ class QPCBlock(QPCBlockBase):
         print(self.get_file_info() + " this should not be called anymore")
 
 
-# maybe make a comment object so when you re-write the file, you don't lose comments
-class Comment:
-    def __init__(self):
-        pass
-
-
-def replace_macros_condition(split_string, macros):
-    # for macro, macro_value in macros.items():
-    for index, item in enumerate(split_string):
-        flip_value = str(item).startswith("!")
-        if item in macros or (flip_value and item[1:] in macros):
+def replace_macros_condition(split_string: List[str], macros):
+    for index, item_token in enumerate(split_string):
+        flip_value = str(item_token).startswith("!")
+        has_tokens = item_token[1 if flip_value else 0] == "$" and item_token.endswith("$")
+        if has_tokens:
+            item = item_token[2 if flip_value else 1:-1]
+        else:
+            item = item_token[1 if flip_value else 0:]
+        
+        if item in macros:
             if flip_value:
-                split_string[index] = str(int(not macros[item[1:]]))
+                split_string[index] = str(int(not macros[item]))
             else:
                 split_string[index] = macros[item]
         
         elif flip_value:
             split_string[index] = "1"
         
-        elif item.startswith("$"):
+        elif has_tokens:
             split_string[index] = "0"
     
     return split_string

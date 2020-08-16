@@ -1,15 +1,11 @@
-import sys
 import os
 import json
-from enum import Enum
 
-# from qpc_args import args
-import qpc_hash
 from qpc_base import BaseProjectGenerator, Platform, create_directory
 from qpc_project import ConfigType, Language, ProjectContainer, ProjectPass, Configuration
-from qpc_parser import BaseInfo
 from qpc_logging import warning, error, verbose, print_color, Color
 from ..shared import cmd_line_gen
+from typing import List
 
 
 class CompileCommandsGenerator(BaseProjectGenerator):
@@ -39,7 +35,7 @@ class CompileCommandsGenerator(BaseProjectGenerator):
                 file_io.write(compile_commands)
     
     def create_project(self, project: ProjectContainer) -> None:
-        project_passes = self._get_passes(project)
+        project_passes: List[ProjectPass] = self._get_passes(project)
         if not project_passes:
             return
 
@@ -47,7 +43,7 @@ class CompileCommandsGenerator(BaseProjectGenerator):
         
         for proj_pass in project_passes:
             self.cmd_gen.set_mode(proj_pass.cfg.general.compiler)
-            label = f"{proj_pass.config_name.lower()}_{proj_pass.platform.name.lower()}_{proj_pass.arch.name.lower()}"
+            label = f"{proj_pass.cfg_name.lower()}_{proj_pass.platform.name.lower()}_{proj_pass.arch.name.lower()}"
             if label not in self.all_files:
                 self.all_files[label] = set()
             if label not in self.commands_list:
@@ -66,7 +62,7 @@ class CompileCommandsGenerator(BaseProjectGenerator):
         }
         
         file_dict["command"] += " ".join(self.cmd_gen.convert_defines(project.cfg.compile.defines))
-        file_dict["command"] += " " + " ".join(self.cmd_gen.convert_includes(project.cfg.general.inc_dirs))
+        file_dict["command"] += " " + " ".join(self.cmd_gen.convert_includes(project.cfg.compile.inc_dirs))
         
         file_dict["command"] += " " + " ".join(project.cfg.compile.options)
         if f"{self.cmd_gen.switch}c" not in project.cfg.compile.options:
