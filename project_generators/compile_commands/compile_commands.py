@@ -5,6 +5,7 @@ from qpc_base import BaseProjectGenerator, Platform, create_directory
 from qpc_project import ConfigType, Language, ProjectContainer, ProjectPass, Configuration
 from qpc_logging import warning, error, verbose, print_color, Color
 from ..shared import cmd_line_gen
+from typing import List
 
 
 class CompileCommandsGenerator(BaseProjectGenerator):
@@ -34,7 +35,7 @@ class CompileCommandsGenerator(BaseProjectGenerator):
                 file_io.write(compile_commands)
     
     def create_project(self, project: ProjectContainer) -> None:
-        project_passes = self._get_passes(project)
+        project_passes: List[ProjectPass] = self._get_passes(project)
         if not project_passes:
             return
 
