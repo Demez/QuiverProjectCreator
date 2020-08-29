@@ -95,7 +95,7 @@ class CommandLineGen:
             cmd.extend(self.libs(cfg.linker.libraries))
             
         if cfg.linker.ignore_libraries:
-            cmd.append(self.ignore_libs(cfg.linker.ignore_libraries))
+            cmd.extend(self.ignore_libs(cfg.linker.ignore_libraries))
             
         if cfg.linker.import_library:
             cmd.append(self.import_lib(cfg.linker.import_library))
@@ -139,17 +139,18 @@ class CommandLineGen:
     def libs(self, libs: list) -> list:
         return self.convert_char("" if self.mode == Mode.MSVC else "-l ", libs)
     
-    def ignore_libs(self, libs: list) -> str:
+    def ignore_libs(self, libs: list) -> list:
         if not libs:
-            return ""
+            return []
 
         if self.mode == Mode.GCC:  # maybe clang as well?
-            return "--exclude-libs," + ",".join(libs)
+            return ["--exclude-libs," + ",".join(libs)]
         
         if self.mode == Mode.MSVC:
-            return " ".join(self.convert_char("/NODEFAULTLIB:", libs))
+            # this also supports the same syntax as --exclude-libs, could use that
+            return self.convert_char("/NODEFAULTLIB:", libs)
         
-        return ""
+        return []
     
     def import_lib(self, lib: str) -> str:
         if not lib:
