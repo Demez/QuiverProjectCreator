@@ -351,6 +351,13 @@ class ProjectPass:
     def get_glob_files(self) -> set:
         return self._glob_files
 
+    def get_headers(self) -> list:
+        headers = []
+        for file in self.files:
+            if os.path.splitext(file)[1] in {".h", ".hh", ".hxx", ".hpp"}:
+                headers.append(file)
+        return headers
+
 
 class ProjectContainer:
     # base_info is BaseInfo from qpc_parser.py
