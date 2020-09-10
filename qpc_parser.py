@@ -1,7 +1,7 @@
 import os
 import glob
 import qpc_hash
-from qpc_reader import read_file, QPCBlock, QPCBlockBase
+from qpc_reader import read_file, QPCBlock, QPCBlockRoot
 from qpc_args import args, get_arg_macros
 from qpc_base import Platform, Arch, check_file_path_glob
 from qpc_project import ProjectContainer, ProjectPass, ProjectDefinition, ProjectGroup, BuildEvent, ConfigType, \
@@ -264,6 +264,11 @@ class BaseInfo:
             base_info.setup_wanted_projects(add_list, remove_list, unwanted_projects.copy())
             for project in base_info.projects:
                 if project not in self.projects:
+                    
+                    if not project.path:
+                        warning(f"Project without a script path: {project.name}")
+                        continue
+                        
                     self.projects[project] = base_info.project_folders[project.name]
         return self.projects
     
@@ -363,7 +368,7 @@ class Parser:
         info.finish_parsing()
         return info
     
-    def _parse_base_info_recurse(self, info: BaseInfoPlatform, base_file: QPCBlockBase, include_dir: str = "") -> None:
+    def _parse_base_info_recurse(self, info: BaseInfoPlatform, base_file: QPCBlockRoot, include_dir: str = "") -> None:
         for project_block in base_file:
         
             if not project_block.solve_condition(info.macros):
@@ -496,7 +501,7 @@ class Parser:
             
         return project_container
     
-    def _parse_project(self, project_file: QPCBlockBase, project: ProjectPass, file_path: str, indent: str = "") -> None:
+    def _parse_project(self, project_file: QPCBlockRoot, project: ProjectPass, file_path: str, indent: str = "") -> None:
         file_dir, file_name = os.path.split(file_path)
         
         def set_script_macros():
@@ -545,7 +550,7 @@ class Parser:
                 else:
                     project_block.warning(f"Unknown Key: \"{project_block.key}\"")
     
-    def _include_file(self, include_path: str, project: ProjectPass, indent: str) -> QPCBlockBase:
+    def _include_file(self, include_path: str, project: ProjectPass, indent: str) -> QPCBlockRoot:
         project.hash_list[include_path] = qpc_hash.make_hash(include_path)
         include_file = self.read_file(include_path)
     
@@ -620,7 +625,7 @@ class Parser:
                     # new, cleaner way, just assume it's compile
                     source_file.compiler.parse_option(project.macros, config_block)
 
-    def read_file(self, script_path: str) -> QPCBlockBase:
+    def read_file(self, script_path: str) -> QPCBlockRoot:
         if script_path in self.read_files:
             return self.read_files[script_path]
         else:

@@ -2,7 +2,7 @@ import hashlib
 import qpc_reader
 from qpc_args import args
 from qpc_base import posix_path, QPC_DIR, QPC_GENERATOR_DIR
-from qpc_reader import QPCBlockBase, QPCBlock
+from qpc_reader import QPCBlockRoot, QPCBlock
 from qpc_generator_handler import GENERATOR_PATHS, GENERATOR_LIST
 from qpc_logging import verbose
 import qpc_parser
@@ -294,8 +294,8 @@ def _check_files(project_dir, hash_file_list, file_list, project_def_list: dict 
         return False
     for file_block in hash_file_list:
         hash_path = file_block.get_item_values("hash_path")[0]
-        folder = file_block.get_item_values("folder")
-        folder = folder[0] if folder else ""
+        hash_folder = file_block.get_item_values("folder")
+        hash_folder = hash_folder[0] if hash_folder else ""
         dependency_hash = file_block.get_item_values("dependency_hash")
         dependency_hash = dependency_hash[0] if dependency_hash else ""
         
@@ -308,10 +308,14 @@ def _check_files(project_dir, hash_file_list, file_list, project_def_list: dict 
             verbose("New project added: " + file_block.key)
             return False
         
-        elif folder and project_def_list:
+        elif hash_folder and project_def_list:
             for project_def in project_def_list:
                 if file_block.key == project_def.path:
-                    if folder != "/".join(project_def_list[project_def]):
+                    folder = "/".join(project_def_list[project_def])
+                    if hash_folder != folder:
+                        # uh, what if this generator doesn't use folders
+                        verbose(f"Project Folder Path Changed on \"{file_block.key}\":\n"
+                                f"\"{hash_folder}\" -> \"{folder}\"")
                         return False
                     break
 
@@ -396,7 +400,7 @@ def get_project_dependencies(project_path: str, recurse: bool = False) -> list:
 
 
 def write_project_hash(project_path: str, project: qpc_project.ProjectContainer, generators: list) -> None:
-    base_block = QPCBlockBase(project_path)
+    base_block = QPCBlockRoot(project_path)
     
     _write_hash_commands(base_block, project.out_dir)
     
@@ -424,11 +428,12 @@ def write_project_hash(project_path: str, project: qpc_project.ProjectContainer,
         [dependencies_block.add_item(script_path, None) for script_path in project.dependencies]
 
     with open(get_hash_file_path(project_path), mode="w", encoding="utf-8") as hash_file:
+        # hash_file.write(base_block.to_string(0, True, True))
         hash_file.write(base_block.to_string(True, True))
 
 
 def write_master_file_hash(project_path: str, base_info, platforms: list, generator_path: str, out_dir: str = ""):
-    base_block = QPCBlockBase(project_path)
+    base_block = QPCBlockRoot(project_path)
     
     _write_hash_commands(base_block, out_dir, True)
     
@@ -446,6 +451,9 @@ def write_master_file_hash(project_path: str, base_info, platforms: list, genera
     
     for info_platform in info_list:
         for project_def in info_platform.projects:
+            if project_def.path not in base_info.project_hashes:
+                continue
+                
             folder = "/".join(info_platform.project_folders[project_def.name])
             
             script = files.add_item(project_def.path, [])
@@ -467,7 +475,7 @@ def write_master_file_hash(project_path: str, base_info, platforms: list, genera
         hash_file.write(base_block.to_string(True, True))
         
         
-def _write_hash_commands(base_block: QPCBlockBase, out_dir: str = "", master_file: bool = False) -> None:
+def _write_hash_commands(base_block: QPCBlockRoot, out_dir: str = "", master_file: bool = False) -> None:
     commands = base_block.add_item("commands", [])
     commands.add_item("working_dir", os.getcwd().replace('\\', '/') + "/" + os.path.split(base_block.file_path)[0])
     commands.add_item("out_dir", out_dir.replace('\\', '/'))
@@ -481,7 +489,7 @@ def _write_hash_commands(base_block: QPCBlockBase, out_dir: str = "", master_fil
         commands.add_item("qpc_py_count", str(len(QPC_BASE_HASHES)))
        
         
-def _write_hash_paths(base_block: QPCBlockBase, hash_file_paths: dict):
+def _write_hash_paths(base_block: QPCBlockRoot, hash_file_paths: dict):
     if hash_file_paths:
         files = base_block.add_item("files", [])
         [files.add_item(hash_path, script_path) for script_path, hash_path in hash_file_paths.items()]

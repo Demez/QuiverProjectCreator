@@ -16,17 +16,20 @@ def posix_path(string: str) -> str:
 COND_OPERATORS = compile('(\\(|\\)|\\|\\||\\&\\&|>=|<=|==|!=|>|<)')
 
 
-class QPCBlockBase:
-    def __init__(self, file_path: str = ""):
-        self.file_path = file_path
-        self.items = []
+class QPCBlock:
+    def __init__(self, parent: QPCBlock, key: str, values: List[str] = None, condition: str = "", line_num: int = 0):
+        self.parent: QPCBlock = parent
+        self.items: List[QPCBlock] = []
+        self.key: str = key
+        self.values: List[str] = self._values_check(values)
+        self.condition: str = condition
+        self.line_num: int = line_num
     
-    # temp stuff until i setup the rest for this later
     def __iter__(self):
         return self.items.__iter__()
     
-    def __getitem__(self, item):
-        return self.items[item]
+    def __getitem__(self, index):
+        return self.items[index]
     
     def extend(self, item):
         self.items.extend(item)
@@ -40,98 +43,7 @@ class QPCBlockBase:
     def index(self, item):
         self.items.index(item)
     
-    def to_string(self, quote_keys=False, quote_values=False, break_multi_value=False, break_on_key=False):
-        final_string = ""
-        for item in self.items:
-            final_string += item.to_string(0, quote_keys, quote_values, break_multi_value, break_on_key) + "\n"
-        return final_string
-    
-    def add_item(self, key: str, values: list, condition: str = "", line_num: int = 0):
-        if type(values) == str:
-            values = [values]
-        sub_qpc = QPCBlock(self, key, values, condition, file_path=self.file_path, line_num=line_num)
-        self.items.append(sub_qpc)
-        return sub_qpc
-    
-    def add_item_index(self, index: int, key: str, values: list, condition: str = "", line_num: int = 0):
-        sub_qpc = QPCBlock(self, key, values, condition, file_path=self.file_path, line_num=line_num)
-        self.items.insert(index, sub_qpc)
-        return sub_qpc
-    
-    def get_item(self, item_key):
-        for item in self.items:
-            if item.key == item_key:
-                return item
-        return None
-    
-    def get_item_values(self, item_key) -> list:
-        for item in self.items:
-            if item.key == item_key:
-                return item.values
-        return []
-    
-    def get_items(self, item_key) -> List[QPCBlock]:
-        items = []
-        for item in self.items:
-            if item.key == item_key:
-                items.append(item)
-        return items
-    
-    def get_items_cond(self, macros: dict) -> List[QPCBlock]:
-        items: list = []
-        for item in self.items:
-            if solve_condition(self, item.condition, macros):
-                items.append(item)
-        return items
-    
-    def get_item_keys_condition(self, macros: dict) -> List[QPCBlock]:
-        items = []
-        for item in self.items:
-            if solve_condition(self, item.condition, macros):
-                items.append(item.key)
-        return items
-    
-    def get_item_values_condition(self, macros: dict, key: str = "") -> List[QPCBlock]:
-        items = []
-        for item in self.items:
-            if solve_condition(self, item.condition, macros):
-                if not key or key == item.key:
-                    items.extend(item.values)
-        return items
-    
-    def get_item_list_condition(self, macros: dict) -> List[QPCBlock]:
-        items = []
-        for item in self.items:
-            if solve_condition(self, item.condition, macros):
-                items.extend([item.key, *item.values])
-        return items
-    
-    def get_keys_in_items(self):
-        return [value.key for value in self.items]
-    
-    def get_item_index(self, qpc_item: QPCBlock):
-        try:
-            return self.items.index(qpc_item)
-        except IndexError:
-            return None
-        
-    def get_file_name(self) -> str:
-        return os.path.basename(self.file_path)
-        
-    def print_info(self):
-        print("unfinished qpc_reader.py QPCBlockBase.print_info()")
-
-
-class QPCBlock(QPCBlockBase):
-    def __init__(self, parent, key, values, condition: str = "", file_path: str = "", line_num: int = 0):
-        super().__init__(file_path)
-        self.parent = parent
-        self.key = key
-        self.values = values
-        self.condition = condition
-        self.line_num = line_num
-    
-    def to_string(self, depth=0, quote_keys=False, quote_values=False, break_multi_value=False, break_on_key=False):
+    def to_string(self, quote_keys=False, quote_values=False, break_multi_value=False, break_on_key=False, depth=0):
         indent = "{0}".format(depth * '\t')
         index = self.parent.items.index(self)
         
@@ -148,14 +60,21 @@ class QPCBlock(QPCBlockBase):
         if self.values:
             for value_index, value in enumerate(self.values):
                 if quote_values:
+                    # we are adding quotes to this anyway, so just escape all existing quotes
                     formatted_value = value.replace("'", "\\'").replace('"', '\\"')
                 else:
                     formatted_value = value.replace("'", "\\'")
                     if formatted_value:
-                        formatted_value = formatted_value[0] + \
-                                          formatted_value[1:-1].replace('"', '\\"') + \
-                                          formatted_value[-1]
-                
+                        if len(value) > 1:
+                            # if we already have quotes at the ends of the the value, do not escape those quotes
+                            formatted_value = formatted_value[0] + \
+                                                  formatted_value[1:-1].replace('"', '\\"') + \
+                                                  formatted_value[-1]
+                        else:
+                            # someone could do something weird with this and just have it be a single quote, right?
+                            # that single quote would need to be escaped
+                            formatted_value.replace('"', '\\"')
+                            
                 if quote_values:
                     string += " \"{0}\"".format(formatted_value)
                 else:
@@ -174,7 +93,7 @@ class QPCBlock(QPCBlockBase):
             
             string += "\n" + indent + "{\n"
             for item in self.items:
-                string += item.to_string(depth + 1, quote_keys, quote_values, break_multi_value, break_on_key) + "\n"
+                string += item.to_string(quote_keys, quote_values, break_multi_value, break_on_key, depth + 1) + "\n"
             string += indent + "}"
             
             if index < len(self.parent.items) - 1:
@@ -198,10 +117,120 @@ class QPCBlock(QPCBlockBase):
         warning(self.get_file_info(), message)
         
     def get_file_info(self) -> str:
-        return f"File \"{self.file_path}\" : Line {str(self.line_num)} : Key \"{self.key}\""
+        return f"File \"{self.get_file_path()}\" : Line {str(self.line_num)} : Key \"{self.key}\""
     
     def print_info(self):
         print(self.get_file_info() + " this should not be called anymore")
+        
+    @staticmethod
+    def _values_check(values) -> List[str]:
+        if type(values) == str:
+            return [values]
+        elif values is None:
+            return []
+        else:
+            return values
+        
+    def move_item(self, item: QPCBlock):
+        self.items.append(item)
+        if item.parent:
+            item.parent.remove(item)
+        item.parent = self
+
+    def add_item(self, key: str, values: List[str] = None, condition: str = "", line_num: int = 0) -> QPCBlock:
+        values = self._values_check(values)
+        sub_qpc = QPCBlock(self, key, values, condition, line_num=line_num)
+        self.items.append(sub_qpc)
+        return sub_qpc
+
+    def add_item_index(self, index: int, key: str, values: List[str] = None, condition: str = "", line_num: int = 0) -> QPCBlock:
+        values = self._values_check(values)
+        sub_qpc = QPCBlock(self, key, values, condition, line_num=line_num)
+        self.items.insert(index, sub_qpc)
+        return sub_qpc
+
+    def get_item(self, item_key) -> QPCBlock:
+        for item in self.items:
+            if item.key == item_key:
+                return item
+        return None
+
+    def get_item_values(self, item_key) -> List[str]:
+        for item in self.items:
+            if item.key == item_key:
+                return item.values
+        return []
+
+    def get_items(self, item_key) -> List[QPCBlock]:
+        items: List[QPCBlock] = []
+        for item in self.items:
+            if item.key == item_key:
+                items.append(item)
+        return items
+
+    def get_items_cond(self, macros: dict) -> List[QPCBlock]:
+        items: List[QPCBlock] = []
+        for item in self.items:
+            if solve_condition(self, item.condition, macros):
+                items.append(item)
+        return items
+
+    def get_item_keys_condition(self, macros: dict) -> List[str]:
+        items: List[str] = []
+        for item in self.items:
+            if solve_condition(self, item.condition, macros):
+                items.append(item.key)
+        return items
+
+    def get_item_values_condition(self, macros: dict, key: str = "") -> List[str]:
+        items: List[str] = []
+        for item in self.items:
+            if solve_condition(self, item.condition, macros):
+                if not key or key == item.key:
+                    items.extend(item.values)
+        return items
+
+    def get_item_list_condition(self, macros: dict) -> List[QPCBlock]:
+        items = []
+        for item in self.items:
+            if solve_condition(self, item.condition, macros):
+                items.extend([item.key, *item.values])
+        return items
+
+    def get_keys_in_items(self):
+        return [value.key for value in self.items]
+
+    def get_item_index(self, qpc_item: QPCBlock):
+        try:
+            return self.items.index(qpc_item)
+        except IndexError:
+            return None
+
+    def get_root(self) -> QPCBlockRoot:
+        return self.parent.get_root()
+
+    def get_file_path(self) -> str:
+        return self.get_root().file_path
+
+    def get_file_name(self) -> str:
+        return os.path.basename(self.get_root().file_path)
+
+
+# tbh, this "base" class is pretty stupid and probably useless
+# this should be like a "root" class
+class QPCBlockRoot(QPCBlock):
+    def __init__(self, file_path: str = ""):
+        super().__init__(self, "", [])
+        self.file_path = file_path
+    
+    def to_string(self, quote_keys=False, quote_values=False, break_multi_value=False, break_on_key=False, depth=0):
+        final_string = ""
+        for item in self.items:
+            final_string += item.to_string(quote_keys, quote_values, break_multi_value, break_on_key, 0) + "\n"
+        return final_string
+    
+    def get_root(self) -> QPCBlockRoot:
+        return self
 
 
 def replace_macros_condition(split_string: List[str], macros):
@@ -233,7 +262,7 @@ def _print_solved_condition(split_string: list, result: int):
     # verbose_color(Color.BLUE, f"Solved Condition: \"[{' '.join(split_string)}]\" -> \"{result}\"")
 
 
-def solve_condition(qpcblock: QPCBlockBase, condition: str, macros: dict) -> int:
+def solve_condition(qpcblock: QPCBlock, condition: str, macros: dict) -> int:
     if not condition:
         return True
     
@@ -336,10 +365,10 @@ def add_spacing_to_condition(cond):
     return cond
 
 
-def read_file(path: str, keep_quotes: bool = False, allow_escapes: bool = True, multiline_quotes: bool = False) -> QPCBlockBase:
+def read_file(path: str, keep_quotes: bool = False, allow_escapes: bool = True, multiline_quotes: bool = False) -> QPCBlockRoot:
     path = posix_path(path)
     lexer = QPCLexer(path, keep_quotes, allow_escapes, multiline_quotes)
-    qpc_file = QPCBlockBase(path)
+    qpc_file = QPCBlockRoot(path)
     path = posix_path(os.getcwd() + "/" + path)
     parse_recursive(lexer, qpc_file, path)
     return qpc_file
@@ -471,6 +500,7 @@ class QPCLexer:
             
             elif char == '/' and self.peek_char() in self.chars_comment:
                 self.skip_comment()
+                continue
             
             else:
                 if self.file[self.char_num] in self.chars_cond:
@@ -526,6 +556,7 @@ class QPCLexer:
             
             elif char == '/' and self.peek_char() in self.chars_comment:
                 self.skip_comment()
+                continue
             
             else:
                 string += self.file[self.char_num]
@@ -548,6 +579,7 @@ class QPCLexer:
             
             elif char == '/' and self.peek_char() in self.chars_comment:
                 self.skip_comment()
+                continue
             
             elif char == '\n':
                 self.next_line()
@@ -586,6 +618,7 @@ class QPCLexer:
             
             elif char == '/' and self.peek_char() in self.chars_comment:
                 self.skip_comment()
+                continue
             
             else:
                 condition += self.file[self.char_num]
@@ -602,7 +635,6 @@ class QPCLexer:
             while self.char_num < self.file_len:
                 self.next_char()
                 if self.file[self.char_num] == "\n":
-                    self.next_line()
                     break
         
         elif char == '*':
