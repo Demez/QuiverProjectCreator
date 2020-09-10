@@ -351,6 +351,13 @@ class ProjectPass:
         
     def get_glob_files(self) -> set:
         return self._glob_files
+    
+    def get_headers(self) -> list:
+        headers = []
+        for file in self.files:
+            if os.path.splitext(file)[1] in {".h", ".hh", ".hxx", ".hpp"}:
+                headers.append(file)
+        return headers
 
 
 class ProjectContainer:
@@ -886,8 +893,6 @@ def split_folders(path_list):
     full_folder_paths = set()
     
     for folder_path in set(path_list):
-        # uhhhhhh
-        # current_path = list(os.path.split(folder_path)[0].split("/"))
         current_path = list(os.path.split(folder_path)[0].split("/"))
         if not current_path:
             continue
@@ -909,7 +914,10 @@ def replace_macros_list(macros, *value_list):
 
 def replace_macros(string: str, macros: Dict[str, str]):
     count = string.count("$")
-    if count > 0 and count % 2 == 0:
+    # if count > 0 and count % 2 == 0:
+    # maybe allow optional escaping? would use on vs macros - \$()
+    # just so notepad++ doesn't shit itself with it's syntax highlighting
+    if count > 0:
         potential_macros = [macro for macro in macros if macro in string]
         while potential_macros:
             # use the longest length macros to shortest
@@ -918,8 +926,9 @@ def replace_macros(string: str, macros: Dict[str, str]):
             if best_macro_token in string:
                 string = string.replace(best_macro_token, macros[best_macro])
             potential_macros.remove(best_macro)
-            
-    elif "$" in string:
+
+    # actually don't do this, remember visual studio macros use $()
+    # if "$" in string:
         # great, now i need to pass in the qpc block just for a good warning message here, there has to be a better way
-        warning(f"Macro in string \"{string}\" does not close!! (sorry for shitty warning, just use -v for now)")
+        # warning(f"Macro in string \"{string}\" does not close!! (sorry for shitty warning, just use -v for now)")
     return string
