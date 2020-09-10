@@ -3,6 +3,7 @@ import qpc_base as base
 import qpc_reader as reader
 import argparse
 import re
+from qpc_logging import _print_severity, Severity
 
 # this file is awful, good luck adding to it
 # some random notes:
@@ -16,92 +17,24 @@ import re
 #   instead, it modifies the project blocks and writes them
 
 
-# TODO: add dependencies here, they will have to be hard coded, but i could care less
+def warning_no_line(*text):
+    _print_severity(Severity.WARNING, "\n          ", *text)
+
+
+def warning(*text):
+    warning_no_line(*text[:-1], text[-1] + "\n")
 
 
 # Conversion stuff
 EVENTS = {"pre_link", "pre_build", "post_build"}
 
 
-# HARDCODING
-# shut up i know hardcoded bad, but i really don't feel like adding something to read from a file right now for this
-# that can be done later, without changing any code below
-# -----------------------------------------
-# check if any libraries are in this list
-# if so, add the name here to dependencies
-# also all the paths are wrriten to whatever file is called default.qpc
-LIBS_TO_DEPENDENCIES_LAZY = {
-    "tier0":                    "tier0/tier0.qpc",
-    "tier1":                    "tier1/tier1.qpc",
-    "tier2":                    "tier2/tier2.qpc",
-    "tier3":                    "tier3/tier3.qpc",
-    "vstdlib":                  "vstdlib/vstdlib.qpc",
-    
-    "jpeglib":                  "thirdparty/jpeglib/jpeglib.qpc",
-    "bzip2":                    "thirdparty/bzip2/bzip2.qpc",
-    "lzma":                     "thirdparty/lzma/lzma.qpc",
-    "lua":                      "thirdparty/lua-5.1.1/lua.qpc",
-    "libspeex":                 "thirdparty/libspeex/libspeex.qpc",
-    
-    "vgui_controls":            "vgui2/vgui_controls/vgui_controls.qpc",
-    "vgui_surfacelib":          "vgui2/vgui_surfacelib/vgui_surfacelib.qpc",
-    "matsys_controls":          "vgui2/matsys_controls/matsys_controls.qpc",
-    "dme_controls":             "vgui2/dme_controls/dme_controls.qpc",
-    
-    "mxtoolkitwin32":           "utils/mxtk/mxtoolkitwin32.qpc",
-    "nvtristriplib":            "utils/nvtristriplib/nvtristriplib.qpc",
-    "nvtristrip":               "utils/nvtristriplib/nvtristriplib.qpc",
-    "vmpi":                     "utils/vmpi/vmpi.qpc",
-    "libmad":                   "utils/libmad/libmad.qpc",
-    
-    "bitmap":                   "bitmap/bitmap.qpc",
-    "bitmap_byteswap":          "bitmap/bitmap_byteswap.qpc",
-    "shaderlib":                "materialsystem/shaderlib/shaderlib.qpc",
-    "mathlib":                  "mathlib/mathlib.qpc",
-    "mathlib_extended":         "mathlib/mathlib_extended.qpc",
-    "fgdlib":                   "fgdlib/fgdlib.qpc",
-    "raytrace":                 "raytrace/raytrace.qpc",
-    "appframework":             "appframework/appframework.qpc",
-    "movieobjects":             "movieobjects/movieobjects.qpc",
-    "dmserializers":            "dmserializers/dmserializers.qpc",
-    "datamodel":                "datamodel/datamodel.qpc",
-    "choreoobjects":            "choreoobjects/choreoobjects.qpc",
-    "unitlib":                  "unitlib/unitlib.qpc",
-    "dmxloader":                "dmxloader/dmxloader.qpc",
-    "particles":                "particles/particles.qpc",
-    "vtf":                      "vtf/vtf.qpc",
-    
-    "bonesetup":                "bonesetup/bonesetup.qpc",
-    "toolutils":                "toolutils/toolutils.qpc",
-    "togl":                     "togl/togl.qpc",
-    "vpklib":                   "vpklib/vpklib.qpc",
-    "mdlobjects":               "mdlobjects/mdlobjects.qpc",
-    "fow":                      "fow/fow.qpc",
-    "videocfg":                 "videocfg/videocfg.qpc",
-    "resourcefile":             "resourcefile/resourcefile.qpc",
-    "responserules_runtime":    "responserules/runtime/responserules_runtime.qpc",
-    "materialobjects":          "materialobjects/materialobjects.qpc",
-    "matchmakingbase":          "matchmaking/matchmaking_base.qpc",
-    "matchmakingbase_ds":       "matchmaking/matchmaking_base_ds.qpc",
-    "zlib":                     "thirdparty/zlib-1.2.5/zlib.vpc",
-}
-
-
 MACRO_CONVERT = {
-    "SRCDIR": "SRC_DIR",
-    "OUTBINDIR": "OUT_BIN_DIR",
-    "OUTBINNAME": "OUT_BIN_NAME",
-    "OUTLIBDIR": "OUT_LIB_DIR",
-    "OUTLIBNAME": "OUT_LIB_NAME",
-    "OUTDLLEXT": "OUT_DLL_EXT",
     "PROJECTNAME": "PROJECT_NAME",
     "PROJNAME": "PROJECT_NAME",
-    "LOADADDRESS_DEVELOPMENT": "LOADADDRESS_DEVELOPMENT",
-    "LOADADDRESS_RETAIL": "LOADADDRESS_RETAIL",
-    # "PLATSUBDIR": "PLATFORM",
     
-    "_DLL_EXT": "_BIN_EXT",
-    "_EXE_EXT": "_APP_EXT",
+    "_DLL_EXT": "EXT_DLL",
+    "_EXE_EXT": "EXT_APP",
     
     "OUTLIBCOMMONDIR": "LIBCOMMON",
     
@@ -147,33 +80,33 @@ OPTION_NAME_CONVERT_DICT = {
     "$targetname": "out_name",
     "$outputdirectory": "out_dir",
     "$intermediatedirectory": "build_dir",
-    "$configurationtype": "configuration_type",
+    "$configurationtype": "config_type",
     
-    "$additionalincludedirectories": "include_directories",
-    "$additionallibrarydirectories": "library_directories",
-    "$additionalprojectdependencies": "dependencies",
+    "$additionalincludedirectories": "inc_dirs",
+    "$additionallibrarydirectories": "lib_dirs",
+    "$additionalprojectdependencies": "requires",
     
-    "$additionaldependencies": "libraries",
-    "$systemframeworks": "libraries",
-    "$systemlibraries": "libraries",
+    "$additionaldependencies": "libs",
+    "$systemframeworks": "libs",
+    "$systemlibraries": "libs",
     
     "$compileas": "language",
     "$platformtoolset": "compile",
     
-    "$preprocessordefinitions": "preprocessor_definitions",
-    "$characterset": "preprocessor_definitions",
+    "$preprocessordefinitions": "defines",
+    "$characterset": "defines",
     
     "$commandline": "command_line",
-    "$excludedfrombuild": "use_in_build",
+    "$excludedfrombuild": "build",
     
-    "$create/useprecompiledheader": "precompiled_header",
-    "$create/usepchthroughfile": "precompiled_header_file",
-    "$precompiledheaderfile": "precompiled_header_out_file",
-    "$precompiledheaderoutputfile": "precompiled_header_out_file",
+    "$create/useprecompiledheader": "pch",
+    "$create/usepchthroughfile": "pch_file",
+    "$precompiledheaderfile": "pch_out",
+    "$precompiledheaderoutputfile": "pch_out",
     
-    "$importlibrary": "import_library",
-    "$ignoreimportlibrary": "ignore_import_library",
-    "$ignorespecificlibrary": "ignore_libraries",
+    "$importlibrary": "import_lib",
+    "$ignoreimportlibrary": "ignore_import_lib",
+    "$ignorespecificlibrary": "ignore_libs",
     
     "$outputfile": "output_file",
     "$generateprogramdatabasefile": "debug_file",
@@ -341,11 +274,9 @@ CMD_CONVERT = {
 
 CONFIG_GROUP_CONVERT_DICT = {
     "$compileas": "general",
-    "$additionalincludedirectories": "general",
-    "$additionallibrarydirectories": "general",
     
     "$characterset": "compile",
-    "$outputfile": "linker",
+    "$outputfile": "link",
 }
 
 # Technically, this should be used for all options, but i made all the option values part of one dict, idk why
@@ -557,6 +488,9 @@ def get_vpc_scripts(root_dir):
                 vgc_paths.append(os.path.join(subdir, file))
     
     return vgc_paths, vpc_paths
+    
+    
+proj_to_groups = set()
 
 
 # you could just read it and then replace the keys directly probably,
@@ -576,7 +510,13 @@ def convert_vgc(vgc_dir, vgc_filename, vgc_project):
         if key in ("$macro", "$conditional", "$project", "$group", "$include"):
             if key in ("$project", "$group"):
                 add_space(key[1:])
-                qpc_base_file.append(key[1:])
+                
+                if key == "$project" and len(project_block.items) > 1:
+                    qpc_base_file.append("group")
+                    proj_to_groups.update(project_block.values)
+                else:
+                    qpc_base_file.append(key[1:])
+                    
                 if project_block.values:
                     qpc_base_file[-1] += ' "' + '" "'.join(project_block.values) + '"'
                 
@@ -627,6 +567,9 @@ def convert_vgc(vgc_dir, vgc_filename, vgc_project):
              "}"
              ]
         )
+
+    for index, line in enumerate(qpc_base_file):
+        qpc_base_file[index] = convert_macro_syntax(line)
     
     # HARDCODING
     if args.no_hardcoding:
@@ -647,6 +590,8 @@ def convert_project_group_recurse(depth, block_items, qpc_base_file):
                 convert_project_group_recurse(depth + 1, item, qpc_base_file)
         else:
             key = convert_macro_casing('"' + sub_block.key.replace("\\", "/").replace(".vpc", ".qpc") + '"')
+            if sub_block.key in proj_to_groups:
+                key = "contains " + key
             qpc_base_file.append(space + key)
             write_condition(sub_block.condition, qpc_base_file)
     return
@@ -670,11 +615,6 @@ def write_project(directory, filename, project_lines, base_file=False):
     with open(abs_path, mode="w", encoding="utf-8") as project_file:
         write_comment_header(project_file, filename)
         project_file.write('\n'.join(project_lines) + "\n")
-
-        # HARDCODING
-        if filename.endswith("default"):
-            dependencies = "\n".join([f'\t"{key}"\t\t\t"{value}"' for key, value in LIBS_TO_DEPENDENCIES_LAZY.items()])
-            project_file.write(f'\ndependency_paths\n{{\n{dependencies}\n}}\n')
     return
 
 
@@ -687,38 +627,38 @@ class Configuration:
             ConfigOption("out_name"),
             ConfigOption("out_dir"),
             ConfigOption("build_dir"),
-            ConfigOption("configuration_type", False, False),
+            ConfigOption("config_type", False, False),
             ConfigOption("language"),
-            ConfigOption("compile"),
-            ConfigOption("include_directories", True),
-            ConfigOption("library_directories", True),
+            ConfigOption("compiler"),
             ConfigOption("options", True, False),
         ]
         
-        compiler = ConfigGroup("compile")
-        compiler.options = [
-            ConfigOption("preprocessor_definitions", True, False),
-            ConfigOption("precompiled_header"),
-            ConfigOption("precompiled_header_file"),
-            ConfigOption("precompiled_header_output_file"),
+        compile_grp = ConfigGroup("compile")
+        compile_grp.options = [
+            ConfigOption("defines", True, False),
+            ConfigOption("inc_dirs", True),
+            ConfigOption("pch"),
+            ConfigOption("pch_file"),
+            ConfigOption("pch_out"),
             ConfigOption("options", True, False),
         ]
         
-        linker = ConfigGroup("linker")
-        linker.options = [
+        link = ConfigGroup("link")
+        link.options = [
             ConfigOption("output_file"),
             ConfigOption("debug_file"),
-            ConfigOption("import_library"),
-            ConfigOption("ignore_import_library"),
-            ConfigOption("libraries", True),
-            ConfigOption("ignore_libraries", True),
+            ConfigOption("import_lib"),
+            ConfigOption("ignore_import_lib"),
+            ConfigOption("libs", True),
+            ConfigOption("ignore_libs", True),
+            ConfigOption("lib_dirs", True),
             ConfigOption("options", True, False),
         ]
         
         self.groups = {
             "general": general.to_dict(),
-            "compile": compiler.to_dict(),
-            "linker": linker.to_dict(),
+            "compile": compile_grp.to_dict(),
+            "link": link.to_dict(),
         }
         
         self.options = {
@@ -811,7 +751,6 @@ class ConfigOption:
                         self.value.append(ConfigOptionValue('"' + value + '"', condition))
         else:
             value = '"' + ''.join(values) + '"'
-            value = value.replace("$PLATSUBDIR", "$PLATFORM")
             
             if self.replace_path_sep:
                 value = value.replace("\\", "/")
@@ -882,6 +821,16 @@ def convert_macro_casing(string: str) -> str:
     return string
 
 
+FIND_MACRO = re.compile(r"\$([A-Z_]\w+)")
+
+
+def convert_macro_syntax(string: str) -> str:
+    if "$" in string:
+        found_macros = FIND_MACRO.split(string)
+        return "$".join(found_macros)
+    return string
+
+
 def convert_vpc(vpc_dir, vpc_filename, vpc_project):
     qpc_project_list = []
     config = Configuration()
@@ -931,7 +880,7 @@ def convert_vpc(vpc_dir, vpc_filename, vpc_project):
             pass
         
         else:
-            project_block.warning("Unknown Key: ")
+            warning(project_block.get_file_info(), "Unknown Key: ")
     
     if libraries:
         # if not qpc_project_list[-1].endswith("\n") and qpc_project_list[-1] != "":
@@ -941,22 +890,17 @@ def convert_vpc(vpc_dir, vpc_filename, vpc_project):
         
     qpc_project_list = write_configuration(config, "", qpc_project_list)
     
-    for library in config.groups["linker"]["libraries"].value:
+    for library in config.groups["link"]["libs"].value:
         if library.value.startswith("- "):
             continue
         value = library.value[1:-1]
         if value.startswith("$LIBPUBLIC/") or value.startswith("$LIBCOMMON/"):
             value = value[11:]
-            
-        if value in LIBS_TO_DEPENDENCIES_LAZY:
-            dependencies[value] = library.condition
-        elif "bzip2" in value:
-            dependencies["bzip2"] = library.condition
         
     if dependencies:
         # dependencies = "\n".join([f'\t"{key}"\t\t\t"{value}"' for key, value in LIBS_TO_DEPENDENCIES_LAZY.items()])
         # project_file.write(f'\ndependency_paths\n{{\n{dependencies}\n}}\n')
-        qpc_project_list.append("\ndependencies\n{")
+        qpc_project_list.append("\nrequires\n{")
         for dependency, condition in dependencies.items():
             string = f'\t"{dependency}"'
             if condition:
@@ -974,7 +918,8 @@ def convert_vpc(vpc_dir, vpc_filename, vpc_project):
         return
     
     for index, line in enumerate(qpc_project_list):
-        qpc_project_list[index] = convert_macro_casing(line)
+        qpc_project_list[index] = convert_macro_syntax(line)
+        qpc_project_list[index] = convert_macro_casing(qpc_project_list[index])
     
     write_project(vpc_dir, vpc_filename, qpc_project_list)
     return
@@ -1041,6 +986,7 @@ def normalize_platform_conditions(cond: str) -> str:
         
         # replace OSX64 with MACOS
         parsed_cond = _replace_name(parsed_cond, "$MACOS", "$OSX64")
+        parsed_cond = _replace_name(parsed_cond, "$MACOS", "$OSX")
         
         parsed_cond = _remove_platform_archs(parsed_cond, "$LINUX32", "$POSIX", "$LINUX")
         parsed_cond = _remove_platform_archs(parsed_cond, "$LINUX64", "$POSIX", "$LINUX")
@@ -1416,8 +1362,8 @@ def write_file(file_block: reader.QPCBlock, qpc_project: list, indent: str):
         qpc_project.extend(config_lines)
 
 
-def add_libs_to_config(libraries_block_list, config):
-    config_option = config.groups["linker"]["libraries"]
+def add_libs_to_config(libraries_block_list, config: Configuration):
+    config_option = config.groups["link"]["libs"]
     library_paths = []
     
     # adds a gap in-between already added libraries and these
@@ -1450,13 +1396,13 @@ def add_libs_to_config(libraries_block_list, config):
     # might be a bad idea
     if library_paths:
         for lib_path in library_paths:
-            config.groups["general"]["library_directories"].add_value('"' + os.path.splitext(lib_path)[0] + '"', None)
+            config.groups["link"]["lib_dirs"].add_value('"' + os.path.splitext(lib_path)[0] + '"', None)
 
 
 # might be skipping this if it has a condition?
 # maybe return any paths found and add that into the configuration?
 def write_libraries(libraries_block, linker_libraries, qpc_project, macros):
-    qpc_project.append("libraries")
+    qpc_project.append("libs")
     if libraries_block:
         write_condition(libraries_block.condition, qpc_project)
     qpc_project.append("{")
@@ -1628,10 +1574,8 @@ def convert_config_group_name(group_name: str) -> str:
         return "general"
     elif group_name == "$compiler":
         return "compile"
-    elif group_name == "$linker":
-        return "linker"
-    elif group_name == "$librarian":
-        return "linker"
+    elif group_name in {"$linker", "$librarian"}:
+        return "link"
     elif group_name == "$prelinkevent":
         return "pre_link"
     elif group_name == "$prebuildevent":
@@ -1772,7 +1716,7 @@ def write_config_group(config_group: dict, indent: str) -> list:
         
 
 def write_configuration(config: Configuration, indent: str, qpc_project_list: list):
-    starting_config_lines = [indent + "configuration", indent + "{"]
+    starting_config_lines = [indent + "config", indent + "{"]
     config_lines = []
     
     for config_group, config_option_dict in config.groups.items():
