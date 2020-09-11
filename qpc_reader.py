@@ -560,9 +560,9 @@ class QPCLexer:
             
             else:
                 string += self.file[self.char_num]
-            
+                
             self.next_char()
-        
+            
         return string, line_num
     
     def next_symbol(self):
@@ -642,7 +642,7 @@ class QPCLexer:
                 char = self.file[self.char_num]
                 
                 if char == '*' and self.peek_char() == '/':
-                    self.next_char()
+                    self.next_char(2)
                     break
                 
                 if char == "\n":
