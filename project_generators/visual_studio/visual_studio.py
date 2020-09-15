@@ -128,7 +128,8 @@ class VisualStudioGenerator(BaseProjectGenerator):
         
             # Write the folders as base_info because vstudio dumb
             # might have to make this a project def, idk
-            for folder_name, folder_uuid in self.project_folder_uuid.items():
+            for full_folder, folder_uuid in self.project_folder_uuid.items():
+                folder_name = os.path.basename(full_folder)
                 sln_write_project_line(self.solution_file, folder_name, folder_name, self.filter_uuid, folder_uuid)
                 self.solution_file.write("EndProject\n")
         
@@ -166,9 +167,12 @@ class VisualStudioGenerator(BaseProjectGenerator):
             
                 # get each individual folder (and individual sub folders),
                 # and set the project uuid to that folder uuid
-                for folder_index, project_folder in enumerate(info_win.project_folders[project_def.name]):
-                    if info_win.project_folders[project_def.name][-(folder_index + 1)] in self.project_folder_uuid:
-                        folder_uuid = self.project_folder_uuid[project_folder]
+                for i, folder_prefix in enumerate(info_win.project_folders[project_def.name]):
+                    # folder_prefix = os.path.split(folder)[0]
+                    sub_folder = info_win.project_folders[project_def.name][-(i + 1)]
+                    full_folder = folder_prefix + "/" + sub_folder if folder_prefix else sub_folder
+                    if full_folder in self.project_folder_uuid:
+                        folder_uuid = self.project_folder_uuid[full_folder]
                         global_folder_uuid_dict[self.project_uuid_dict[project_def.name]] = folder_uuid
             
                 # sub folders, i have no clue how this works anymore and im not touching it unless i have to
@@ -180,10 +184,11 @@ class VisualStudioGenerator(BaseProjectGenerator):
                             project_folder = info_win.project_folders[project_def.name][folder_index - 1]
                         except IndexError:
                             break
-                    
+                        
+                        full_folder = "/".join([project_folder, project_sub_folder])
                         # add the folder if it wasn't added here yet
-                        if project_sub_folder in self.project_folder_uuid:
-                            sub_folder_uuid = self.project_folder_uuid[project_sub_folder]
+                        if full_folder in self.project_folder_uuid:
+                            sub_folder_uuid = self.project_folder_uuid[full_folder]
                             folder_uuid = self.project_folder_uuid[project_folder]
                             if sub_folder_uuid not in global_folder_uuid_dict:
                                 global_folder_uuid_dict[sub_folder_uuid] = folder_uuid
@@ -195,9 +200,10 @@ class VisualStudioGenerator(BaseProjectGenerator):
 
     def sln_project_def_loop(self, project_def, info, info_win):
         for folder_list in info_win.project_folders.values():
-            for folder in folder_list:
-                if folder not in self.project_folder_uuid:
-                    self.project_folder_uuid[folder] = make_uuid()
+            for index, folder in enumerate(folder_list):
+                full_folder = "/".join(folder_list[:index + 1])
+                if full_folder not in self.project_folder_uuid:
+                    self.project_folder_uuid[full_folder] = make_uuid()
                 
         if project_def.path in self.out_dir_dict:
             out_dir = self.out_dir_dict[project_def.path]
@@ -1040,8 +1046,8 @@ def create_vcxproj_user(project: ProjectContainer, project_passes: List[ProjectP
         vcxproj.set("xmlns", "http://schemas.microsoft.com/developer/msbuild/2003")
     
     for project_pass in project_passes:
-        condition = make_cfg_plat_cond(project_pass.config_name, project_pass.arch)
-        create_debug_group(vcxproj, project_pass.config.debug, condition)
+        condition = make_cfg_plat_cond(project_pass.cfg_name, project_pass.arch)
+        create_debug_group(vcxproj, project_pass.cfg.debug, condition)
     
     return vcxproj
 
