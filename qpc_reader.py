@@ -244,7 +244,10 @@ def replace_macros_condition(split_string: List[str], macros):
         
         if item in macros:
             if flip_value:
-                split_string[index] = str(int(not macros[item]))
+                try:
+                    split_string[index] = str(int(not int(macros[item])))
+                except ValueError:
+                    split_string[index] = str(int(not macros[item]))
             else:
                 split_string[index] = macros[item]
         
