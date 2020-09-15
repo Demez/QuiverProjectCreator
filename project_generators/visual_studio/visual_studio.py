@@ -29,8 +29,8 @@ class VisualStudioGenerator(BaseProjectGenerator):
         
         self.cpp_uuid = "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}"
         self.filter_uuid = "{2150E333-8FDC-42A3-9474-1A3956D46DE8}"
-        self.project_uuid_dict = {}
-        self.project_folder_uuid = {}
+        self.proj_uuids = {}
+        self.folder_uuids = {}
         self.out_dir_dict = {}
         self.solution_file = None
 
@@ -121,14 +121,14 @@ class VisualStudioGenerator(BaseProjectGenerator):
         with open(master_file_path, "w", encoding="utf-8") as self.solution_file:
             write_solution_header(self.solution_file)
 
-            self.project_uuid_dict = {}
-            self.project_folder_uuid = {}
+            self.proj_uuids = {}  # project_name: uuid of project - client_hl2: {UUID}
+            self.folder_uuids = {}  # folder_name: uuid of folder - Game/Audio: {UUID}
 
             [self.sln_project_def_loop(project_def, info, info_win) for project_def in info_win.projects]
         
-            # Write the folders as base_info because vstudio dumb
+            # Write the folders as projects because vstudio dumb
             # might have to make this a project def, idk
-            for full_folder, folder_uuid in self.project_folder_uuid.items():
+            for full_folder, folder_uuid in self.folder_uuids.items():
                 folder_name = os.path.basename(full_folder)
                 sln_write_project_line(self.solution_file, folder_name, folder_name, self.filter_uuid, folder_uuid)
                 self.solution_file.write("EndProject\n")
@@ -151,7 +151,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         
             # ProjectConfigurationPlatforms
             proj_config_plat = {}
-            for project_uuid in self.project_uuid_dict.values():
+            for project_uuid in self.proj_uuids.values():
                 for config_plat in config_plat_list:
                     proj_config_plat[project_uuid + "." + config_plat + ".ActiveCfg"] = config_plat
                     # TODO: maybe get some setting for a default project somehow, i think the default is set here
@@ -160,50 +160,39 @@ class VisualStudioGenerator(BaseProjectGenerator):
             sln_write_section(self.solution_file, "ProjectConfigurationPlatforms", proj_config_plat, True)
         
             # write the project folders
-            global_folder_uuid_dict = {}
+            uuid_assigns = {}
             for project_def in info_win.projects:
-                if project_def.name not in self.project_uuid_dict:
+                if project_def.name not in self.proj_uuids:
                     continue
+                
+                # assign the project uuid to it's folder uuid
+                full_folder = "/".join(info_win.project_folders[project_def.name])
+                if full_folder in self.folder_uuids:
+                    uuid_assigns[self.proj_uuids[project_def.name]] = self.folder_uuids[full_folder]
             
-                # get each individual folder (and individual sub folders),
-                # and set the project uuid to that folder uuid
-                for i, folder_prefix in enumerate(info_win.project_folders[project_def.name]):
-                    # folder_prefix = os.path.split(folder)[0]
-                    sub_folder = info_win.project_folders[project_def.name][-(i + 1)]
-                    full_folder = folder_prefix + "/" + sub_folder if folder_prefix else sub_folder
-                    if full_folder in self.project_folder_uuid:
-                        folder_uuid = self.project_folder_uuid[full_folder]
-                        global_folder_uuid_dict[self.project_uuid_dict[project_def.name]] = folder_uuid
-            
-                # sub folders, i have no clue how this works anymore and im not touching it unless i have to
-                if len(info_win.project_folders[project_def.name]) > 1:
-                    folder_index = -1
-                    while folder_index < len(info_win.project_folders[project_def.name]):
-                        project_sub_folder = info_win.project_folders[project_def.name][folder_index]
-                        try:
-                            project_folder = info_win.project_folders[project_def.name][folder_index - 1]
-                        except IndexError:
-                            break
+                # assign sub folders to their parent folders, if we have any sub folders that is
+                i = len(info_win.project_folders[project_def.name])
+                while i > 1:
+                    path = "/".join(info_win.project_folders[project_def.name][:i])
+                    
+                    sub_folder_uuid = self.folder_uuids[path]
+                    parent_uuid = self.folder_uuids[os.path.split(path)[0]]
+                    
+                    # if the folder was not assigned a parent folder, set it one here
+                    if sub_folder_uuid not in uuid_assigns:
+                        uuid_assigns[sub_folder_uuid] = parent_uuid
                         
-                        full_folder = "/".join([project_folder, project_sub_folder])
-                        # add the folder if it wasn't added here yet
-                        if full_folder in self.project_folder_uuid:
-                            sub_folder_uuid = self.project_folder_uuid[full_folder]
-                            folder_uuid = self.project_folder_uuid[project_folder]
-                            if sub_folder_uuid not in global_folder_uuid_dict:
-                                global_folder_uuid_dict[sub_folder_uuid] = folder_uuid
-                                
-                        folder_index -= 1
+                    i -= 1
         
-            sln_write_section(self.solution_file, "NestedProjects", global_folder_uuid_dict, False)
+            sln_write_section(self.solution_file, "NestedProjects", uuid_assigns, False)
             self.solution_file.write("EndGlobal\n")
 
     def sln_project_def_loop(self, project_def, info, info_win):
         for folder_list in info_win.project_folders.values():
             for index, folder in enumerate(folder_list):
                 full_folder = "/".join(folder_list[:index + 1])
-                if full_folder not in self.project_folder_uuid:
-                    self.project_folder_uuid[full_folder] = make_uuid()
+                if full_folder not in self.folder_uuids:
+                    self.folder_uuids[full_folder] = make_uuid()
                 
         if project_def.path in self.out_dir_dict:
             out_dir = self.out_dir_dict[project_def.path]
@@ -222,7 +211,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
         vcxproj = tree.getroot()
         
         project_name, project_uuid = get_name_and_uuid(vcxproj)
-        self.project_uuid_dict[project_def.name] = project_uuid
+        self.proj_uuids[project_def.name] = project_uuid
         sln_write_project_line(self.solution_file, project_name, vcxproj_path, self.cpp_uuid, project_uuid)
         
         # TODO: add dependencies to the container class and then use that here
