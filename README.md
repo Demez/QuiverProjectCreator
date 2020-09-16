@@ -91,6 +91,12 @@ visual_studio       Create Visual Studio Projects
 makefile            Create Makefiles
 
 compile_commands    Create files in the compile_commands.json format, stored in compile_commands folder
+
+ninja               Create ninja build scripts in build_ninja in the directory qpc is called from (or from --rootdir)
+
+cmake               Create CMakeLists.txt files where the project script is located, also works with multiple in the same folder
+
+vsc                 Create A basic vscode file with paths setup for the compile_commands generator
 ```
 
 You can make your own project generator by looking at [this page on the wiki](https://github.com/quiverteam/QuiverProjectCreator/wiki/Creating-your-own-generator)
