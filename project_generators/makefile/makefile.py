@@ -59,6 +59,8 @@ class MakefileGenerator(BaseProjectGenerator):
         dependency_dict = {}
         wanted_projects = info.get_projects(Platform.LINUX, Platform.MACOS)
         for project_def in wanted_projects:
+            if not project_def.path:
+                continue  # wtf
             out_dir = qpc_hash.get_out_dir(info.project_hashes[project_def.path])
             if out_dir:
                 out_dir_dict[project_def.path] = os.path.relpath(out_dir)
