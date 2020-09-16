@@ -208,7 +208,7 @@ class ProjectPass:
 
     def _add_file_internal(self, folder_list: list, file_path: str, file_block: QPCBlock):
         build = file_block.get_item("build")
-        force_src_file = build and build.solve_condition(self.macros) and build.values and build.values[0] == "true"
+        force_src_file = build and build.solve_condition(self.macros) and build.get_value() == "true"
         if force_src_file or os.path.splitext(file_path)[1] in EXTS_C:
             if not self._check_file_added(file_path, file_block, self.source_files):
                 self.source_files[file_path] = SourceFile(folder_list)
