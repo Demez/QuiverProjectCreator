@@ -44,7 +44,7 @@ class VSCGenerator(BaseProjectGenerator):
         if not project_passes:
             return
 
-        print_color(Color.CYAN, "Adding to Compile Commands: " + project.file_name)
+        print_color(Color.CYAN, "Adding to VSCode Files: " + project.file_name)
 
         for proj_pass in project_passes:
             self.cmd_gen.set_mode(proj_pass.cfg.general.compiler)
