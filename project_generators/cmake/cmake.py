@@ -88,7 +88,7 @@ class CMakeGenerator(BaseProjectGenerator):
             main_cmakelists += "else" if i != 0 else ""
             # NOTE - can't use custom build types with CMAKE_BUILD_TYPE, really sucks
             main_cmakelists += "if( " + \
-                               strequal("CMAKE_BUILD_TYPE", proj.config_name) + " AND " + \
+                               strequal("CMAKE_BUILD_TYPE", proj.cfg_name) + " AND " + \
                                strequal("QPC_PLATFORM", proj.platform.name) + " AND " + \
                                strequal("QPC_ARCH", proj.arch.name) + " )\n"
             
@@ -115,9 +115,9 @@ class CMakeGenerator(BaseProjectGenerator):
         # proj_name = proj.config.general.out_name.upper()
         proj_name = proj.container.file_name.upper()
         
-        self.cmd_gen.set_mode(proj.config.general.compiler)
+        self.cmd_gen.set_mode(proj.cfg.general.compiler)
         
-        if proj.config.general.configuration_type == ConfigType.APPLICATION:
+        if proj.cfg.general.config_type == ConfigType.APPLICATION:
             target = "executable"
         else:
             target = "library"
@@ -125,9 +125,9 @@ class CMakeGenerator(BaseProjectGenerator):
         cmakelists += "\n" + gen_list_option("set", f"{proj_name}_SRC_FILES", *abspathlist(list(proj.source_files)))
         cmakelists += gen_list_option("set", f"{proj_name}_INC_FILES", *abspathlist(proj.get_headers()))
 
-        if proj.config.general.configuration_type == ConfigType.STATIC_LIBRARY:
+        if proj.cfg.general.config_type == ConfigType.STATIC_LIB:
             target_type = " STATIC"
-        elif proj.config.general.configuration_type == ConfigType.DYNAMIC_LIBRARY:
+        elif proj.cfg.general.config_type == ConfigType.DYNAMIC_LIB:
             target_type = " SHARED"
         else:
             target_type = ""
@@ -140,46 +140,46 @@ class CMakeGenerator(BaseProjectGenerator):
                                  "PROPERTIES", "PREFIX", "\"\"")
         
         cmakelists += gen_option("\tset_target_properties", proj_name,
-                                 "PROPERTIES", "OUTPUT_NAME", f"\"{proj.config.general.out_name}\"")
+                                 "PROPERTIES", "OUTPUT_NAME", f"\"{proj.cfg.general.out_name}\"")
         
-        if proj.config.general.configuration_type == ConfigType.STATIC_LIBRARY:
+        if proj.cfg.general.config_type == ConfigType.STATIC_LIB:
             cmake_output_dir = "ARCHIVE_OUTPUT_DIRECTORY"
             # cmake_output_dir = "LIBRARY_OUTPUT_DIRECTORY"
         else:
             cmake_output_dir = "RUNTIME_OUTPUT_DIRECTORY"
         
-        output_dir = proj.config.general.out_dir
-        if proj.config.linker.output_file:
-            output_dir = os.path.split(proj.config.linker.output_file)[0]
+        output_dir = proj.cfg.general.out_dir
+        if proj.cfg.link.output_file:
+            output_dir = os.path.split(proj.cfg.link.output_file)[0]
         
         cmakelists += gen_option("\tset_target_properties", proj_name,
                                  "PROPERTIES", cmake_output_dir, q_abspath(output_dir))
         
-        if proj.config.linker.import_library:
-            imp_lib = q_abspath(os.path.split(proj.config.linker.import_library)[0])
+        if proj.cfg.link.import_lib:
+            imp_lib = q_abspath(os.path.split(proj.cfg.link.import_lib)[0])
             cmakelists += gen_option("\tset_target_properties", proj_name,
                                      "PROPERTIES", "ARCHIVE_OUTPUT_DIRECTORY", imp_lib)
 
         cmakelists += "\n"
         
-        if proj.config.general.include_directories:
-            inc_dirs = abspathlist(proj.config.general.include_directories)
-            if proj.config.general.default_include_directories and proj.platform == Platform.WINDOWS:
+        if proj.cfg.compile.inc_dirs:
+            inc_dirs = abspathlist(proj.cfg.compile.inc_dirs)
+            if proj.cfg.compile.default_inc_dirs and proj.platform == Platform.WINDOWS:
                 inc_dirs.extend(abspathlist(msvc_tools.get_inc_dirs("")))
             cmakelists += gen_target_option("include_directories", f"{proj_name} PRIVATE", *inc_dirs)
         
-        if proj.config.general.library_directories:
-            lib_dirs = abspathlist(proj.config.general.library_directories)
-            if proj.config.general.default_library_directories and proj.platform == Platform.WINDOWS:
+        if proj.cfg.link.lib_dirs:
+            lib_dirs = abspathlist(proj.cfg.link.lib_dirs)
+            if proj.cfg.link.default_lib_dirs and proj.platform == Platform.WINDOWS:
                 lib_dirs.extend(abspathlist(msvc_tools.get_lib_dirs("")))
             cmakelists += gen_target_option("link_directories", f"{proj_name} PRIVATE", *lib_dirs)
         
-        if proj.config.linker.libraries:
+        if proj.cfg.link.libs:
             libs = []
-            for lib in proj.config.linker.libraries:
+            for lib in proj.cfg.link.libs:
                 if os.path.split(lib)[0]:
                     if not os.path.splitext(lib)[1]:
-                        lib += proj.macros['$_STATICLIB_EXT']
+                        lib += proj.macros["EXT_LIB"]
                     libs.append(q_abspath(lib))
                 else:
                     # libs.append(f"\"{lib}\"")
@@ -187,18 +187,18 @@ class CMakeGenerator(BaseProjectGenerator):
                 
             cmakelists += gen_target_option("link_libraries", proj_name, *libs)
         
-        if proj.config.compiler.preprocessor_definitions:
-            cmakelists += gen_add_definitions(f"{proj_name} PRIVATE", proj.config.compiler.preprocessor_definitions)
+        if proj.cfg.compile.defines:
+            cmakelists += gen_add_definitions(f"{proj_name} PRIVATE", proj.cfg.compile.defines)
 
-        if proj.config.compiler.options:
-            cmakelists += gen_target_option("compile_options", f"{proj_name} PRIVATE", *proj.config.compiler.options)
+        if proj.cfg.compile.options:
+            cmakelists += gen_target_option("compile_options", f"{proj_name} PRIVATE", *proj.cfg.compile.options)
         
         link_options = []
-        if proj.config.linker.ignore_libraries:
-            link_options.extend(self.cmd_gen.ignore_libs(proj.config.linker.ignore_libraries))
+        if proj.cfg.link.ignore_libs:
+            link_options.extend(self.cmd_gen.ignore_libs(proj.cfg.link.ignore_libs))
             
-        if proj.config.linker.options:
-            link_options.extend(proj.config.linker.options)
+        if proj.cfg.link.options:
+            link_options.extend(proj.cfg.link.options)
             
         if link_options:
             cmakelists += gen_target_option("link_options", f"{proj_name} PRIVATE", *link_options)
