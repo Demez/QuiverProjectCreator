@@ -2,7 +2,6 @@ import uuid
 import os
 import sys
 import qpc_hash
-import lxml.etree as et
 from time import perf_counter
 from qpc_args import args
 from qpc_base import BaseProjectGenerator, Platform, Arch
@@ -13,6 +12,16 @@ from qpc_logging import warning, error, verbose, print_color, Color
 from enum import Enum
 from typing import List, Dict
 
+try:
+    import lxml.etree as et
+    HAS_LXML = True
+except ImportError:
+    HAS_LXML = False
+    print("VSTUDIO WARNING: lxml module not installed, falling back to standard library, this will be MUCH slower")
+    print("------------------------------------------------------------------------")
+    import xml.etree.ElementTree as et
+    from xml.dom import minidom
+    
 
 def timer_diff(start_time: float) -> str:
     return str(round(perf_counter() - start_time, 4))
@@ -126,8 +135,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
 
             [self.sln_project_def_loop(project_def, info, info_win) for project_def in info_win.projects]
         
-            # Write the folders as projects because vstudio dumb
-            # might have to make this a project def, idk
+            # Write the folders as projects to write their assigned uuid
             for full_folder, folder_uuid in self.folder_uuids.items():
                 folder_name = os.path.basename(full_folder)
                 sln_write_project_line(self.solution_file, folder_name, folder_name, self.filter_uuid, folder_uuid)
@@ -158,8 +166,7 @@ class VisualStudioGenerator(BaseProjectGenerator):
                     proj_config_plat[project_uuid + "." + config_plat + ".Build.0"] = config_plat
         
             sln_write_section(self.solution_file, "ProjectConfigurationPlatforms", proj_config_plat, True)
-        
-            # write the project folders
+            
             uuid_assigns = {}
             for project_def in info_win.projects:
                 if project_def.name not in self.proj_uuids:
@@ -193,13 +200,26 @@ class VisualStudioGenerator(BaseProjectGenerator):
                 full_folder = "/".join(folder_list[:index + 1])
                 if full_folder not in self.folder_uuids:
                     self.folder_uuids[full_folder] = make_uuid()
-                
-        if project_def.path in self.out_dir_dict:
-            out_dir = self.out_dir_dict[project_def.path]
-        else:
+                    
+        # should we have this run before adding the folders?
+        # so if this project is in a unique folder and doesn't exist
+        # the folder isn't added? right now, the folder is always added
+        if project_def.path not in self.out_dir_dict:
             return
+            
+        out_dir = self.out_dir_dict[project_def.path]
         if out_dir is None:
             return
+        
+        # What we're doing here is parsing the vcxproj we created earlier
+        # then grabbing the name and the UUID of it
+        # tbh, what i should do is allow generators to write stuff in project hash files
+        # though im not really sure how i should go about setting that up at the moment
+        
+        # Also, when generating a new vcxproj without creating a new solution file
+        # I might need to grab the UUID from the solution if it exists and is in the solution
+        # which does not sound like fun, and generators having access to qpc hashes could make that easy
+        # just store the project's uuid in the hash file
             
         vcxproj_path = out_dir + "/" + os.path.splitext(os.path.basename(project_def.path))[0] + ".vcxproj"
         
@@ -1019,7 +1039,14 @@ def write_project(project: ProjectContainer, out_dir: str, xml_file: et.Element,
 
 
 def xml_to_string(elem) -> str:
-    return et.tostring(elem, pretty_print=True).decode("utf-8")
+    if HAS_LXML:
+        return et.tostring(elem, pretty_print=True).decode("utf-8")
+    else:
+        # this is ugly and slow,
+        # i could probably implement some indenting myself for this later and use tostringlist instead
+        raw_string = et.tostring(elem, "utf-8")
+        reparsed = minidom.parseString(raw_string)
+        return reparsed.toprettyxml(indent="  ")
 
 
 # --------------------------------------------------------------------------------------------------

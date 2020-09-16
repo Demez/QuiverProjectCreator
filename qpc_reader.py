@@ -101,6 +101,9 @@ class QPCBlock:
         
         return string
     
+    def get_value(self, index: int = 0) -> str:
+        return self.values[index] if len(self.values) > index else ""
+    
     def get_list(self) -> tuple:
         return (self.key, *self.values)  # need parenthesis for python versions older than 3.8
     
