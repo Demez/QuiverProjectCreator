@@ -135,13 +135,17 @@ class CMakeGenerator(BaseProjectGenerator):
         cmakelists += gen_option(f"\tadd_{target}", f"{proj_name}{target_type}",
                                  f"${{{proj_name}_SRC_FILES}}",
                                  f"${{{proj_name}_INC_FILES}}")
-        
-        cmakelists += "\n" + gen_option("\tset_target_properties", proj_name,
-                                 "PROPERTIES", "PREFIX", "\"\"")
-        
-        cmakelists += gen_option("\tset_target_properties", proj_name,
-                                 "PROPERTIES", "OUTPUT_NAME", f"\"{proj.cfg.general.out_name}\"")
-        
+
+        lang = "CXX" if proj.cfg.general.language == Language.CPP else "C"
+
+        target_props = {
+            "PREFIX":                       f"\"{proj.cfg.general.out_name_prefix}\"",
+            "OUTPUT_NAME":                  f"\"{proj.cfg.general.out_name}\"",
+            f"{lang}_COMPILER":             f"\"{proj.cfg.general.compiler}\"",
+            f"{lang}_STANDARD":             proj.cfg.general.standard.name[len(proj.cfg.general.language.name):],
+            # f"{lang}_STANDARD_REQUIRED":    "YES"
+        }
+
         if proj.cfg.general.config_type == ConfigType.STATIC_LIB:
             cmake_output_dir = "ARCHIVE_OUTPUT_DIRECTORY"
             # cmake_output_dir = "LIBRARY_OUTPUT_DIRECTORY"
@@ -151,16 +155,14 @@ class CMakeGenerator(BaseProjectGenerator):
         output_dir = proj.cfg.general.out_dir
         if proj.cfg.link.output_file:
             output_dir = os.path.split(proj.cfg.link.output_file)[0]
-        
-        cmakelists += gen_option("\tset_target_properties", proj_name,
-                                 "PROPERTIES", cmake_output_dir, q_abspath(output_dir))
-        
-        if proj.cfg.link.import_lib:
-            imp_lib = q_abspath(os.path.split(proj.cfg.link.import_lib)[0])
-            cmakelists += gen_option("\tset_target_properties", proj_name,
-                                     "PROPERTIES", "ARCHIVE_OUTPUT_DIRECTORY", imp_lib)
 
-        cmakelists += "\n"
+        target_props[cmake_output_dir] = q_abspath(output_dir)
+
+        if proj.cfg.link.import_lib:
+            target_props["ARCHIVE_OUTPUT_DIRECTORY"] = q_abspath(os.path.split(proj.cfg.link.import_lib)[0])
+
+        target_props_strs = [f"{k} {v}" for k, v in target_props.items()]
+        cmakelists += "\n" + gen_list_option("set_target_properties", f"{proj_name} PROPERTIES", *target_props_strs)
         
         if proj.cfg.compile.inc_dirs:
             inc_dirs = abspathlist(proj.cfg.compile.inc_dirs)
