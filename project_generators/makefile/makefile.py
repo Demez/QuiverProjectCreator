@@ -135,7 +135,7 @@ def make_ifeq(a: str, b: str, body: str) -> str:
 
 
 def make_ifndef(item: str, body: str) -> str:
-    return f"\nifndef $({item})\n{body}\nendif\n"
+    return f"ifndef $({item})\n{body}\nendif"
 
 
 # TODO: move to cmd line gen cleanly
@@ -153,6 +153,7 @@ def gen_cflags(conf: Configuration, libs: bool = True, defs: bool = True, includ
         mk += ' -l' + ' -l'.join([os.path.splitext(i)[0] for i in conf.link.libs])
     if conf.compile.inc_dirs and includes:
         mk += ' -I' + ' -I'.join(conf.compile.inc_dirs)
+    return mk
 
 
 def gen_compile_exe(conf: Configuration) -> str:
@@ -204,7 +205,7 @@ def gen_project_targets(cfg: Configuration) -> str:
     return makefile
 
 
-def gen_dependency_tree(objects, headers, conf: Configuration) -> str:
+def gen_dependency_tree(objects, conf: Configuration) -> str:
     makefile = "\n#DEPENDENCY TREE:\n\n"
     pic = "-fPIC"
         
@@ -244,18 +245,12 @@ def gen_script_targets(conf: Configuration) -> str:
 def gen_project_config_definitions(project: ProjectPass) -> str:
     objects = {}
     for i in project.source_files:
-        objects[project.cfg.general.build_dir + "/" + os.path.splitext(os.path.basename(i))[0] + ".o"] = i
-    
-    headers = [i for i in project.files if os.path.splitext(i)[1] in header_extensions]
-
-    create_dirs = []
-    if project.cfg.link.output_file:
-        create_dirs.append(os.path.split(project.cfg.link.output_file)[0])
+        objects[f"{project.cfg.general.build_dir}/{os.path.splitext(os.path.basename(i))[0]}.o"] = i
 
     if project.cfg.link.output_file:
-        makefile = f"\n# CREATE BIN DIR\n$(shell mkdir -p {os.path.split(project.cfg.link.output_file)[0]})\n"
+        makefile = f"\n# CREATE OUT DIR\n$(shell mkdir -p {os.path.split(project.cfg.link.output_file)[0]})\n"
     elif project.cfg.general.out_dir:
-        makefile = f"\n# CREATE BIN DIR\n$(shell mkdir -p {project.cfg.general.out_dir})\n"
+        makefile = f"\n# CREATE OUT DIR\n$(shell mkdir -p {project.cfg.general.out_dir})\n"
     else:
         makefile = ""
 
@@ -269,14 +264,13 @@ def gen_project_config_definitions(project: ProjectPass) -> str:
     
     makefile += "\n# MACROS:\n\n"
 
-    makefile += "OUTNAME = "
-    makefile += project.cfg.general.out_name if project.cfg.general.out_name else project.container.file_name
+    makefile += "OUTNAME = " + project.cfg.general.get_out_name()
     
     makefile += gen_project_targets(project.cfg)
     
     makefile += gen_clean_target()
     
-    makefile += gen_dependency_tree(objects, headers, project.cfg)
+    makefile += gen_dependency_tree(objects, project.cfg)
     
     makefile += gen_script_targets(project.cfg)
     
@@ -312,15 +306,11 @@ def gen_defines(project: ProjectContainer, compiler: str, configs: list) -> str:
 # / 　 づ  
 
 # don't mess with this, might break stuff
-<<<<<<< HEAD
-ARCH = {get_default_platform(project)}
-# change the cfg with CONFIG=[{','.join(configs)}] to make
-CONFIG = {configs[0]}
-=======
 {make_ifndef("ARCH", 'ARCH = ' + get_default_platform(project))}
+
 # change the config with CONFIG=[{','.join(configs)}] to make
 {make_ifndef("CONFIG", 'CONFIG = ' + configs[0])}
->>>>>>> d555b7101e40f6dcdb99cf1716d0c4f462bfd7f4
+
 # edit this in your QPC script configuration/general/compiler
 {make_ifndef("COMPILER", 'COMPILER = ' + compiler)}
 
