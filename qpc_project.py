@@ -625,6 +625,8 @@ class General(BaseConfigGroup):
         self.build_dir: str = f"build/{default_dir}"
         
         self.out_name: str = file_name
+        self.out_name_prefix: str = ""
+        self.out_name_postfix: str = ""
 
         # i want to make these configuration options unaffected by cfg and platform macros,
         # and have it run before it goes through each cfg/platform
@@ -663,8 +665,8 @@ class General(BaseConfigGroup):
         if option_block.key in {"out_dir", "build_dir"}:
             self.__dict__[option_block.key] = clean_path(option_block.values[0], macros)
             
-        elif option_block.key == "out_name":
-            self.out_name = replace_macros(option_block.values[0], macros)
+        elif option_block.key in {"out_name", "out_name_prefix"}:
+            self.__dict__[option_block.key] = replace_macros(option_block.values[0], macros)
             
         elif option_block.key == "config_type":
             self.set_type(option_block)
@@ -700,6 +702,9 @@ class General(BaseConfigGroup):
             if value == enum.name.lower():
                 self.standard = enum
                 break
+
+    def get_out_name(self) -> str:
+        return self.out_name_prefix + self.out_name + self.out_name_postfix
 
 
 class Compile(BaseConfigGroup):
