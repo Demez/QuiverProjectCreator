@@ -161,6 +161,22 @@ class CMakeGenerator(BaseProjectGenerator):
                                      "PROPERTIES", "ARCHIVE_OUTPUT_DIRECTORY", imp_lib)
 
         cmakelists += "\n"
+
+        base_info: BaseInfo = proj.container.base_info
+        all_scripts = []
+        for proj_def in base_info.projects:
+            all_scripts.append(proj_def.path)
+        
+        dependencies = []
+        for path in proj.container.dependencies:
+            if path not in all_scripts:
+                continue
+            dependencies.append(os.path.splitext(os.path.basename(path))[0].upper())
+        
+        if dependencies:
+            cmakelists += gen_list_option("add_dependencies", proj_name, *dependencies)
+        else:
+            cmakelists += "\n"
         
         if proj.config.general.include_directories:
             inc_dirs = abspathlist(proj.config.general.include_directories)
