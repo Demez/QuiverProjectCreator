@@ -159,12 +159,16 @@ class CMakeGenerator(BaseProjectGenerator):
             imp_lib = q_abspath(os.path.split(proj.config.linker.import_library)[0])
             cmakelists += gen_option("\tset_target_properties", proj_name,
                                      "PROPERTIES", "ARCHIVE_OUTPUT_DIRECTORY", imp_lib)
+            
+        elif proj.config.general.configuration_type != ConfigType.STATIC_LIBRARY:
+            cmakelists += gen_option("\tset_target_properties", proj_name,
+                                     "PROPERTIES", "ARCHIVE_OUTPUT_DIRECTORY",
+                                     q_abspath(proj.config.general.build_dir))
 
         cmakelists += "\n"
 
-        base_info: BaseInfo = proj.container.base_info
         all_scripts = []
-        for proj_def in base_info.projects:
+        for proj_def in proj.container.base_info.projects:
             all_scripts.append(proj_def.path)
         
         dependencies = []
@@ -175,8 +179,6 @@ class CMakeGenerator(BaseProjectGenerator):
         
         if dependencies:
             cmakelists += gen_list_option("add_dependencies", proj_name, *dependencies)
-        else:
-            cmakelists += "\n"
         
         if proj.config.general.include_directories:
             inc_dirs = abspathlist(proj.config.general.include_directories)
