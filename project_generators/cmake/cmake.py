@@ -160,9 +160,25 @@ class CMakeGenerator(BaseProjectGenerator):
 
         if proj.cfg.link.import_lib:
             target_props["ARCHIVE_OUTPUT_DIRECTORY"] = q_abspath(os.path.split(proj.cfg.link.import_lib)[0])
+            
+        elif proj.cfg.general.config_type != ConfigType.STATIC_LIB:
+            target_props["ARCHIVE_OUTPUT_DIRECTORY"] = q_abspath(proj.cfg.general.build_dir)
 
         target_props_strs = [f"{k} {v}" for k, v in target_props.items()]
         cmakelists += "\n" + gen_list_option("set_target_properties", f"{proj_name} PROPERTIES", *target_props_strs)
+
+        all_scripts = []
+        for proj_def in proj.container.base_info.projects:
+            all_scripts.append(proj_def.path)
+        
+        dependencies = []
+        for path in proj.container.dependencies:
+            if path not in all_scripts:
+                continue
+            dependencies.append(os.path.splitext(os.path.basename(path))[0].upper())
+        
+        if dependencies:
+            cmakelists += gen_list_option("add_dependencies", proj_name, *dependencies)
         
         if proj.cfg.compile.inc_dirs:
             inc_dirs = abspathlist(proj.cfg.compile.inc_dirs)
