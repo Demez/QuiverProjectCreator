@@ -379,7 +379,7 @@ class Parser:
                 info.add_macro(project_block)
         
             elif project_block.key == "configs":
-                configs = project_block.get_item_list_condition(info.macros)
+                configs = project_block.get_item_list_cond(info.macros)
                 [info.configs.append(config) for config in configs if config not in info.configs]
                 
             elif not project_block.values:
@@ -566,7 +566,7 @@ class Parser:
             project_block.warning("build_event has no name")
     
         # can only define it here
-        elif project_block.items:
+        elif project_block.get_items_cond(project.macros):
             # check to see if it's already defined
             if project_block.values[0] in project.build_events:
                 if not args.hide_warnings:
@@ -574,7 +574,7 @@ class Parser:
             
             build_event = BuildEvent(*replace_macros_list(project.macros, *project_block.values))
             
-            command_list = replace_macros_list(project.macros, *project_block.get_item_list_condition(project.macros))
+            command_list = replace_macros_list(project.macros, *project_block.get_item_list_cond(project.macros))
             build_event.commands.append(command_list)
                     
             project.build_events[project_block.values[0]] = build_event
@@ -583,10 +583,7 @@ class Parser:
         if not files_block.solve_condition(project.macros):
             return
         
-        for block in files_block.items:
-            if not block.solve_condition(project.macros):
-                continue
-            
+        for block in files_block.get_items_cond(project.macros):
             if block.key == "folder":
                 folder_list.append(block.values[0])
                 self._parse_files(block, project, folder_list)
@@ -611,20 +608,17 @@ class Parser:
         if not source_file:
             return
     
-        for config_block in files_block.items:
-            if not config_block.solve_condition(project.macros):
-                continue
-            
+        for config_block in files_block.get_items_cond(project.macros):
             if config_block.key == "config":
                 for group_block in config_block.items:
+                    # not checking the condition yet so this warning can go off
                     if group_block.key != "compile":
                         group_block.warning("Invalid Group, can only use compile")
                         continue
-                
+
                     if group_block.solve_condition(project.macros):
-                        for option_block in group_block.items:
-                            if option_block.solve_condition(project.macros):
-                                source_file.compiler.parse_option(project.macros, option_block)
+                        for option_block in group_block.get_items_cond(project.macros):
+                            source_file.compiler.parse_option(project.macros, option_block)
             else:
                 # new, cleaner way, just assume it's compile
                 source_file.compiler.parse_option(project.macros, config_block)

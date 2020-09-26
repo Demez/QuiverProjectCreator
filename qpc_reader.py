@@ -178,14 +178,14 @@ class QPCBlock:
                 items.append(item)
         return items
 
-    def get_item_keys_condition(self, macros: dict) -> List[str]:
+    def get_item_keys_cond(self, macros: dict) -> List[str]:
         items: List[str] = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):
                 items.append(item.key)
         return items
 
-    def get_item_values_condition(self, macros: dict, key: str = "") -> List[str]:
+    def get_item_values_cond(self, macros: dict, key: str = "") -> List[str]:
         items: List[str] = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):
@@ -193,7 +193,7 @@ class QPCBlock:
                     items.extend(item.values)
         return items
 
-    def get_item_list_condition(self, macros: dict) -> List[QPCBlock]:
+    def get_item_list_cond(self, macros: dict) -> List[QPCBlock]:
         items = []
         for item in self.items:
             if solve_condition(self, item.condition, macros):
