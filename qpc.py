@@ -25,7 +25,7 @@ PRINT_LINE = "------------------------------------------------------------------
 def get_platform_list() -> list:
     platforms = []
     for platform in args.platforms:
-        if platform in Platform and platform not in platforms:
+        if platform not in platforms:
             platforms.append(platform)
             break
     return platforms

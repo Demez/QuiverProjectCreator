@@ -9,6 +9,7 @@ from qpc_project import ProjectContainer, ProjectPass, ProjectDefinition, Projec
 from qpc_logging import warning, error, verbose, verbose_color, print_color, Color
 from enum import Enum
 from time import perf_counter
+from typing import Dict, List
 
 
 # unused, idk if this will ever be useful either
@@ -52,7 +53,7 @@ def get_platform_macros(platform: Enum) -> dict:
             **base_platforms,
             "EXT_DLL": ".dylib",
             "EXT_LIB": ".a",
-            "EXT_APP": ".app",  # or is this .DMG?
+            "EXT_APP": ".app",
         }
 
 
@@ -510,45 +511,43 @@ class Parser:
 
         set_script_macros()
         
-        for project_block in project_file:
-            if project_block.solve_condition(project.macros):
-            
-                if project_block.key == "macro":
-                    project.add_macro(indent, *project.replace_macros_list(*project_block.values))
-            
-                elif project_block.key == "config":
-                    self._parse_config(project_block, project)
-            
-                elif project_block.key == "files":
-                    self._parse_files(project_block, project, [])
-            
-                elif project_block.key == "requires":
-                    for block in project_block.get_items_cond(project.macros):
-                        if block.key == "-":
-                            project.remove_dependencies(*block.values)
-                        else:
-                            project.add_dependencies(block.key, *block.values)
-            
-                elif project_block.key == "build_event":
-                    self._parse_build_event(project_block, project)
-                    
-                elif project_block.key == "include":
-                    # Ah shit, here we go again.
-                    include_path = project.replace_macros(project_block.values[0])
-                    include_file = self._include_file(include_path, project, indent + "    ")
-                    if include_file:
-                        try:
-                            self._parse_project(include_file, project, include_path, indent + "    ")
-                            # reset the script macros back to the values for this script
-                            set_script_macros()
-                        except RecursionError:
-                            raise RecursionError("Recursive Includes found:\n" + project_block.get_formatted_info())
-                        verbose(indent + "    " + "Finished Parsing")
+        for project_block in project_file.get_items_cond(project.macros):
+            if project_block.key == "macro":
+                project.add_macro(indent, *project.replace_macros_list(*project_block.values))
+        
+            elif project_block.key == "config":
+                self._parse_config(project_block, project)
+        
+            elif project_block.key == "files":
+                self._parse_files(project_block, project, [])
+        
+            elif project_block.key == "requires":
+                for block in project_block.get_items_cond(project.macros):
+                    if block.key == "-":
+                        project.remove_dependencies(*block.values)
                     else:
-                        project_block.warning(f"File does not exist: {include_path}")
-                    
+                        project.add_dependencies(block.key, *block.values)
+        
+            elif project_block.key == "build_event":
+                self._parse_build_event(project_block, project)
+                
+            elif project_block.key == "include":
+                # Ah shit, here we go again.
+                include_path = project.replace_macros(project_block.values[0])
+                include_file = self._include_file(include_path, project, indent + "    ")
+                if include_file:
+                    try:
+                        self._parse_project(include_file, project, include_path, indent + "    ")
+                        # reset the script macros back to the values for this script
+                        set_script_macros()
+                    except RecursionError:
+                        raise RecursionError("Recursive Includes found:\n" + project_block.get_formatted_info())
+                    verbose(indent + "    " + "Finished Parsing")
                 else:
-                    project_block.warning(f"Unknown Key: \"{project_block.key}\"")
+                    project_block.warning(f"File does not exist: {include_path}")
+                
+            else:
+                project_block.warning(f"Unknown Key: \"{project_block.key}\"")
     
     def _include_file(self, include_path: str, project: ProjectPass, indent: str) -> QPCBlockRoot:
         project.hash_list[include_path] = qpc_hash.make_hash(include_path)
@@ -581,26 +580,30 @@ class Parser:
             project.build_events[project_block.values[0]] = build_event
     
     def _parse_files(self, files_block: QPCBlock, project: ProjectPass, folder_list: list) -> None:
-        if files_block.solve_condition(project.macros):
-            for block in files_block.items:
-                if not block.solve_condition(project.macros):
+        if not files_block.solve_condition(project.macros):
+            return
+        
+        for block in files_block.items:
+            if not block.solve_condition(project.macros):
+                continue
+            
+            if block.key == "folder":
+                folder_list.append(block.values[0])
+                self._parse_files(block, project, folder_list)
+                folder_list.remove(block.values[0])
+            elif block.key == "-":
+                project.remove_file(folder_list, block)
+            else:
+                project.add_file(folder_list, block)
+            
+                if not block.items:
                     continue
-                
-                if block.key == "folder":
-                    folder_list.append(block.values[0])
-                    self._parse_files(block, project, folder_list)
-                    folder_list.remove(block.values[0])
-                elif block.key == "-":
-                    project.remove_file(folder_list, block)
-                else:
-                    project.add_file(folder_list, block)
-                
-                    if block.items:
-                        for file_path in block.get_list():
-                            if check_file_path_glob(file_path):
-                                [self._source_file(block, project, found_file) for found_file in glob.glob(file_path)]
-                            else:
-                                self._source_file(block, project, file_path)
+                    
+                for file_path in block.get_list():
+                    if check_file_path_glob(file_path):
+                        [self._source_file(block, project, found_file) for found_file in glob.glob(file_path)]
+                    else:
+                        self._source_file(block, project, file_path)
                        
     @staticmethod
     def _source_file(files_block: QPCBlock, project: ProjectPass, file_path: str):
@@ -609,21 +612,22 @@ class Parser:
             return
     
         for config_block in files_block.items:
-            if config_block.solve_condition(project.macros):
+            if not config_block.solve_condition(project.macros):
+                continue
             
-                if config_block.key == "config":
-                    for group_block in config_block.items:
-                        if group_block.key != "compile":
-                            group_block.warning("Invalid Group, can only use compile")
-                            continue
-                    
-                        if group_block.solve_condition(project.macros):
-                            for option_block in group_block.items:
-                                if option_block.solve_condition(project.macros):
-                                    source_file.compiler.parse_option(project.macros, option_block)
-                else:
-                    # new, cleaner way, just assume it's compile
-                    source_file.compiler.parse_option(project.macros, config_block)
+            if config_block.key == "config":
+                for group_block in config_block.items:
+                    if group_block.key != "compile":
+                        group_block.warning("Invalid Group, can only use compile")
+                        continue
+                
+                    if group_block.solve_condition(project.macros):
+                        for option_block in group_block.items:
+                            if option_block.solve_condition(project.macros):
+                                source_file.compiler.parse_option(project.macros, option_block)
+            else:
+                # new, cleaner way, just assume it's compile
+                source_file.compiler.parse_option(project.macros, config_block)
 
     def read_file(self, script_path: str) -> QPCBlockRoot:
         if script_path in self.read_files:

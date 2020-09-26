@@ -1,4 +1,4 @@
-# Parses Project Scripts, Base Scripts, Definition Files, and Hash Files
+# Parses Project Scripts, Base Scripts, Definition Files
 
 # TODO: figure out what is $CRCCHECK is
 # may need to add a /checkfiles launch option to have this check if a file exists or not
@@ -359,13 +359,6 @@ class ProjectPass:
                 headers.append(file)
         return headers
 
-    def get_headers(self) -> list:
-        headers = []
-        for file in self.files:
-            if os.path.splitext(file)[1] in {".h", ".hh", ".hxx", ".hpp"}:
-                headers.append(file)
-        return headers
-
 
 class ProjectContainer:
     # base_info is BaseInfo from qpc_parser.py
@@ -533,7 +526,7 @@ class Configuration:
     def parse_config_option(self, group: QPCBlock, option: QPCBlock):
         if self.check_build_step(group):
             self.parse_build_step(self.__dict__[group.key], option)
-        elif group.key in self.__dict__ and group.key != "_proj":
+        elif group.key in self.__dict__ and group.key not in {"_proj", "_name"}:
             self.__dict__[group.key].parse_option(self._proj.macros, option)
         else:
             group.warning("Unknown Configuration Group: ")
@@ -720,7 +713,6 @@ class Compile(BaseConfigGroup):
         self.options: List[str] = []
 
     def parse_option(self, macros: dict, option_block: QPCBlock) -> None:
-        # TODO: allow removing values, surprised it doesn't already allow that
         if option_block.key in {"defines", "options", "inc_dirs"}:
             for item in option_block.get_items_cond(macros):
                 if item.key == "-":

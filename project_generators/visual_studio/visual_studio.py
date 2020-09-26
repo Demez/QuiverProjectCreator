@@ -3,14 +3,13 @@ import os
 import sys
 import qpc_hash
 from time import perf_counter
+from typing import List, Dict
 from qpc_args import args
 from qpc_base import BaseProjectGenerator, Platform, Arch
 from qpc_project import (PrecompiledHeader, ConfigType, Language, Standard,
                          ProjectContainer, ProjectPass, Compile, SourceFileCompile)
 from qpc_parser import BaseInfo
 from qpc_logging import warning, error, verbose, print_color, Color
-from enum import Enum
-from typing import List, Dict
 
 try:
     import lxml.etree as et
