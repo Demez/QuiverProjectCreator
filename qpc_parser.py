@@ -511,7 +511,11 @@ class Parser:
 
         set_script_macros()
         
-        for project_block in project_file.get_items_cond(project.macros):
+        for project_block in project_file:
+        
+            if not project_block.solve_condition(project.macros):
+                continue
+        
             if project_block.key == "macro":
                 project.add_macro(indent, *project.replace_macros_list(*project_block.values))
         
