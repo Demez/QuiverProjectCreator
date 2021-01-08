@@ -813,7 +813,7 @@ class Link(BaseConfigGroup):
 
     @staticmethod
     def _fix_lib_path(macros: dict, lib_path: str) -> str:
-        return os.path.splitext(clean_path(lib_path, macros))[0]
+        return clean_path(lib_path, macros)
     
     
 def convert_bool_option(old_value: bool, option_block: QPCBlock) -> bool:
