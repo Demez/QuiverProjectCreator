@@ -496,6 +496,12 @@ class ProjectContainer:
         all_files = set()
         [all_files.update(project.files) for project in self._passes]
         return all_files
+    
+    def get_cfgs(self) -> set:
+        cfgs = set()
+        [cfgs.add(project.cfg_name) for project in self._passes]
+        return cfgs
+        
 
 
 class Configuration:
