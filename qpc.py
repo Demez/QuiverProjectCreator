@@ -133,7 +133,7 @@ def main():
 
             project_dir, project_filename = os.path.split(project_script)
 
-            if project_dir and project_dir != args.root_dir:
+            if project_dir and project_dir != args.root_dir and os.path.isdir(project_dir):
                 os.chdir(project_dir)
 
             project = parser.parse_project(project_def, project_script, info, valid_generators)

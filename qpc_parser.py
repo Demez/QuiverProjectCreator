@@ -485,7 +485,7 @@ class Parser:
 
             verbose("Parsing: " + project_script)
             project_pass.hash_list[project_filename] = qpc_hash.make_hash(project_filename)
-            self._parse_project(project_block, project_pass, project_script)
+            self._parse_project(project_block, project_pass, project_script, True)
             self.counter += 1
             
             if project_pass.config.general.configuration_type is None:
@@ -500,12 +500,26 @@ class Parser:
             
         return project_container
     
-    def _parse_project(self, project_file: QPCBlockBase, project: ProjectPass, file_path: str, indent: str = "") -> None:
+    def _parse_project(self, project_file: QPCBlockBase, project: ProjectPass, file_path: str, root: bool, indent: str = "") -> None:
         file_dir, file_name = os.path.split(file_path)
+        
+        project_dir_abs = project.macros["$ROOT_DIR_ABS"] + "/" + project.macros["$PROJECT_DIR"]
+        
+        # the path to the project qpc script is relative to the root dir,
+        # but every script included from the project script is relative to the project script directory,
+        # and since we want $SCRIPT_DIR to always be relative to the project directory,
+        # we just set it to the project dir if it's the root script (project qpc script)
+        if root:
+            script_dir_abs = os.path.normpath(project_dir_abs)
+            script_dir = ""
+        else:
+            script_dir_abs = os.path.normpath(project_dir_abs + "/" + file_dir)
+            script_dir = file_dir
         
         def set_script_macros():
             project.add_macro(indent, "SCRIPT_NAME", file_name)
-            project.add_macro(indent, "SCRIPT_DIR", file_dir)
+            project.add_macro(indent, "SCRIPT_DIR", script_dir)
+            project.add_macro(indent, "SCRIPT_DIR_ABS", script_dir_abs)
 
         set_script_macros()
         
@@ -537,7 +551,7 @@ class Parser:
                     include_file = self._include_file(include_path, project, indent + "    ")
                     if include_file:
                         try:
-                            self._parse_project(include_file, project, include_path, indent + "    ")
+                            self._parse_project(include_file, project, include_path, False, indent + "    ")
                             # reset the script macros back to the values for this script
                             set_script_macros()
                         except RecursionError:
