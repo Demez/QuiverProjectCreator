@@ -515,9 +515,23 @@ class Parser:
     def _parse_project(self, project_file: QPCBlockRoot, project: ProjectPass, file_path: str, indent: str = "") -> None:
         file_dir, file_name = os.path.split(file_path)
         
+        project_dir_abs = project.macros["ROOT_DIR_ABS"] + "/" + project.macros["PROJECT_DIR"]
+        
+        # the path to the project qpc script is relative to the root dir,
+        # but every script included from the project script is relative to the project script directory,
+        # and since we want $SCRIPT_DIR to always be relative to the project directory,
+        # we just set it to the project dir if it's the root script (project qpc script)
+        if indent == "":  # is the root script
+            script_dir_abs = os.path.normpath(project_dir_abs)
+            script_dir = ""
+        else:
+            script_dir_abs = os.path.normpath(project_dir_abs + "/" + file_dir)
+            script_dir = file_dir
+        
         def set_script_macros():
             project.add_macro(indent, "SCRIPT_NAME", file_name)
-            project.add_macro(indent, "SCRIPT_DIR", file_dir)
+            project.add_macro(indent, "SCRIPT_DIR", script_dir)
+            project.add_macro(indent, "SCRIPT_DIR_ABS", script_dir_abs)
 
         set_script_macros()
         
