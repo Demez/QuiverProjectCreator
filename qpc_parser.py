@@ -227,6 +227,7 @@ class BaseInfo:
         self.projects = {}  # maybe remove?
         self.groups = {}
         self.active_group = None
+        self.system_folders = args.system_folders
         # maybe add something for archs?
         self.info_list = [BaseInfoPlatform(self, platform) for platform in args.platforms]
         
@@ -387,6 +388,9 @@ class Parser:
                     
                 verbose_color(Color.DGREEN, f"Set Macro from envvar: {macro_name} = \"{var_value}\"")
                 info.macros[project_block.values[0]] = var_value
+        
+            elif project_block.key == "system_folders":
+                info.shared.system_folders = self.use_system_folders(project_block, info.shared.system_folders, info.macros)
         
             elif project_block.key == "configs":
                 configs = project_block.get_item_list_cond(info.macros)
@@ -552,6 +556,9 @@ class Parser:
                     
                 project.add_macro(indent, macro_name, var_value)
         
+            elif project_block.key == "system_folders":
+                project.system_folders = self.use_system_folders(project_block, project.system_folders, project.macros)
+        
             elif project_block.key == "config":
                 self._parse_config(project_block, project)
         
@@ -622,9 +629,11 @@ class Parser:
         
         for block in files_block.get_items_cond(project.macros):
             if block.key == "folder":
-                folder_list.append(block.values[0])
+                if not project.system_folders:
+                    folder_list.append(block.values[0])
                 self._parse_files(block, project, folder_list)
-                folder_list.remove(block.values[0])
+                if not project.system_folders:
+                    folder_list.remove(block.values[0])
             elif block.key == "-":
                 project.remove_file(folder_list, block)
             else:
@@ -672,7 +681,8 @@ class Parser:
                 pass
             
     # i hate python for this kind of stuff, would be cleaner if it was c++
-    def get_env_var(self, block: QPCBlock, macro_name: str, macros: Dict[str, str]) -> str:
+    @staticmethod
+    def get_env_var(block: QPCBlock, macro_name: str, macros: Dict[str, str]) -> str:
         if not block.values:
             block.warning(f"Nothing set to get in getenv!")
             return None
@@ -685,6 +695,26 @@ class Parser:
             return os.environ[var_name]
         else:
             return var_name
+        
+    @staticmethod
+    def use_system_folders(block: QPCBlock, old_value: bool, macros: Dict[str, str]) -> bool:
+        use_sys_folders = replace_macros(block.get_value(), macros)
+        if not use_sys_folders:
+            block.warning("Nothing set for system_folders!")
+            return old_value
+    
+        # could of used convert_bool_option(), but meh
+        if use_sys_folders.casefold() in {"true", "1"}:
+            return True
+        elif use_sys_folders.casefold() in {"false", "0"}:
+            return False
+            
+        # certified bruh moment
+        warning(block.get_file_info(),
+                f"Invalid bool option for system_folders: \"{use_sys_folders}\"",
+                "Valid options are \"true\", \"false\", \"1\", \"0\"")
+        
+        return old_value
     
     # awful
     @staticmethod

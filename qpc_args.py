@@ -30,6 +30,8 @@ def parse_args(generators: list) -> None:
     cmd_parser.add_argument("--check_files", "-cf", action="store_true", help="Check if any added file exists")
     cmd_parser.add_argument("--skip_projects", "-sp", action="store_true", help="Don't generate projects")
     cmd_parser.add_argument("--legacy_macros", "-lm", action="store_true", help="Legacy Macros (only start with $)")
+    cmd_parser.add_argument("--system_folders", "-sf", action="store_true",
+                            help="Use filesystem folders instead of custom folders for IDE's like visual studio")
 
     cmd_parser.add_argument("--configs", "-c", nargs="+", default=(), help="Select configs, added to configs set in base files")
     cmd_parser.add_argument("--platforms", "-p", nargs="+", default=(get_default_platform(),), choices=platforms,

@@ -136,6 +136,8 @@ class ProjectPass:
         self.generators = set()
         self.add_generator(gen_macro, gen_id)
         
+        self.system_folders: bool = self.base_info.shared.system_folders
+        
     def check_pass(self, config: str, platform: Platform, arch: Arch, generator_macro: str, gen_id: int) -> bool:
         # is this even setup right?
         if self.cfg_name == config and self.platform == platform and self.arch == arch and gen_id in self.generators:
@@ -209,6 +211,10 @@ class ProjectPass:
     def _add_file_internal(self, folder_list: list, file_path: str, file_block: QPCBlock):
         build = file_block.get_item("build")
         force_src_file = build and build.solve_condition(self.macros) and build.get_value() == "true"
+        
+        if self.system_folders:
+            folder_list = get_folder_path(file_path)
+        
         if force_src_file or os.path.splitext(file_path)[1] in EXTS_C:
             if not self._check_file_added(file_path, file_block, self.source_files):
                 self.source_files[file_path] = SourceFile(folder_list)
@@ -501,7 +507,6 @@ class ProjectContainer:
         cfgs = set()
         [cfgs.add(project.cfg_name) for project in self._passes]
         return cfgs
-        
 
 
 class Configuration:
@@ -942,3 +947,25 @@ def replace_macros(string: str, macros: Dict[str, str]):
         # great, now i need to pass in the qpc block just for a good warning message here, there has to be a better way
         # warning(f"Macro in string \"{string}\" does not close!! (sorry for shitty warning, just use -v for now)")
     return string
+
+
+def get_folder_path(file_path: str) -> List[str]:
+    folder_list: List[str] = []
+    
+    file_path: str = norm_path(file_path)
+    if "/" not in file_path:
+        return folder_list
+    
+    tmp_folders = file_path.split("/")[:-1]
+    for index, folder in enumerate(tmp_folders):
+        # uhh
+        if folder == "..":
+            if index == 0:
+                continue
+            if len(folder_list) > 0:
+                folder_list.pop()
+        else:
+            folder_list.append(folder)
+    
+    return folder_list
+
