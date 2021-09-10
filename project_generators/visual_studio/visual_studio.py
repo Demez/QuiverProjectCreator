@@ -16,8 +16,10 @@ try:
     HAS_LXML = True
 except ImportError:
     HAS_LXML = False
-    print("VSTUDIO WARNING: lxml module not installed, falling back to standard library, this will be MUCH slower")
-    print("------------------------------------------------------------------------")
+    # only do this on windows, even if running this on linux
+    if os.name == "nt":
+        print("VSTUDIO WARNING: lxml module not installed, falling back to standard library, this will be MUCH slower")
+        print("------------------------------------------------------------------------")
     import xml.etree.ElementTree as et
     from xml.dom import minidom
     
