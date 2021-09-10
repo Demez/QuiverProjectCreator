@@ -378,6 +378,16 @@ class Parser:
             elif project_block.key == "macro":
                 info.add_macro(project_block)
         
+            elif project_block.key == "getenv":
+                macro_name = replace_macros(project_block.values[0], info.macros)
+                var_value = self.get_env_var(project_block, macro_name, info.macros)
+    
+                if var_value is None:
+                    continue
+                    
+                verbose_color(Color.DGREEN, f"Set Macro from envvar: {macro_name} = \"{var_value}\"")
+                info.macros[project_block.values[0]] = var_value
+        
             elif project_block.key == "configs":
                 configs = project_block.get_item_list_cond(info.macros)
                 [info.configs.append(config) for config in configs if config not in info.configs]
@@ -518,6 +528,15 @@ class Parser:
         
             if project_block.key == "macro":
                 project.add_macro(indent, *project.replace_macros_list(*project_block.values))
+                
+            elif project_block.key == "getenv":
+                macro_name = replace_macros(project_block.values[0], project.macros)
+                var_value = self.get_env_var(project_block, macro_name, project.macros)
+                
+                if var_value is None:
+                    continue
+                    
+                project.add_macro(indent, macro_name, var_value)
         
             elif project_block.key == "config":
                 self._parse_config(project_block, project)
@@ -637,6 +656,21 @@ class Parser:
                 return script
             except FileNotFoundError:
                 pass
+            
+    # i hate python for this kind of stuff, would be cleaner if it was c++
+    def get_env_var(self, block: QPCBlock, macro_name: str, macros: Dict[str, str]) -> str:
+        if not block.values:
+            block.warning(f"Nothing set to get in getenv!")
+            return None
+    
+        # optional 3rd argument to have the macro name be different from the env var name
+        var_name = replace_macros(block.values[1], macros) if len(block.values) == 2 else macro_name
+    
+        if var_name in os.environ:
+            # should i use norm_path in qpc_base here?
+            return os.environ[var_name]
+        else:
+            return var_name
     
     # awful
     @staticmethod
