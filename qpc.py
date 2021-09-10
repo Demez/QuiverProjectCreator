@@ -25,7 +25,7 @@ PRINT_LINE = "------------------------------------------------------------------
 def get_platform_list() -> list:
     platforms = []
     for platform in args.platforms:
-        if platform not in platforms:
+        if platform in Platform and platform not in platforms:
             platforms.append(platform)
             break
     return platforms
@@ -133,7 +133,7 @@ def main():
 
             project_dir, project_filename = os.path.split(project_script)
 
-            if project_dir and project_dir != args.root_dir:
+            if project_dir and project_dir != args.root_dir and os.path.isdir(project_dir):
                 os.chdir(project_dir)
 
             project = parser.parse_project(project_def, project_script, info, valid_generators)
