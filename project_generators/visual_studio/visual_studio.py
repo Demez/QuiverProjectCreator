@@ -327,7 +327,8 @@ def setup_globals(vcxproj, project_list):
     
     
 COMPILER_DICT = {
-    "msvc":         "v142",  # latest
+    "msvc":         "v143",  # latest
+    "msvc_143":     "v143",
     "msvc_142":     "v142",
     "msvc_141":     "v141",
     "msvc_140":     "v140",

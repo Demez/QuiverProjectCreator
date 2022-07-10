@@ -392,6 +392,7 @@ CONFIG_OPTION_CONVERT_DICT = {
         "v140": "msvc_140",
         "v141": "msvc_141",
         "v142": "msvc_142",
+        "v143": "msvc_143",
     
         "v120_xp": "msvc_120_xp",
         "v140_xp": "msvc_140_xp",
