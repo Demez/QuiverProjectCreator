@@ -149,7 +149,8 @@ class VisualStudioGenerator(BaseProjectGenerator):
             for plat in self._platforms:
                 for config in info.get_base_info(plat).configs:
                     for arch in self._architectures:
-                        config_plat_list.append(config + "|" + convert_arch(arch))
+                        if arch in args.archs:
+                            config_plat_list.append(config + "|" + convert_arch(arch))
         
             # SolutionConfigurationPlatforms
             sln_config_plat = {}
